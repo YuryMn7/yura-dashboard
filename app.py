@@ -18,7 +18,7 @@ TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H2", "H4", "H8", "D1", "W1", "MN1
 
 col1, col2 = st.columns(2)
 with col1: asset_name = st.selectbox("Символ:", list(ASSETS.keys()), index=0)
-with col2: tf = st.selectbox("Таймфрейм:", TIMEFRAMES, index=0) # Ставлю M1 для теста
+with col2: tf = st.selectbox("Таймфрейм:", TIMEFRAMES, index=2)
 
 ticker = ASSETS[asset_name]
 
@@ -67,10 +67,8 @@ if not df.empty:
 
     df_plot = df.tail(250).copy()
     
-    # --- ИДЕАЛЬНОЕ РИСОВАНИЕ ---
     fig = go.Figure()
     
-    # Возвращаем настоящее Время на ось X!
     fig.add_trace(go.Candlestick(
         x=df_plot.index,
         open=df_plot['Open'], high=df_plot['High'], low=df_plot['Low'], close=df_plot['Close'],
@@ -88,7 +86,7 @@ if not df.empty:
     minor_lows = df_plot[df_plot['Minor_Low'] & ~df_plot['Major_Low']]
     fig.add_trace(go.Scatter(
         x=minor_lows.index, y=minor_lows['Low'] - (minor_lows['ATR'] * 0.2),
-        mode='markers', marker=dict(size=6, color='#888888', symbol='circle'), showlegend=False
+        mode='markers', marker=dict(size=6, color='#888888', symbol='circle'), name='Младший Минимум'
     ))
 
     major_highs = df_plot[df_plot['Major_High']]
@@ -99,26 +97,24 @@ if not df.empty:
     major_lows = df_plot[df_plot['Major_Low']]
     fig.add_trace(go.Scatter(
         x=major_lows.index, y=major_lows['Low'] - (major_lows['ATR'] * 0.5),
-        mode='markers', marker=dict(size=12, color='black', symbol='circle'), showlegend=False
+        mode='markers', marker=dict(size=12, color='black', symbol='circle'), name='Старший Минимум'
     ))
 
-    # Настройки профессионального вида
     fig.update_layout(
         xaxis_rangeslider_visible=False, 
         height=750, 
         template="plotly_white",
         plot_bgcolor='#fafafa', paper_bgcolor='white',
         margin=dict(l=20, r=60, t=30, b=30),
-        # 5 знаков и выравнивание
         yaxis=dict(side='right', tickformat='.5f', showgrid=True, gridcolor='#e1e1e1', zeroline=False, title='Цена'),
         xaxis=dict(
             showgrid=True, gridcolor='#e1e1e1',
-            # 🛠 ПРАВИЛЬНОЕ УДАЛЕНИЕ ВЫХОДНЫХ
             rangebreaks=[dict(bounds=["sat", "mon"])] 
         ),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        # Формат при наведении: 5 знаков
-        hovermode="x unified"
+        
+        # 🛠 ИСПРАВЛЕНИЕ: Возвращаем точечный прицел (Только 1 свеча или 1 точка под пальцем)
+        hovermode="closest"
     )
     
     fig.update_traces(yhoverformat=".5f")
@@ -129,4 +125,4 @@ if not df.empty:
     gc.collect()
 
 else:
-    st.error("Нет данных от биржи.")
+    st.error("Нет данных от биржи (возможно, неторговое время).")
