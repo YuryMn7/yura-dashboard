@@ -4,8 +4,8 @@ import numpy as np
 import plotly.graph_objects as go
 import requests
 import gc
+from streamlit_plotly_events import plotly_events
 
-# 1. КОНФИГУРАЦИЯ ТЕРМИНАЛА
 API_KEY = "498c4e4630ab4727974c2ff5439be7dd"
 
 st.set_page_config(page_title="Ichimoku Pro Terminal", layout="wide")
@@ -23,41 +23,33 @@ ASSETS = {
 }
 
 TF_MAP = {"M1": "1min", "M5": "5min", "M15": "15min", "M30": "30min", "H1": "1h", "H2": "2h", "H4": "4h", "D1": "1day", "W1": "1week", "MN1": "1month"}
-KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
+KIHON_SUU = [9, 17, 26, 33, 42, 52]
 
-# ==========================================
-# 2. БОКОВОЕ МЕНЮ (Идеально для мобильных)
-# ==========================================
 with st.sidebar:
     st.header("Настройки")
     asset_name = st.selectbox("Символ:", list(ASSETS.keys()), index=0)
     tf_name = st.selectbox("Таймфрейм:", list(TF_MAP.keys()), index=4)
-    auto_scale = st.checkbox("Автомасштаб по высоте", value=True)
     
     st.markdown("---")
-    st.write(f"**Выбрано точек:** {len(st.session_state.abc_points)}/3")
+    st.write(f"**Точек волны:** {len(st.session_state.abc_points)}/3")
     if st.button("🗑 Очистить точки A-B-C", use_container_width=True):
         st.session_state.abc_points = []
         st.rerun()
-    
-    for p in st.session_state.abc_points:
-        st.caption(f"Точка: Цена {p['y']:.5f}")
 
 ticker = ASSETS[asset_name]
 td_interval = TF_MAP[tf_name]
 
-# ==========================================
-# 3. ПОЛУЧЕНИЕ ДАННЫХ
-# ==========================================
 @st.cache_data(ttl=60)
 def fetch_twelvedata(symbol, interval):
-    url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval={interval}&apikey={API_KEY}&outputsize=350"
+    url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval={interval}&apikey={API_KEY}&outputsize=400"
     try:
         response = requests.get(url).json()
         if 'values' in response:
             df = pd.DataFrame(response['values'])
             df['datetime'] = pd.to_datetime(df['datetime'])
             df = df.set_index('datetime').sort_index()
+            # 🛠 ОЧИСТКА МУСОРА: Удаляем дубликаты свечей!
+            df = df[~df.index.duplicated(keep='last')]
             for col in ['open', 'high', 'low', 'close']: df[col] = df[col].astype(float)
             df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
             return df
@@ -91,22 +83,24 @@ if not df.empty:
 
     fig = go.Figure()
     
+    # 🛠 ИДЕАЛЬНЫЕ СВЕЧИ: Убрана жирная обводка (line_width=1)
     fig.add_trace(go.Candlestick(
         x=df_plot['x_idx'], open=df_plot['Open'], high=df_plot['High'], low=df_plot['Low'], close=df_plot['Close'],
-        increasing_line_color='#2c3e50', increasing_fillcolor='white', decreasing_line_color='#2c3e50', decreasing_fillcolor='#2c3e50',
+        increasing_line_color='#2c3e50', increasing_fillcolor='white', increasing_line_width=1,
+        decreasing_line_color='#2c3e50', decreasing_fillcolor='#2c3e50', decreasing_line_width=1,
         name='Свечи'
     ))
 
     # Рисуем Фракталы
     minor_highs = df_plot[df_plot['Minor_High'] & ~df_plot['Major_High']]
-    fig.add_trace(go.Scatter(x=minor_highs['x_idx'], y=minor_highs['High']+(minor_highs['ATR']*0.2), mode='markers', marker=dict(size=6, color='#95a5a6'), name='Minor High'))
+    fig.add_trace(go.Scatter(x=minor_highs['x_idx'], y=minor_highs['High']+(minor_highs['ATR']*0.2), mode='markers', marker=dict(size=5, color='#95a5a6'), name='Minor High'))
     minor_lows = df_plot[df_plot['Minor_Low'] & ~df_plot['Major_Low']]
-    fig.add_trace(go.Scatter(x=minor_lows['x_idx'], y=minor_lows['Low']-(minor_lows['ATR']*0.2), mode='markers', marker=dict(size=6, color='#95a5a6'), name='Minor Low'))
+    fig.add_trace(go.Scatter(x=minor_lows['x_idx'], y=minor_lows['Low']-(minor_lows['ATR']*0.2), mode='markers', marker=dict(size=5, color='#95a5a6'), name='Minor Low'))
     
     major_highs = df_plot[df_plot['Major_High']]
-    fig.add_trace(go.Scatter(x=major_highs['x_idx'], y=major_highs['High']+(major_highs['ATR']*0.5), mode='markers', marker=dict(size=12, color='#2c3e50'), name='Major High'))
+    fig.add_trace(go.Scatter(x=major_highs['x_idx'], y=major_highs['High']+(major_highs['ATR']*0.5), mode='markers', marker=dict(size=10, color='#2c3e50'), name='Major High'))
     major_lows = df_plot[df_plot['Major_Low']]
-    fig.add_trace(go.Scatter(x=major_lows['x_idx'], y=major_lows['Low']-(major_lows['ATR']*0.5), mode='markers', marker=dict(size=12, color='#2c3e50'), name='Major Low'))
+    fig.add_trace(go.Scatter(x=major_lows['x_idx'], y=major_lows['Low']-(major_lows['ATR']*0.5), mode='markers', marker=dict(size=10, color='#2c3e50'), name='Major Low'))
 
     # Ишимоку
     fig.add_trace(go.Scatter(x=df_plot['x_idx'], y=df_plot['tenkan'], line=dict(color='#2980b9', width=1.5), name='Tenkan'))
@@ -117,12 +111,13 @@ if not df.empty:
     fig.add_trace(go.Scatter(x=np.concatenate([x_cloud, x_cloud[::-1]]), y=np.concatenate([sa, sb[::-1]]), fill='toself', fillcolor='rgba(46, 204, 113, 0.2)', line=dict(color='rgba(255,255,255,0)'), name='Kumo'))
 
     # ==========================================
-    # 4. МАГИЯ РАСЧЕТА ЦЕЛЕЙ (V, N, E, NT)
+    # 4. ПОЛНЫЙ АРСЕНАЛ ВРЕМЕНИ И ЦЕЛЕЙ
     # ==========================================
     if len(st.session_state.abc_points) == 3:
         A, B, C = st.session_state.abc_points[0], st.session_state.abc_points[1], st.session_state.abc_points[2]
         is_up = B['y'] > A['y']
         
+        # Математика Архитектора
         if is_up:
             V, N, E, NT = B['y'] + (B['y'] - C['y']), C['y'] + (B['y'] - A['y']), B['y'] + (B['y'] - A['y']), C['y'] + (C['y'] - A['y'])
         else:
@@ -132,44 +127,39 @@ if not df.empty:
         for name, val in {'V': V, 'N': N, 'E': E, 'NT': NT}.items():
             fig.add_hline(y=val, line_dash="dash", line_color=colors[name], annotation_text=f"Цель {name}: {val:.5f}", annotation_position="right")
 
+        # ⏳ МАГИЯ ВРЕМЕНИ (Все симметрии и Кихон Суу)
         time_AB = abs(B['x'] - A['x'])
-        target_time = C['x'] + time_AB
-        fig.add_vline(x=target_time, line_dash="dot", line_color="blue", annotation_text=f"Время Тайёсуу ({time_AB} бар)")
+        time_AC = abs(C['x'] - A['x'])
+        
+        fig.add_vline(x=C['x'] + time_AB, line_dash="dot", line_color="blue", annotation_text=f"Тайёсуу A-B ({int(time_AB)})")
+        fig.add_vline(x=C['x'] + time_AC, line_dash="dot", line_color="teal", annotation_text=f"Тайёсуу A-C ({int(time_AC)})")
+        
+        for k in KIHON_SUU:
+            fig.add_vline(x=C['x'] + k - 1, line_dash="dash", line_color="gray", annotation_text=f"Кихон ({k})", opacity=0.5)
 
+        # Рисуем Волну
         fig.add_trace(go.Scatter(x=[A['x'], B['x'], C['x']], y=[A['y'], B['y'], C['y']], mode='lines+markers', line=dict(color='gold', width=3), marker=dict(size=10), name='Волна A-B-C'))
 
-    # Настройки графика
     tick_step = max(1, len(df_plot) // 10)
     tick_vals = df_plot['x_idx'].values[::tick_step]
     tick_texts = df_plot.index.strftime('%Y-%m-%d %H:%M')[::tick_step]
 
-    # Автомасштабирование (обрезаем Y по минимуму и максимуму свечей)
-    y_range = None
-    if auto_scale:
-        min_y = df_plot['Low'].min() * 0.999
-        max_y = df_plot['High'].max() * 1.001
-        y_range = [min_y, max_y]
-
+    # 🛠 СВОБОДНОЕ МАСШТАБИРОВАНИЕ (Без жестких рамок!)
     fig.update_layout(
         xaxis_rangeslider_visible=False, height=750, template="plotly_white",
         plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(l=20, r=80, t=40, b=40),
-        yaxis=dict(side='right', tickformat='.5f', showgrid=True, gridcolor='#f0f0f0', range=y_range),
-        xaxis=dict(tickmode='array', tickvals=tick_vals, ticktext=tick_texts, showgrid=True, gridcolor='#f0f0f0', tickangle=45),
-        hovermode="closest",
-        clickmode='event+select'
+        yaxis=dict(side='right', tickformat='.5f', showgrid=True, gridcolor='#f0f0f0', fixedrange=False),
+        xaxis=dict(tickmode='array', tickvals=tick_vals, ticktext=tick_texts, showgrid=True, gridcolor='#f0f0f0', tickangle=45, fixedrange=False),
+        hovermode="closest", clickmode='event+select'
     )
     
-    # 👆 РОДНОЙ ПЕРЕХВАТЧИК КЛИКОВ STREAMLIT (Без падений и утечек памяти!)
     event = st.plotly_chart(fig, use_container_width=True, on_select="rerun", selection_mode="points")
     
-    # Обработка клика
     if event and len(event.selection['points']) > 0:
         clicked_pt = event.selection['points'][0]
-        # Извлекаем X и Y из родного обработчика
         clicked_x = clicked_pt.get('x')
         clicked_y = clicked_pt.get('y')
         
-        # Если точек меньше 3 и этой точки еще нет в списке
         if len(st.session_state.abc_points) < 3:
             already_exists = any(p['x'] == clicked_x for p in st.session_state.abc_points)
             if not already_exists and clicked_x is not None and clicked_y is not None:
