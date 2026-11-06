@@ -8,9 +8,10 @@ import gc
 from streamlit_plotly_events import plotly_events
 
 # ==========================================
-# 1. КОНФИГУРАЦИЯ ТЕРМИНАЛА
+# 1. КОНФИГУРАЦИЯ И СЕКРЕТЫ
 # ==========================================
-API_KEY = "498c4e4630ab4727974c2ff5439be7dd"
+# 🛡 Достаем ключ из Секретного Сейфа Streamlit!
+API_KEY = st.secrets["TWELVEDATA_KEY"]
 
 st.set_page_config(page_title="Ichimoku Pro Terminal", layout="wide")
 st.markdown("<h3 style='text-align: center; color: #2c3e50;'>Ichimoku Wave Terminal</h3>", unsafe_allow_html=True)
@@ -18,7 +19,6 @@ st.markdown("<h3 style='text-align: center; color: #2c3e50;'>Ichimoku Wave Termi
 if 'abc_points' not in st.session_state:
     st.session_state.abc_points = []
 
-# 🗺 СМАРТ-МАРШРУТИЗАЦИЯ: Кому куда идти за данными
 ASSET_ROUTER = {
     "EUR/USD": {"prov": "twelvedata", "sym": "EUR/USD"},
     "USD/JPY": {"prov": "twelvedata", "sym": "USD/JPY"},
@@ -30,7 +30,6 @@ ASSET_ROUTER = {
     "EUR/AUD": {"prov": "twelvedata", "sym": "EUR/AUD"},
     "Золото": {"prov": "twelvedata", "sym": "XAU/USD"},
     "Биткоин": {"prov": "twelvedata", "sym": "BTC/USD"},
-    # Индексы забираем у Yahoo, так как TwelveData просит за них платную лицензию!
     "SPX500": {"prov": "yahoo", "sym": "^GSPC"},
     "GER40": {"prov": "yahoo", "sym": "^GDAXI"},
     "JPN225": {"prov": "yahoo", "sym": "^N225"},
@@ -40,25 +39,34 @@ ASSET_ROUTER = {
 TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H2", "H4", "H8", "D1", "W1", "MN1"]
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
 
+# ==========================================
+# 2. УДОБНОЕ МЕНЮ И ТАБЛО ТОЧЕК
+# ==========================================
 with st.sidebar:
     st.header("Настройки")
     asset_name = st.selectbox("Символ:", list(ASSET_ROUTER.keys()), index=0)
     tf_name = st.selectbox("Таймфрейм:", TIMEFRAMES, index=4)
     
     st.markdown("---")
-    st.write(f"**Точек волны:** {len(st.session_state.abc_points)}/3")
-    if st.button("🗑 Очистить точки A-B-C", use_container_width=True):
+    st.markdown("### 🎯 Точки для расчета Целей")
+    
+    # Красивое табло для отображения нажатых точек!
+    labels = ["A (Старт)", "B (Вершина/Дно)", "C (Откат)"]
+    for i in range(3):
+        if i < len(st.session_state.abc_points):
+            val = st.session_state.abc_points[i]['y']
+            st.success(f"**Точка {labels[i]}:** {val:.5f}")
+        else:
+            st.info(f"Ожидаю точку {labels[i]}...")
+            
+    if st.button("🗑 Очистить точки", use_container_width=True):
         st.session_state.abc_points = []
         st.rerun()
 
-# ==========================================
-# 2. УМНЫЙ ДОБЫТЧИК ДАННЫХ
-# ==========================================
 @st.cache_data(ttl=60)
 def fetch_smart_data(asset_key, interval):
     route = ASSET_ROUTER[asset_key]
-    provider = route["prov"]
-    sym = route["sym"]
+    provider, sym = route["prov"], route["sym"]
     df = pd.DataFrame()
     
     try:
@@ -70,6 +78,7 @@ def fetch_smart_data(asset_key, interval):
                 df = pd.DataFrame(res['values'])
                 df['datetime'] = pd.to_datetime(df['datetime'])
                 df = df.set_index('datetime').sort_index()
+                df = df[~df.index.duplicated(keep='last')]
                 for col in ['open', 'high', 'low', 'close']: df[col] = df[col].astype(float)
                 df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                 
@@ -89,7 +98,6 @@ def fetch_smart_data(asset_key, interval):
             if not df.empty and isinstance(df.columns, pd.MultiIndex): 
                 df.columns = df.columns.get_level_values(0)
 
-        # ОБЩАЯ КУЗНИЦА ДЛЯ ОБОИХ ПРОВАЙДЕРОВ
         if not df.empty and interval in ["H2", "H4", "H8"]:
             if interval == "H2": df = df.resample('2h').agg({'Open':'first', 'High':'max', 'Low':'min', 'Close':'last'}).dropna()
             elif interval == "H4": df = df.resample('4h').agg({'Open':'first', 'High':'max', 'Low':'min', 'Close':'last'}).dropna()
@@ -151,16 +159,14 @@ if not df.empty:
     fig.add_trace(go.Scatter(x=np.concatenate([x_cloud, x_cloud[::-1]]), y=np.concatenate([sa, sb[::-1]]), fill='toself', fillcolor='rgba(46, 204, 113, 0.2)', line=dict(color='rgba(255,255,255,0)'), name='Kumo'))
 
     # ==========================================
-    # 4. МАГИЯ РАСЧЕТА ЦЕЛЕЙ (V, N, E, NT)
+    # 3. МАГИЯ РАСЧЕТА ЦЕЛЕЙ (V, N, E, NT)
     # ==========================================
     if len(st.session_state.abc_points) == 3:
         A, B, C = st.session_state.abc_points[0], st.session_state.abc_points[1], st.session_state.abc_points[2]
         is_up = B['y'] > A['y']
         
-        if is_up:
-            V, N, E, NT = B['y'] + (B['y'] - C['y']), C['y'] + (B['y'] - A['y']), B['y'] + (B['y'] - A['y']), C['y'] + (C['y'] - A['y'])
-        else:
-            V, N, E, NT = B['y'] - (C['y'] - B['y']), C['y'] - (A['y'] - B['y']), B['y'] - (A['y'] - B['y']), C['y'] - (A['y'] - C['y'])
+        if is_up: V, N, E, NT = B['y'] + (B['y'] - C['y']), C['y'] + (B['y'] - A['y']), B['y'] + (B['y'] - A['y']), C['y'] + (C['y'] - A['y'])
+        else: V, N, E, NT = B['y'] - (C['y'] - B['y']), C['y'] - (A['y'] - B['y']), B['y'] - (A['y'] - B['y']), C['y'] - (A['y'] - C['y'])
 
         colors = {'V': 'orange', 'N': 'green', 'E': 'red', 'NT': 'purple'}
         for name, val in {'V': V, 'N': N, 'E': E, 'NT': NT}.items():
@@ -182,14 +188,15 @@ if not df.empty:
     tick_texts = df_plot.index.strftime('%Y-%m-%d %H:%M')[::tick_step]
 
     fig.update_layout(
-        xaxis_rangeslider_visible=False, height=750, template="plotly_white",
-        plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(l=20, r=80, t=40, b=40),
+        xaxis_rangeslider_visible=False, height=650, template="plotly_white",
+        plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(l=20, r=80, t=20, b=20),
         yaxis=dict(side='right', tickformat='.5f', showgrid=True, gridcolor='#f0f0f0', fixedrange=False),
         xaxis=dict(tickmode='array', tickvals=tick_vals, ticktext=tick_texts, showgrid=True, gridcolor='#f0f0f0', tickangle=45, fixedrange=False),
         hovermode="closest", clickmode='event+select'
     )
     
-    event = st.plotly_chart(fig, use_container_width=True, on_select="rerun", selection_mode="points")
+    # 📱 ЗАЩИТА ДЛЯ ТЕЛЕФОНА (scrollZoom=False)
+    event = st.plotly_chart(fig, use_container_width=True, on_select="rerun", selection_mode="points", config={'scrollZoom': False, 'displayModeBar': False})
     
     if event and len(event.selection['points']) > 0:
         clicked_pt = event.selection['points'][0]
@@ -201,7 +208,6 @@ if not df.empty:
             if not already_exists and clicked_x is not None and clicked_y is not None:
                 st.session_state.abc_points.append({'x': clicked_x, 'y': clicked_y})
                 st.rerun()
-
     gc.collect()
 else:
     st.warning("Нет данных от биржи.")
