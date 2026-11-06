@@ -4,18 +4,13 @@ import numpy as np
 import plotly.graph_objects as go
 import requests
 import gc
-from streamlit_plotly_events import plotly_events
 
-# ==========================================
 # 1. КОНФИГУРАЦИЯ ТЕРМИНАЛА
-# ==========================================
 API_KEY = "498c4e4630ab4727974c2ff5439be7dd"
 
 st.set_page_config(page_title="Ichimoku Pro Terminal", layout="wide")
-st.markdown("<h2 style='text-align: center; color: #2c3e50;'>Ichimoku Analytical Terminal</h2>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #7f8c8d;'>Interactive Wave & Time Targeting</p>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align: center; color: #2c3e50;'>Ichimoku Wave Terminal</h3>", unsafe_allow_html=True)
 
-# Инициализация памяти для точек A, B, C
 if 'abc_points' not in st.session_state:
     st.session_state.abc_points = []
 
@@ -27,28 +22,32 @@ ASSETS = {
     "SPX500": "SPX", "GER40 (DAX)": "GDAXI", "JPN225": "N225"
 }
 
-TF_MAP = {
-    "M1": "1min", "M5": "5min", "M15": "15min", "M30": "30min",
-    "H1": "1h", "H2": "2h", "H4": "4h", 
-    "D1": "1day", "W1": "1week", "MN1": "1month"
-}
+TF_MAP = {"M1": "1min", "M5": "5min", "M15": "15min", "M30": "30min", "H1": "1h", "H2": "2h", "H4": "4h", "D1": "1day", "W1": "1week", "MN1": "1month"}
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
 
-col1, col2, col3 = st.columns([2, 2, 1])
-with col1: asset_name = st.selectbox("Символ:", list(ASSETS.keys()), index=0)
-with col2: tf_name = st.selectbox("Таймфрейм:", list(TF_MAP.keys()), index=4)
-with col3: 
-    st.write("")
-    st.write("")
-    if st.button("🗑 Очистить точки A-B-C"):
+# ==========================================
+# 2. БОКОВОЕ МЕНЮ (Идеально для мобильных)
+# ==========================================
+with st.sidebar:
+    st.header("Настройки")
+    asset_name = st.selectbox("Символ:", list(ASSETS.keys()), index=0)
+    tf_name = st.selectbox("Таймфрейм:", list(TF_MAP.keys()), index=4)
+    auto_scale = st.checkbox("Автомасштаб по высоте", value=True)
+    
+    st.markdown("---")
+    st.write(f"**Выбрано точек:** {len(st.session_state.abc_points)}/3")
+    if st.button("🗑 Очистить точки A-B-C", use_container_width=True):
         st.session_state.abc_points = []
         st.rerun()
+    
+    for p in st.session_state.abc_points:
+        st.caption(f"Точка: Цена {p['y']:.5f}")
 
 ticker = ASSETS[asset_name]
 td_interval = TF_MAP[tf_name]
 
 # ==========================================
-# 2. ПОЛУЧЕНИЕ ДАННЫХ
+# 3. ПОЛУЧЕНИЕ ДАННЫХ
 # ==========================================
 @st.cache_data(ttl=60)
 def fetch_twelvedata(symbol, interval):
@@ -95,10 +94,10 @@ if not df.empty:
     fig.add_trace(go.Candlestick(
         x=df_plot['x_idx'], open=df_plot['Open'], high=df_plot['High'], low=df_plot['Low'], close=df_plot['Close'],
         increasing_line_color='#2c3e50', increasing_fillcolor='white', decreasing_line_color='#2c3e50', decreasing_fillcolor='#2c3e50',
-        name='Price'
+        name='Свечи'
     ))
 
-    # Рисуем Фракталы (делаем их кликабельными)
+    # Рисуем Фракталы
     minor_highs = df_plot[df_plot['Minor_High'] & ~df_plot['Major_High']]
     fig.add_trace(go.Scatter(x=minor_highs['x_idx'], y=minor_highs['High']+(minor_highs['ATR']*0.2), mode='markers', marker=dict(size=6, color='#95a5a6'), name='Minor High'))
     minor_lows = df_plot[df_plot['Minor_Low'] & ~df_plot['Major_Low']]
@@ -118,77 +117,65 @@ if not df.empty:
     fig.add_trace(go.Scatter(x=np.concatenate([x_cloud, x_cloud[::-1]]), y=np.concatenate([sa, sb[::-1]]), fill='toself', fillcolor='rgba(46, 204, 113, 0.2)', line=dict(color='rgba(255,255,255,0)'), name='Kumo'))
 
     # ==========================================
-    # 3. МАГИЯ РАСЧЕТА ЦЕЛЕЙ (V, N, E, NT)
+    # 4. МАГИЯ РАСЧЕТА ЦЕЛЕЙ (V, N, E, NT)
     # ==========================================
     if len(st.session_state.abc_points) == 3:
         A, B, C = st.session_state.abc_points[0], st.session_state.abc_points[1], st.session_state.abc_points[2]
-        
-        # Определяем тренд (B > A = Бычий, B < A = Медвежий)
         is_up = B['y'] > A['y']
         
-        # Формулы Архитектора Юры
         if is_up:
-            V = B['y'] + (B['y'] - C['y'])
-            N = C['y'] + (B['y'] - A['y'])
-            E = B['y'] + (B['y'] - A['y'])
-            NT = C['y'] + (C['y'] - A['y'])
+            V, N, E, NT = B['y'] + (B['y'] - C['y']), C['y'] + (B['y'] - A['y']), B['y'] + (B['y'] - A['y']), C['y'] + (C['y'] - A['y'])
         else:
-            V = B['y'] - (C['y'] - B['y'])
-            N = C['y'] - (A['y'] - B['y'])
-            E = B['y'] - (A['y'] - B['y'])
-            NT = C['y'] - (A['y'] - C['y'])
+            V, N, E, NT = B['y'] - (C['y'] - B['y']), C['y'] - (A['y'] - B['y']), B['y'] - (A['y'] - B['y']), C['y'] - (A['y'] - C['y'])
 
-        # Рисуем Горизонтальные Цели (Цены)
         colors = {'V': 'orange', 'N': 'green', 'E': 'red', 'NT': 'purple'}
-        targets = {'V': V, 'N': N, 'E': E, 'NT': NT}
-        
-        for name, val in targets.items():
+        for name, val in {'V': V, 'N': N, 'E': E, 'NT': NT}.items():
             fig.add_hline(y=val, line_dash="dash", line_color=colors[name], annotation_text=f"Цель {name}: {val:.5f}", annotation_position="right")
 
-        # Формулы Времени (Тайёсуу и Кихон Суу)
         time_AB = abs(B['x'] - A['x'])
-        target_time = C['x'] + time_AB # Симметрия времени от С
-        
+        target_time = C['x'] + time_AB
         fig.add_vline(x=target_time, line_dash="dot", line_color="blue", annotation_text=f"Время Тайёсуу ({time_AB} бар)")
 
-        # Рисуем треугольник волны
         fig.add_trace(go.Scatter(x=[A['x'], B['x'], C['x']], y=[A['y'], B['y'], C['y']], mode='lines+markers', line=dict(color='gold', width=3), marker=dict(size=10), name='Волна A-B-C'))
 
-    # Настройки
+    # Настройки графика
     tick_step = max(1, len(df_plot) // 10)
     tick_vals = df_plot['x_idx'].values[::tick_step]
     tick_texts = df_plot.index.strftime('%Y-%m-%d %H:%M')[::tick_step]
 
+    # Автомасштабирование (обрезаем Y по минимуму и максимуму свечей)
+    y_range = None
+    if auto_scale:
+        min_y = df_plot['Low'].min() * 0.999
+        max_y = df_plot['High'].max() * 1.001
+        y_range = [min_y, max_y]
+
     fig.update_layout(
         xaxis_rangeslider_visible=False, height=750, template="plotly_white",
         plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(l=20, r=80, t=40, b=40),
-        yaxis=dict(side='right', tickformat='.5f', showgrid=True, gridcolor='#f0f0f0'),
-        xaxis=dict(tickmode='array', tickvals=tick_vals, ticktext=tick_texts, showgrid=True, gridcolor='#f0f0f0'),
-        hovermode="closest"
+        yaxis=dict(side='right', tickformat='.5f', showgrid=True, gridcolor='#f0f0f0', range=y_range),
+        xaxis=dict(tickmode='array', tickvals=tick_vals, ticktext=tick_texts, showgrid=True, gridcolor='#f0f0f0', tickangle=45),
+        hovermode="closest",
+        clickmode='event+select'
     )
     
-    # 👆 ПЕРЕХВАТЧИК КЛИКОВ (Магия Streamlit)
-    selected_points = plotly_events(fig, click_event=True, hover_event=False)
+    # 👆 РОДНОЙ ПЕРЕХВАТЧИК КЛИКОВ STREAMLIT (Без падений и утечек памяти!)
+    event = st.plotly_chart(fig, use_container_width=True, on_select="rerun", selection_mode="points")
     
     # Обработка клика
-    if selected_points:
-        clicked_x = selected_points[0]['x']
-        clicked_y = selected_points[0]['y']
+    if event and len(event.selection['points']) > 0:
+        clicked_pt = event.selection['points'][0]
+        # Извлекаем X и Y из родного обработчика
+        clicked_x = clicked_pt.get('x')
+        clicked_y = clicked_pt.get('y')
         
-        # Если точек меньше 3, добавляем новую
+        # Если точек меньше 3 и этой точки еще нет в списке
         if len(st.session_state.abc_points) < 3:
-            # Корректируем Y, так как мы отступали точки от свечей на ATR
-            actual_y = df_plot[df_plot['x_idx'] == clicked_x]['High'].values[0] if len(st.session_state.abc_points) == 1 else df_plot[df_plot['x_idx'] == clicked_x]['Low'].values[0]
-            # Но для простоты пока берем просто координату клика
-            st.session_state.abc_points.append({'x': clicked_x, 'y': clicked_y})
-            st.rerun() # Перезагружаем страницу, чтобы нарисовать цели!
-
-    # Показываем статус точек
-    pts = st.session_state.abc_points
-    status = "🔸 " + " ➔ ".join([f"({p['x']}, {p['y']:.5f})" for p in pts])
-    if len(pts) < 3: st.info(f"Кликни на график, чтобы выбрать точки A, B, C. Выбрано: {len(pts)}/3\n{status}")
-    else: st.success(f"Волна построена! {status}")
+            already_exists = any(p['x'] == clicked_x for p in st.session_state.abc_points)
+            if not already_exists and clicked_x is not None and clicked_y is not None:
+                st.session_state.abc_points.append({'x': clicked_x, 'y': clicked_y})
+                st.rerun()
 
     gc.collect()
 else:
-    st.warning("Нет данных.")
+    st.warning("Нет данных от биржи.")
