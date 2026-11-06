@@ -1,5 +1,6 @@
 import streamlit as st
 import yfinance as yf
+import pandas as pd  # <--- ВОТ ОН, НАШ ПРОПАВШИЙ ПАНДАС!
 import plotly.graph_objects as go
 
 # Настраиваем внешний вид страницы
