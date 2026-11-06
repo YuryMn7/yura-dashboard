@@ -3,7 +3,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-import gc # Вызываем уборщика памяти
+import gc
 
 st.set_page_config(page_title="Ichimoku Pro Terminal", layout="wide")
 st.markdown("<h2 style='text-align: center; color: #333;'>Профессиональный Терминал Архитектора</h2>", unsafe_allow_html=True)
@@ -18,7 +18,7 @@ TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H2", "H4", "H8", "D1", "W1", "MN1
 
 col1, col2 = st.columns(2)
 with col1: asset_name = st.selectbox("Символ:", list(ASSETS.keys()), index=0)
-with col2: tf = st.selectbox("Таймфрейм:", TIMEFRAMES, index=2) # Теперь M15 загрузится 100%!
+with col2: tf = st.selectbox("Таймфрейм:", TIMEFRAMES, index=0) # Ставлю M1 для теста
 
 ticker = ASSETS[asset_name]
 
@@ -27,7 +27,6 @@ def get_market_data(t, interval):
     yf_int = interval
     per = "2y"
     
-    # 🛠 ИСПРАВЛЕНИЕ ЛИМИТОВ YAHOO (Просим 1mo вместо 60d для интрадея)
     if interval == "M1": yf_int = "1m"; per = "5d"
     elif interval == "M5": yf_int = "5m"; per = "1mo"
     elif interval == "M15": yf_int = "15m"; per = "1mo"
@@ -68,13 +67,12 @@ if not df.empty:
 
     df_plot = df.tail(250).copy()
     
-    # 🛠 ИСПРАВЛЕНИЕ ПАМЯТИ И СВЕЧЕЙ (Категорийный формат вместо цифр)
-    time_labels = df_plot.index.strftime('%Y-%m-%d %H:%M')
-
+    # --- ИДЕАЛЬНОЕ РИСОВАНИЕ ---
     fig = go.Figure()
     
+    # Возвращаем настоящее Время на ось X!
     fig.add_trace(go.Candlestick(
-        x=time_labels, # Передаем чистые строковые даты
+        x=df_plot.index,
         open=df_plot['Open'], high=df_plot['High'], low=df_plot['Low'], close=df_plot['Close'],
         increasing_line_color='black', increasing_fillcolor='white',
         decreasing_line_color='black', decreasing_fillcolor='black',
@@ -84,48 +82,51 @@ if not df.empty:
     # Точки
     minor_highs = df_plot[df_plot['Minor_High'] & ~df_plot['Major_High']]
     fig.add_trace(go.Scatter(
-        x=minor_highs.index.strftime('%Y-%m-%d %H:%M'), y=minor_highs['High'] + (minor_highs['ATR'] * 0.2),
+        x=minor_highs.index, y=minor_highs['High'] + (minor_highs['ATR'] * 0.2),
         mode='markers', marker=dict(size=6, color='#888888', symbol='circle'), name='Младший Максимум'
     ))
     minor_lows = df_plot[df_plot['Minor_Low'] & ~df_plot['Major_Low']]
     fig.add_trace(go.Scatter(
-        x=minor_lows.index.strftime('%Y-%m-%d %H:%M'), y=minor_lows['Low'] - (minor_lows['ATR'] * 0.2),
+        x=minor_lows.index, y=minor_lows['Low'] - (minor_lows['ATR'] * 0.2),
         mode='markers', marker=dict(size=6, color='#888888', symbol='circle'), showlegend=False
     ))
 
     major_highs = df_plot[df_plot['Major_High']]
     fig.add_trace(go.Scatter(
-        x=major_highs.index.strftime('%Y-%m-%d %H:%M'), y=major_highs['High'] + (major_highs['ATR'] * 0.5),
+        x=major_highs.index, y=major_highs['High'] + (major_highs['ATR'] * 0.5),
         mode='markers', marker=dict(size=12, color='black', symbol='circle'), name='Старший Максимум'
     ))
     major_lows = df_plot[df_plot['Major_Low']]
     fig.add_trace(go.Scatter(
-        x=major_lows.index.strftime('%Y-%m-%d %H:%M'), y=major_lows['Low'] - (major_lows['ATR'] * 0.5),
+        x=major_lows.index, y=major_lows['Low'] - (major_lows['ATR'] * 0.5),
         mode='markers', marker=dict(size=12, color='black', symbol='circle'), showlegend=False
     ))
 
+    # Настройки профессионального вида
     fig.update_layout(
         xaxis_rangeslider_visible=False, 
         height=750, 
         template="plotly_white",
         plot_bgcolor='#fafafa', paper_bgcolor='white',
         margin=dict(l=20, r=60, t=30, b=30),
+        # 5 знаков и выравнивание
         yaxis=dict(side='right', tickformat='.5f', showgrid=True, gridcolor='#e1e1e1', zeroline=False, title='Цена'),
         xaxis=dict(
-            type='category', # 🛠 ИМЕННО ЭТО СПАСАЕТ ОТ ДЫР В ВЫХОДНЫЕ!
-            nticks=10, 
-            showgrid=True, gridcolor='#e1e1e1', tickangle=0
+            showgrid=True, gridcolor='#e1e1e1',
+            # 🛠 ПРАВИЛЬНОЕ УДАЛЕНИЕ ВЫХОДНЫХ
+            rangebreaks=[dict(bounds=["sat", "mon"])] 
         ),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        # Формат при наведении: 5 знаков
+        hovermode="x unified"
     )
     
     fig.update_traces(yhoverformat=".5f")
     
     st.plotly_chart(fig, use_container_width=True)
     
-    # Очищаем память браузера
     del fig
     gc.collect()
 
 else:
-    st.error("Нет данных от биржи (возможно, неторговое время).")
+    st.error("Нет данных от биржи.")
