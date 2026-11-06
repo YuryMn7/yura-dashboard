@@ -19,7 +19,7 @@ TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H2", "H4", "H8", "D1", "W1", "MN1
 
 col1, col2 = st.columns(2)
 with col1: asset_name = st.selectbox("Символ:", list(ASSETS.keys()), index=0)
-with col2: tf = st.selectbox("Таймфрейм:", TIMEFRAMES, index=2)
+with col2: tf = st.selectbox("Таймфрейм:", TIMEFRAMES, index=2) # Индекс 2 - это M15
 
 ticker = ASSETS[asset_name]
 
@@ -28,22 +28,28 @@ ticker = ASSETS[asset_name]
 def get_market_data(t, interval):
     yf_int = interval
     per = "2y"
+    
+    # 🛠 ИСПРАВЛЕНИЕ: Жестко задаем ключи для Yahoo Finance (с цифры!)
     if interval == "M1": yf_int = "1m"; per = "7d"
     elif interval == "M5": yf_int = "5m"; per = "60d"
-    elif interval in ["M15", "M30"]: yf_int = interval.lower(); per = "60d"
+    elif interval == "M15": yf_int = "15m"; per = "60d"
+    elif interval == "M30": yf_int = "30m"; per = "60d"
     elif interval in ["H1", "H2", "H4", "H8"]: yf_int = "1h"; per = "700d"
     elif interval == "D1": yf_int = "1d"; per = "10y"
     elif interval == "W1": yf_int = "1wk"; per = "15y"
     elif interval == "MN1": yf_int = "1mo"; per = "max"
 
-    df = yf.download(t, period=per, interval=yf_int, progress=False)
-    if df.empty: return df
-    if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-    
-    if interval == "H2": df = df.resample('2h').agg({'Open':'first', 'High':'max', 'Low':'min', 'Close':'last'}).dropna()
-    elif interval == "H4": df = df.resample('4h').agg({'Open':'first', 'High':'max', 'Low':'min', 'Close':'last'}).dropna()
-    elif interval == "H8": df = df.resample('8h').agg({'Open':'first', 'High':'max', 'Low':'min', 'Close':'last'}).dropna()
-    return df
+    try:
+        df = yf.download(t, period=per, interval=yf_int, progress=False)
+        if df.empty: return df
+        if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+        
+        if interval == "H2": df = df.resample('2h').agg({'Open':'first', 'High':'max', 'Low':'min', 'Close':'last'}).dropna()
+        elif interval == "H4": df = df.resample('4h').agg({'Open':'first', 'High':'max', 'Low':'min', 'Close':'last'}).dropna()
+        elif interval == "H8": df = df.resample('8h').agg({'Open':'first', 'High':'max', 'Low':'min', 'Close':'last'}).dropna()
+        return df
+    except:
+        return pd.DataFrame()
 
 df = get_market_data(ticker, tf)
 
@@ -52,26 +58,23 @@ if not df.empty:
     df['TR'] = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Prev_Close']), abs(df['Low'] - df['Prev_Close'])))
     df['ATR'] = df['TR'].rolling(14).mean()
 
-    # --- 3. СТРОГИЕ ФРАКТАЛЫ (Убираем слипшиеся точки!) ---
-    # Младший вес (Окно 5 свечей: 2 слева, 2 справа)
+    # --- 3. СТРОГИЕ ФРАКТАЛЫ ---
     high = df['High']
     low = df['Low']
     
     df['Minor_High'] = (high > high.shift(1)) & (high > high.shift(2)) & (high > high.shift(-1)) & (high > high.shift(-2))
     df['Minor_Low'] = (low < low.shift(1)) & (low < low.shift(2)) & (low < low.shift(-1)) & (low < low.shift(-2))
     
-    # Старший вес (Окно 21 свеча: 10 слева, 10 справа)
     df['Major_High'] = True
     df['Major_Low'] = True
     for i in range(1, 11):
         df['Major_High'] &= (high > high.shift(i)) & (high > high.shift(-i))
         df['Major_Low'] &= (low < low.shift(i)) & (low < low.shift(-i))
 
-    # Берем последние 250 свечей
     df_plot = df.tail(250).copy()
     time_labels = df_plot.index.strftime('%Y-%m-%d %H:%M')
 
-    # --- 4. РИСОВАНИЕ КРИСТАЛЬНО ЧИСТОГО ГРАФИКА ---
+    # --- 4. РИСОВАНИЕ ---
     fig = go.Figure()
     
     fig.add_trace(go.Candlestick(
@@ -81,7 +84,7 @@ if not df.empty:
         name='Цена'
     ))
 
-    # Младшие Точки (Отступ 0.2 ATR, серые)
+    # Младшие Точки 
     minor_highs = df_plot[df_plot['Minor_High'] & ~df_plot['Major_High']]
     fig.add_trace(go.Scatter(
         x=minor_highs.index.strftime('%Y-%m-%d %H:%M'), y=minor_highs['High'] + (minor_highs['ATR'] * 0.2),
@@ -93,7 +96,7 @@ if not df.empty:
         mode='markers', marker=dict(size=6, color='#888888', symbol='circle'), showlegend=False
     ))
 
-    # Старшие Точки (Отступ 0.5 ATR, крупные черные)
+    # Старшие Точки
     major_highs = df_plot[df_plot['Major_High']]
     fig.add_trace(go.Scatter(
         x=major_highs.index.strftime('%Y-%m-%d %H:%M'), y=major_highs['High'] + (major_highs['ATR'] * 0.5),
@@ -105,30 +108,18 @@ if not df.empty:
         mode='markers', marker=dict(size=12, color='black', symbol='circle'), showlegend=False
     ))
 
-    # --- 5. ПРОФЕССИОНАЛЬНАЯ НАСТРОЙКА ШКАЛ И ДИЗАЙНА ---
+    # --- 5. ДИЗАЙН ---
     fig.update_layout(
         xaxis_rangeslider_visible=False, 
         height=750, 
         template="plotly_white",
         plot_bgcolor='#fafafa', paper_bgcolor='white',
-        margin=dict(l=20, r=60, t=30, b=30), # Место для правой шкалы
-        
-        # ШКАЛА СПРАВА, 5 ЗНАКОВ ПОСЛЕ ЗАПЯТОЙ!
-        yaxis=dict(
-            side='right', 
-            tickformat='.5f', 
-            showgrid=True, gridcolor='#e1e1e1', 
-            zeroline=False, title='Цена'
-        ),
-        xaxis=dict(
-            type='category', 
-            nticks=10, 
-            showgrid=True, gridcolor='#e1e1e1',
-            tickangle=0 # Ровные подписи дат
-        ),
+        margin=dict(l=20, r=60, t=30, b=30),
+        yaxis=dict(side='right', tickformat='.5f', showgrid=True, gridcolor='#e1e1e1', zeroline=False, title='Цена'),
+        xaxis=dict(type='category', nticks=10, showgrid=True, gridcolor='#e1e1e1', tickangle=0),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.error("Нет данных от биржи.")
+    st.error("Нет данных от биржи (возможно, неторговое время или мало истории).")
