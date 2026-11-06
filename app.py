@@ -6,32 +6,29 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="Ichimoku Pro Terminal", layout="wide")
 
-st.markdown("<h2 style='text-align: center; color: #333;'>Ichimoku Analytical Terminal</h2>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #666;'>Профессиональная среда анализа рынков (Без выходных дыр)</p>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center; color: #333;'>Профессиональный Терминал Архитектора</h2>", unsafe_allow_html=True)
 
-# --- 1. ПОЛНЫЙ АРСЕНАЛ ИНСТРУМЕНТОВ ---
+# 1. ПАНЕЛЬ НАСТРОЕК
 ASSETS = {
     "EUR/USD": "EURUSD=X", "USD/JPY": "USDJPY=X", "SPX500": "^GSPC", "GER40": "^GDAXI", 
     "JPN225": "^N225", "GBP/USD": "GBPUSD=X", "GBP/JPY": "GBPJPY=X", "AUD/USD": "AUDUSD=X", 
     "AUS200": "^AXJO", "EUR/JPY": "EURJPY=X", "EUR/AUD": "EURAUD=X", "NZD/USD": "NZDUSD=X", 
     "Золото": "GC=F", "Биткоин": "BTC-USD"
 }
-
 TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H2", "H4", "H8", "D1", "W1", "MN1"]
 
-st.sidebar.header("Параметры анализа")
-asset_name = st.sidebar.selectbox("Символ:", list(ASSETS.keys()))
-tf = st.sidebar.selectbox("Таймфрейм:", TIMEFRAMES, index=4) # По умолчанию H1
+col1, col2 = st.columns(2)
+with col1: asset_name = st.selectbox("Символ:", list(ASSETS.keys()), index=0)
+with col2: tf = st.selectbox("Таймфрейм:", TIMEFRAMES, index=2)
 
 ticker = ASSETS[asset_name]
-st.write(f"Загрузка и переплавка данных: **{asset_name}** [{tf}]...")
 
-# --- 2. КУЗНИЦА ТАЙМФРЕЙМОВ ---
-@st.cache_data(ttl=60) # Кэшируем на 1 минуту, чтобы сайт летал
+# 2. ДОБЫЧА ДАННЫХ
+@st.cache_data(ttl=60)
 def get_market_data(t, interval):
     yf_int = interval
     per = "2y"
-    if interval == "M1": yf_int = "1m"; per = "7d" # Yahoo дает минутки только за 7 дней
+    if interval == "M1": yf_int = "1m"; per = "7d"
     elif interval == "M5": yf_int = "5m"; per = "60d"
     elif interval in ["M15", "M30"]: yf_int = interval.lower(); per = "60d"
     elif interval in ["H1", "H2", "H4", "H8"]: yf_int = "1h"; per = "700d"
@@ -51,25 +48,30 @@ def get_market_data(t, interval):
 df = get_market_data(ticker, tf)
 
 if not df.empty:
-    # --- 3. МАТЕМАТИКА ЭКСТРЕМУМОВ И ВЕСА ---
     df['Prev_Close'] = df['Close'].shift(1)
     df['TR'] = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Prev_Close']), abs(df['Low'] - df['Prev_Close'])))
     df['ATR'] = df['TR'].rolling(14).mean()
 
-    df['Minor_High'] = df['High'] == df['High'].rolling(5, center=True).max()
-    df['Minor_Low'] = df['Low'] == df['Low'].rolling(5, center=True).min()
+    # --- 3. СТРОГИЕ ФРАКТАЛЫ (Убираем слипшиеся точки!) ---
+    # Младший вес (Окно 5 свечей: 2 слева, 2 справа)
+    high = df['High']
+    low = df['Low']
     
-    df['Major_High'] = df['High'] == df['High'].rolling(21, center=True).max()
-    df['Major_Low'] = df['Low'] == df['Low'].rolling(21, center=True).min()
+    df['Minor_High'] = (high > high.shift(1)) & (high > high.shift(2)) & (high > high.shift(-1)) & (high > high.shift(-2))
+    df['Minor_Low'] = (low < low.shift(1)) & (low < low.shift(2)) & (low < low.shift(-1)) & (low < low.shift(-2))
+    
+    # Старший вес (Окно 21 свеча: 10 слева, 10 справа)
+    df['Major_High'] = True
+    df['Major_Low'] = True
+    for i in range(1, 11):
+        df['Major_High'] &= (high > high.shift(i)) & (high > high.shift(-i))
+        df['Major_Low'] &= (low < low.shift(i)) & (low < low.shift(-i))
 
-    # Берем последние 250 свечей для идеальной детализации (чтобы не сжимать график)
+    # Берем последние 250 свечей
     df_plot = df.tail(250).copy()
-    
-    # 🛠 СЕКРЕТ ИНЖЕНЕРА: Убираем дыры выходных дней!
-    # Превращаем время в строчки, чтобы Plotly не пытался рисовать пустоту
     time_labels = df_plot.index.strftime('%Y-%m-%d %H:%M')
 
-    # --- 4. РИСОВАНИЕ ---
+    # --- 4. РИСОВАНИЕ КРИСТАЛЬНО ЧИСТОГО ГРАФИКА ---
     fig = go.Figure()
     
     fig.add_trace(go.Candlestick(
@@ -79,42 +81,54 @@ if not df.empty:
         name='Цена'
     ))
 
-    # Рисуем Младшие точки
+    # Младшие Точки (Отступ 0.2 ATR, серые)
     minor_highs = df_plot[df_plot['Minor_High'] & ~df_plot['Major_High']]
     fig.add_trace(go.Scatter(
-        x=minor_highs.index.strftime('%Y-%m-%d %H:%M'), 
-        y=minor_highs['High'] + (minor_highs['ATR'] * 0.3),
-        mode='markers', marker=dict(size=5, color='gray', symbol='circle'), name='Младший Экстремум'
+        x=minor_highs.index.strftime('%Y-%m-%d %H:%M'), y=minor_highs['High'] + (minor_highs['ATR'] * 0.2),
+        mode='markers', marker=dict(size=6, color='#888888', symbol='circle'), name='Младший Максимум'
     ))
     minor_lows = df_plot[df_plot['Minor_Low'] & ~df_plot['Major_Low']]
     fig.add_trace(go.Scatter(
-        x=minor_lows.index.strftime('%Y-%m-%d %H:%M'), 
-        y=minor_lows['Low'] - (minor_lows['ATR'] * 0.3),
-        mode='markers', marker=dict(size=5, color='gray', symbol='circle'), showlegend=False
+        x=minor_lows.index.strftime('%Y-%m-%d %H:%M'), y=minor_lows['Low'] - (minor_lows['ATR'] * 0.2),
+        mode='markers', marker=dict(size=6, color='#888888', symbol='circle'), showlegend=False
     ))
 
-    # Рисуем Старшие точки
+    # Старшие Точки (Отступ 0.5 ATR, крупные черные)
     major_highs = df_plot[df_plot['Major_High']]
     fig.add_trace(go.Scatter(
-        x=major_highs.index.strftime('%Y-%m-%d %H:%M'), 
-        y=major_highs['High'] + (major_highs['ATR'] * 0.6),
-        mode='markers', marker=dict(size=10, color='black', symbol='circle'), name='Старший Экстремум'
+        x=major_highs.index.strftime('%Y-%m-%d %H:%M'), y=major_highs['High'] + (major_highs['ATR'] * 0.5),
+        mode='markers', marker=dict(size=12, color='black', symbol='circle'), name='Старший Максимум'
     ))
     major_lows = df_plot[df_plot['Major_Low']]
     fig.add_trace(go.Scatter(
-        x=major_lows.index.strftime('%Y-%m-%d %H:%M'), 
-        y=major_lows['Low'] - (major_lows['ATR'] * 0.6),
-        mode='markers', marker=dict(size=10, color='black', symbol='circle'), showlegend=False
+        x=major_lows.index.strftime('%Y-%m-%d %H:%M'), y=major_lows['Low'] - (major_lows['ATR'] * 0.5),
+        mode='markers', marker=dict(size=12, color='black', symbol='circle'), showlegend=False
     ))
 
+    # --- 5. ПРОФЕССИОНАЛЬНАЯ НАСТРОЙКА ШКАЛ И ДИЗАЙНА ---
     fig.update_layout(
         xaxis_rangeslider_visible=False, 
-        height=700, 
+        height=750, 
         template="plotly_white",
-        margin=dict(l=40, r=40, t=40, b=40),
-        xaxis=dict(type='category', nticks=10) # <-- Это заклинание сжимает график, убирая дыры!
+        plot_bgcolor='#fafafa', paper_bgcolor='white',
+        margin=dict(l=20, r=60, t=30, b=30), # Место для правой шкалы
+        
+        # ШКАЛА СПРАВА, 5 ЗНАКОВ ПОСЛЕ ЗАПЯТОЙ!
+        yaxis=dict(
+            side='right', 
+            tickformat='.5f', 
+            showgrid=True, gridcolor='#e1e1e1', 
+            zeroline=False, title='Цена'
+        ),
+        xaxis=dict(
+            type='category', 
+            nticks=10, 
+            showgrid=True, gridcolor='#e1e1e1',
+            tickangle=0 # Ровные подписи дат
+        ),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.error("Нет данных от биржи (возможно, неторговое время или мало истории).")
+    st.error("Нет данных от биржи.")
