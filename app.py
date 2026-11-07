@@ -424,38 +424,55 @@ else:
         )
     )
 
-    x_cloud = np.arange(26, len(df_plot) + 26)
-    sa = df_plot["raw_senkou_a"].to_numpy()
-    sb = df_plot["raw_senkou_b"].to_numpy()
-    for bull, color, title in (
-        (True, "rgba(46, 204, 113, 0.25)", "Kumo+"),
-        (False, "rgba(231, 76, 60, 0.20)", "Kumo-"),
-    ):
-        if bull:
-            mask = sa >= sb
-        else:
-            mask = sa < sb
-        fig.add_trace(
-            go.Scatter(
-                x=x_cloud,
-                y=np.where(mask, sa, np.nan),
-                line=dict(width=0),
-                showlegend=False,
-                hoverinfo="skip",
+    x_cloud = np.arange(len(df_plot)) + 26
+    sa = df_plot["raw_senkou_a"].to_numpy(dtype=float)
+    sb = df_plot["raw_senkou_b"].to_numpy(dtype=float)
+    shown_up = False
+    shown_dn = False
+    i = 0
+    n = len(sa)
+    while i < n:
+        if not (np.isfinite(sa[i]) and np.isfinite(sb[i])):
+            i += 1
+            continue
+        is_up = bool(sa[i] >= sb[i])
+        j = i + 1
+        while j < n:
+            if not (np.isfinite(sa[j]) and np.isfinite(sb[j])):
+                break
+            if bool(sa[j] >= sb[j]) != is_up:
+                break
+            j += 1
+        end = j
+        if j < n and np.isfinite(sa[j]) and np.isfinite(sb[j]):
+            end = j + 1
+        if end - i >= 2:
+            xs = np.concatenate([x_cloud[i:end], x_cloud[i:end][::-1]])
+            ys = np.concatenate([sa[i:end], sb[i:end][::-1]])
+            if is_up:
+                color = "rgba(46, 204, 113, 0.35)"
+                title = "Kumo+"
+                show = not shown_up
+                shown_up = True
+            else:
+                color = "rgba(231, 76, 60, 0.28)"
+                title = "Kumo-"
+                show = not shown_dn
+                shown_dn = True
+            fig.add_trace(
+                go.Scatter(
+                    x=xs,
+                    y=ys,
+                    mode="lines",
+                    fill="toself",
+                    fillcolor=color,
+                    line=dict(width=0),
+                    name=title,
+                    showlegend=show,
+                    hoverinfo="skip",
+                )
             )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=x_cloud,
-                y=np.where(mask, sb, np.nan),
-                fill="tonexty",
-                fillcolor=color,
-                line=dict(width=0),
-                name=title,
-                hoverinfo="skip",
-            )
-        )
-
+        i = j
     if len(st.session_state.abc_points) == 3:
         A, B, C = st.session_state.abc_points
         is_up = B["y"] > A["y"]
