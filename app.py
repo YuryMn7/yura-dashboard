@@ -118,7 +118,7 @@ def forex_session(df_utc: pd.DataFrame, offset: int, drop_weekend: bool, drop_cl
     if drop_clearing and offset != 0:
         break_min = ((23 - offset) % 24) * 60
         closed = closed | ((minutes >= break_min) & (minutes < break_min + 60))
-    return df_utc.loc[\~closed]
+    return df_utc.loc[closed.eq(False)]
 
 
 def to_server_naive(df_utc: pd.DataFrame, offset: int) -> pd.DataFrame:
