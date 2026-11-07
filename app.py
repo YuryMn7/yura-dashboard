@@ -7,292 +7,199 @@ import yfinance as yf
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import gc
-import time
 
 API_KEY = st.secrets["TWELVEDATA_KEY"]
 
-st.set_page_config(page_title="Ichimoku Pro Terminal", layout="wide")
-st.markdown("<h3 style='text-align: center; color: #2c3e50;'>Ichimoku Wave Terminal</h3>", unsafe_allow_html=True)
+st.set_page_config(page_title="Quantitative Analysis Terminal", layout="wide")
 
 if "abc_points" not in st.session_state:
     st.session_state.abc_points = []
 
 # ==========================================
-# 1. КОНСТАНТЫ И СЛОВАРИ
+# 1. КОНСТАНТЫ И МАРШРУТИЗАЦИЯ
 # ==========================================
-ASSETS = {
-    "EUR/USD": "EUR/USD", "USD/JPY": "USD/JPY", "GBP/USD": "GBP/USD",
-    "AUD/USD": "AUD/USD", "NZD/USD": "NZD/USD", "EUR/JPY": "EUR/JPY",
-    "GBP/JPY": "GBP/JPY", "EUR/AUD": "EUR/AUD", "XAU/USD (Gold)": "XAU/USD",
-    "BTC/USD (Bitcoin)": "BTC/USD", "SPX500": "SPX", "GER40 (DAX)": "GDAXI",
-    "JPN225": "N225", "AUS200": "AUS200"
-}
-# Словарь для Радара (Yahoo Finance)
-YF_SYMBOLS = {
-    "EUR/USD": "EURUSD=X", "USD/JPY": "USDJPY=X", "GBP/USD": "GBPUSD=X",
-    "AUD/USD": "AUDUSD=X", "NZD/USD": "NZDUSD=X", "EUR/JPY": "EURJPY=X",
-    "GBP/JPY": "GBPJPY=X", "EUR/AUD": "EURAUD=X", "XAU/USD (Gold)": "GC=F",
-    "BTC/USD (Bitcoin)": "BTC-USD", "SPX500": "^GSPC", "GER40 (DAX)": "^GDAXI",
-    "JPN225": "^N225", "AUS200": "^AXJO"
+ASSET_ROUTER = {
+    "EUR/USD": {"prov": "twelvedata", "sym": "EUR/USD", "yf": "EURUSD=X"},
+    "USD/JPY": {"prov": "twelvedata", "sym": "USD/JPY", "yf": "USDJPY=X"},
+    "GBP/USD": {"prov": "twelvedata", "sym": "GBP/USD", "yf": "GBPUSD=X"},
+    "AUD/USD": {"prov": "twelvedata", "sym": "AUD/USD", "yf": "AUDUSD=X"},
+    "NZD/USD": {"prov": "twelvedata", "sym": "NZD/USD", "yf": "NZDUSD=X"},
+    "EUR/JPY": {"prov": "twelvedata", "sym": "EUR/JPY", "yf": "EURJPY=X"},
+    "GBP/JPY": {"prov": "twelvedata", "sym": "GBP/JPY", "yf": "GBPJPY=X"},
+    "EUR/AUD": {"prov": "twelvedata", "sym": "EUR/AUD", "yf": "EURAUD=X"},
+    "XAU/USD (Gold)": {"prov": "twelvedata", "sym": "XAU/USD", "yf": "GC=F"},
+    "BTC/USD (Bitcoin)": {"prov": "twelvedata", "sym": "BTC/USD", "yf": "BTC-USD"},
+    "SPX500": {"prov": "yahoo", "sym": "^GSPC", "yf": "^GSPC"},
+    "GER40 (DAX)": {"prov": "yahoo", "sym": "^GDAXI", "yf": "^GDAXI"},
+    "JPN225": {"prov": "yahoo", "sym": "^N225", "yf": "^N225"},
+    "AUS200": {"prov": "yahoo", "sym": "^AXJO", "yf": "^AXJO"}
 }
 
-TF_MAP = {"M1": "1min", "M5": "5min", "M15": "15min", "M30": "30min", "H1": "1h", "H2": "2h", "H4": "4h", "H8": "8h", "D1": "1day", "W1": "1week", "MN1": "1month", "MN6": "6month", "MN24": "24month"}
-BASE_INTERVAL = {"M1": "1min", "M5": "5min", "M15": "5min", "M30": "5min", "H1": "1h", "H2": "1h", "H4": "1h", "H8": "1h", "D1": "1h", "W1": "1week", "MN1": "1month", "MN6": "1month", "MN24": "1month"}
-RESAMPLE_RULE = {"M1": "1min", "M5": "5min", "M15": "15min", "M30": "30min", "H1": "1h", "H2": "2h", "H4": "4h", "H8": "8h", "D1": "1D", "W1": "W-MON", "MN6": "6MS", "MN24": "24MS"}
+TF_MAP = {
+    "M1": "1min", "M5": "5min", "M15": "15min", "M30": "30min", 
+    "H1": "1h", "H2": "2h", "H4": "4h", "H8": "8h", 
+    "D1": "1day", "W1": "1week", "MN1": "1month", "MN6": "6month", "MN24": "24month"
+}
+RESAMPLE_RULE = {
+    "M1": "1min", "M5": "5min", "M15": "15min", "M30": "30min", 
+    "H1": "1h", "H2": "2h", "H4": "4h", "H8": "8h", 
+    "D1": "1D", "W1": "W-MON", "MN6": "6MS", "MN24": "24MS"
+}
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
 
 # ==========================================
-# 2. ФУНКЦИИ (Твой идеальный код)
+# 2. ЯДРО ОБРАБОТКИ ДАННЫХ
 # ==========================================
-def server_offset_hours(choice):
-    if choice == "UTC+2": return 2
-    if choice == "UTC+3": return 3
-    if choice == "UTC": return 0
-    zone = ZoneInfo("Europe/Bucharest")
-    return int(datetime.now(zone).utcoffset().total_seconds() // 3600)
-
-def is_fx(symbol):
-    if symbol.startswith("BTC"): return False
-    return "/" in symbol
-
-def fmt_price(price):
-    if price >= 1000: return f"{price:.2f}"
-    if price >= 10: return f"{price:.3f}"
-    return f"{price:.5f}"
-
-def fetch_raw(symbol, interval, outputsize=5000, tz="UTC"):
-    params = {"symbol": symbol, "interval": interval, "apikey": API_KEY, "outputsize": outputsize, "order": "ASC"}
-    if tz: params["timezone"] = tz
-    response = requests.get("https://api.twelvedata.com/time_series", params=params, timeout=30)
-    payload = response.json()
-    if "values" not in payload: return pd.DataFrame(), payload.get("message") or str(payload)
-    df = pd.DataFrame(payload["values"])
-    df["datetime"] = pd.to_datetime(df["datetime"], utc=bool(tz))
-    df = df.set_index("datetime").sort_index()
-    for col in ("open", "high", "low", "close"): df[col] = pd.to_numeric(df[col], errors="coerce")
-    df = df.dropna(subset=["open", "high", "low", "close"])
-    good = (df["high"] >= df["low"]) & (df["close"] > 0)
-    df = df.loc[good]
-    df = df.groupby(level=0).agg(open=("open", "first"), high=("high", "max"), low=("low", "min"), close=("close", "last"))
-    df = df.rename(columns={"open": "Open", "high": "High", "low": "Low", "close": "Close"})
-    return df, None
-
-def forex_session(df_utc, offset, drop_weekend, drop_clearing):
-    if df_utc.empty or not (drop_weekend or drop_clearing): return df_utc
-    minutes = np.asarray(df_utc.index.hour * 60 + df_utc.index.minute)
-    dow = np.asarray(df_utc.index.dayofweek)
-    closed = np.zeros(len(df_utc), dtype=bool)
-    if drop_weekend:
-        close_min = ((24 - offset) % 24) * 60
-        friday_late = (dow == 4) & (minutes >= close_min)
-        sunday_early = (dow == 6) & (minutes < close_min)
-        closed = (dow == 5) | friday_late | sunday_early
-    if drop_clearing and offset != 0:
-        break_min = ((23 - offset) % 24) * 60
-        clearing = minutes >= break_min
-        clearing = clearing & (minutes < break_min + 60)
-        closed = np.asarray(closed) | np.asarray(clearing)
-    keep = np.flatnonzero(np.asarray(closed) == False)
-    return df_utc.iloc[keep]
-
-def to_server_naive(df_utc, offset):
-    if df_utc.empty: return df_utc
-    server = timezone(timedelta(hours=offset))
-    out = df_utc.copy()
-    out.index = df_utc.index.tz_convert(server).tz_localize(None)
-    return out
-
 def resample_ohlc(df, rule):
     if df.empty: return df
     out = df.resample(rule, origin="start_day", label="left", closed="left")
     out = out.agg(Open=("Open", "first"), High=("High", "max"), Low=("Low", "min"), Close=("Close", "last")).dropna()
-    good = (out["High"] >= out["Low"]) & (out["Close"] > 0)
-    return out.loc[good]
+    return out.loc[(out["High"] >= out["Low"]) & (out["Close"] > 0)]
+
+def fetch_yahoo(sym, interval):
+    yf_int = interval
+    per = "2y"
+    if interval == "M1": yf_int = "1m"; per = "5d"
+    elif interval in ["M5", "M15", "M30"]: yf_int = interval.lower(); per = "60d"
+    elif interval in ["H1", "H2", "H4", "H8"]: yf_int = "1h"; per = "700d"
+    elif interval == "D1": yf_int = "1d"; per = "10y"
+    elif interval == "W1": yf_int = "1wk"; per = "15y"
+    elif interval in ["MN1", "MN6", "MN24"]: y_int = "1mo"; per = "max"
+    
+    try:
+        df = yf.download(sym, period=per, interval=yf_int, progress=False)
+        if df.empty: return pd.DataFrame()
+        if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+        df = df.rename(columns=lambda x: x.capitalize())
+        df.index = df.index.tz_localize("UTC") if getattr(df.index, "tz", None) is None else df.index.tz_convert("UTC")
+        if interval in ["H2", "H4", "H8", "MN6", "MN24"]: df = resample_ohlc(df, RESAMPLE_RULE[interval])
+        return df
+    except: return pd.DataFrame()
 
 @st.cache_data(ttl=60)
-def load_chart(symbol, tf_name, offset, drop_weekend, drop_clearing):
-    rebuild = is_fx(symbol) and tf_name not in ("W1", "MN1", "MN6", "MN24")
-    if rebuild: base, zone = BASE_INTERVAL[tf_name], "UTC"
-    else: base, zone = TF_MAP[tf_name], None
-    raw, err = fetch_raw(symbol, base, tz=zone)
-    if err or raw.empty:
-        raw, err = fetch_raw(symbol, base, outputsize=400, tz=zone)
-        if err or raw.empty: return pd.DataFrame(), err or "пустой ответ", 0
-    dropped = 0
-    if rebuild:
-        before = len(raw)
-        raw = forex_session(raw, offset, drop_weekend, drop_clearing)
-        dropped = before - len(raw)
-        raw = to_server_naive(raw, offset)
-        raw = resample_ohlc(raw, RESAMPLE_RULE[tf_name])
-    elif getattr(raw.index, "tz", None) is not None:
-        raw = raw.copy()
-        raw.index = raw.index.tz_localize(None)
+def fetch_smart_data(asset_key, interval):
+    route = ASSET_ROUTER[asset_key]
+    provider, sym = route["prov"], route["sym"]
     
-    if not raw.empty and tf_name in ["MN6", "MN24"]:
-        raw = resample_ohlc(raw, RESAMPLE_RULE[tf_name])
+    if provider == "yahoo":
+        return fetch_yahoo(route["yf"], interval)
         
-    return raw, None, dropped
+    try:
+        base_int = TF_MAP.get(interval, "1h")
+        if interval in ["H2", "H4", "H8"]: base_int = "1h"
+        elif interval in ["MN6", "MN24"]: base_int = "1month"
+        
+        url = f"https://api.twelvedata.com/time_series?symbol={sym}&interval={base_int}&apikey={API_KEY}&outputsize=5000"
+        res = requests.get(url, timeout=10).json()
+        if 'values' not in res: return pd.DataFrame()
+        
+        df = pd.DataFrame(res['values'])
+        df['datetime'] = pd.to_datetime(df['datetime'], utc=True)
+        df = df.set_index('datetime').sort_index()
+        for col in ['open', 'high', 'low', 'close']: df[col] = pd.to_numeric(df[col], errors="coerce")
+        df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+        df = df.dropna()
+        
+        if interval in ["H2", "H4", "H8", "MN6", "MN24"]: df = resample_ohlc(df, RESAMPLE_RULE[interval])
+        return df
+    except: return pd.DataFrame()
 
 def add_indicators(df):
     out = df.copy()
     prev = out["Close"].shift(1)
-    tr = pd.concat([out["High"] - out["Low"], (out["High"] - prev).abs(), (out["Low"] - prev).abs()], axis=1).max(axis=1)
-    out["ATR"] = tr.rolling(14).mean()
+    out["ATR"] = pd.concat([out["High"] - out["Low"], (out["High"] - prev).abs(), (out["Low"] - prev).abs()], axis=1).max(axis=1).rolling(14).mean()
     high, low = out["High"], out["Low"]
+    
     out["tenkan"] = (high.rolling(9).max() + low.rolling(9).min()) / 2
     out["kijun"] = (high.rolling(26).max() + low.rolling(26).min()) / 2
     out["raw_senkou_a"] = (out["tenkan"] + out["kijun"]) / 2
     out["raw_senkou_b"] = (high.rolling(52).max() + low.rolling(52).min()) / 2
+    out["senkou_a"] = out["raw_senkou_a"].shift(26)
+    out["senkou_b"] = out["raw_senkou_b"].shift(26)
+    out["chikou"] = out["Close"].shift(-26)
     
-    above_l, above_r = (high > high.shift(1)) & (high > high.shift(2)), (high > high.shift(-1)) & (high > high.shift(-2))
-    below_l, below_r = (low < low.shift(1)) & (low < low.shift(2)), (low < low.shift(-1)) & (low < low.shift(-2))
-    out["Minor_High"], out["Minor_Low"] = above_l & above_r, below_l & below_r
+    out["Minor_High"] = (high > high.shift(1)) & (high > high.shift(2)) & (high > high.shift(-1)) & (high > high.shift(-2))
+    out["Minor_Low"] = (low < low.shift(1)) & (low < low.shift(2)) & (low < low.shift(-1)) & (low < low.shift(-2))
     out["Major_High"], out["Major_Low"] = True, True
     for i in range(1, 11):
         out["Major_High"] &= (high > high.shift(i)) & (high > high.shift(-i))
         out["Major_Low"] &= (low < low.shift(i)) & (low < low.shift(-i))
     return out
 
-def marker_y(price, atr, direction, factor):
-    span = atr.fillna(price.diff().abs().median() or 0)
-    return price + direction * span * factor
+# ==========================================
+# 3. НАВИГАЦИЯ И ИНТЕРФЕЙС
+# ==========================================
+with st.sidebar:
+    st.markdown("### Navigation")
+    app_mode = st.radio("Select Module:", ["Market Scanner (Radar)", "Analytical Terminal"])
 
-def add_dots(fig, frame, price_col, direction, factor, size, color, name, kind):
-    if frame.empty: return
-    y = marker_y(frame[price_col], frame["ATR"], direction, factor)
-    custom = np.column_stack([frame[price_col].to_numpy(), np.full(len(frame), kind)])
-    tip = "Хай %{customdata[0]:.5f}<extra>" + name + "</extra>" if kind == "H" else "Лоу %{customdata[0]:.5f}<extra>" + name + "</extra>"
-    fig.add_trace(go.Scatter(x=frame["x_idx"], y=y, mode="markers", marker=dict(size=size, color=color), name=name, customdata=custom, hovertemplate=tip))
-
-def resolve_click(point, df_plot):
-    x = point.get("x")
-    if x is None: return None
-    rows = df_plot.loc[df_plot["x_idx"] == x]
-    if rows.empty: return None
-    row = rows.iloc[0]
-    curve = point.get("curveNumber", point.get("curve_number"))
-    custom = point.get("customdata")
-    kind = str(custom[1]) if isinstance(custom, (list, tuple)) and len(custom) >= 2 else None
+if app_mode == "Market Scanner (Radar)":
+    st.markdown("<h2 style='color: #2c3e50;'>Global Market Scanner</h2>", unsafe_allow_html=True)
+    radar_tf = st.selectbox("Select Timeframe:", ["M15", "M30", "H1", "H2", "H4", "H8", "D1", "W1", "MN1", "MN6", "MN24"], index=4)
     
-    if kind == "H" or curve in (1, 3): return float(row["High"])
-    if kind == "L" or curve in (2, 4): return float(row["Low"])
-    if curve == 0:
-        y = point.get("y")
-        if y is None: return float(row["High"])
-        return float(row["High"]) if abs(float(y) - row["High"]) <= abs(float(y) - row["Low"]) else float(row["Low"])
-    return None
-
-# ==========================================
-# 🚀 ВКЛАДКИ САЙТА
-# ==========================================
-tab_radar, tab_terminal = st.tabs(["📡 Глобальный Радар", "📈 Терминал Архитектора"])
-
-# ==========================================
-# 📡 ВКЛАДКА 1: ГЛОБАЛЬНЫЙ РАДАР
-# ==========================================
-with tab_radar:
-    st.markdown("#### Сканирование рынка (Безлимитный поток Yahoo Finance)")
-    st.write("Выберите таймфреймы, на которых вы хотите найти сигнал в Окопе Киджун:")
-    
-    # 🎛 Горизонтальные радио-кнопки (без выпадающего меню!)
-    radar_tfs = ["M15", "M30", "H1", "H2", "H4", "H8", "D1", "W1", "MN1", "MN6", "MN24"]
-    radar_tf = st.radio("Рабочий Таймфрейм:", radar_tfs, index=6, horizontal=True)
-    
-    if st.button("🚀 ЗАПУСТИТЬ РАДАР", use_container_width=True):
-        progress_text = "Гонцы сканируют рынки..."
+    if st.button("Execute Market Scan", use_container_width=True):
+        progress_text = "Scanning market data..."
         my_bar = st.progress(0, text=progress_text)
         radar_results = []
         
-        # Определяем Старшего Брата
         RADAR_HTF_MAP = {"M15": "H4", "M30": "H4", "H1": "D1", "H2": "D1", "H4": "W1", "H8": "W1", "D1": "MN1", "W1": "MN1", "MN1": "MN1", "MN6": "MN24", "MN24": "MN24"}
         htf_radar = RADAR_HTF_MAP.get(radar_tf, "MN1")
         
-        for i, (asset_name, _) in enumerate(ASSETS.items()):
-            my_bar.progress((i + 1) / len(ASSETS), text=f"Анализирую {asset_name}...")
-            yf_sym = YF_SYMBOLS[asset_name]
-            
+        for i, (asset_name, route) in enumerate(ASSET_ROUTER.items()):
+            my_bar.progress((i + 1) / len(ASSET_ROUTER), text=f"Processing {asset_name}...")
             try:
-                per_ltf = "60d" if radar_tf in ["M15", "M30"] else "700d"
-                per_htf = "700d" if htf_radar in ["H4", "D1"] else "20y"
-                int_ltf = radar_tf.lower() if radar_tf in ["M15", "M30"] else ("1h" if "H" in radar_tf else "1d")
-                int_htf = "1h" if htf_radar == "H4" else ("1d" if htf_radar == "D1" else ("1wk" if htf_radar == "W1" else "1mo"))
+                df_ltf = fetch_yahoo(route["yf"], radar_tf)
+                df_htf = fetch_yahoo(route["yf"], htf_radar)
                 
-                df_ltf = yf.download(yf_sym, period=per_ltf, interval=int_ltf, progress=False)
-                df_htf = yf.download(yf_sym, period=per_htf, interval=int_htf, progress=False)
-                
-                if df_ltf.empty or df_htf.empty: continue
-                if isinstance(df_ltf.columns, pd.MultiIndex): df_ltf.columns = df_ltf.columns.get_level_values(0)
-                if isinstance(df_htf.columns, pd.MultiIndex): df_htf.columns = df_htf.columns.get_level_values(0)
-                df_ltf = df_ltf.rename(columns=lambda x: x.capitalize())
-                df_htf = df_htf.rename(columns=lambda x: x.capitalize())
-                
-                if radar_tf in ["H2", "H4", "H8", "MN6", "MN24"]: df_ltf = resample_ohlc(df_ltf, RESAMPLE_RULE[radar_tf])
-                if htf_radar in ["H2", "H4", "H8", "MN6", "MN24"]: df_htf = resample_ohlc(df_htf, RESAMPLE_RULE[htf_radar])
+                if df_ltf.empty or df_htf.empty or len(df_ltf) < 26 or len(df_htf) < 26: continue
                 
                 df_ltf = add_indicators(df_ltf)
                 df_htf = add_indicators(df_htf)
                 
                 h_c = df_htf.iloc[-2]
-                is_bull = float(h_c["Close"]) > max(float(h_c["raw_senkou_a"]), float(h_c["raw_senkou_b"])) and float(h_c["tenkan"]) >= float(h_c["kijun"])
-                is_bear = float(h_c["Close"]) < min(float(h_c["raw_senkou_a"]), float(h_c["raw_senkou_b"])) and float(h_c["tenkan"]) <= float(h_c["kijun"])
-                trend = "🟢 Бычий" if is_bull else ("🔴 Медвежий" if is_bear else "➖ Флэт")
+                # 🛠 ИСПРАВЛЕНИЕ ЛОГИКИ ТРЕНДА: Используем senkou_a и senkou_b (Текущее облако)
+                kumo_top = max(float(h_c["senkou_a"]), float(h_c["senkou_b"]))
+                kumo_bot = min(float(h_c["senkou_a"]), float(h_c["senkou_b"]))
+                
+                is_bull = float(h_c["Close"]) > kumo_top and float(h_c["tenkan"]) >= float(h_c["kijun"])
+                is_bear = float(h_c["Close"]) < kumo_bot and float(h_c["tenkan"]) <= float(h_c["kijun"])
+                trend = "BULLISH" if is_bull else ("BEARISH" if is_bear else "FLAT")
                 
                 l_c = df_ltf.iloc[-2]
                 pr, kijun = float(l_c["Close"]), float(l_c["kijun"])
                 near = abs(pr - kijun) <= (float(l_c["ATR"]) * 0.3)
+                sig = "BUY" if near and is_bull and float(l_c["tenkan"]) > kijun else ("SELL" if near and is_bear and float(l_c["tenkan"]) < kijun else "WAIT")
                 
-                sig = "🟢 Покупка" if near and is_bull and float(l_c["tenkan"]) > kijun else ("🔴 Продажа" if near and is_bear and float(l_c["tenkan"]) < kijun else "⏳ Ждем")
-                radar_results.append({"Актив": asset_name, "Старший Тренд": trend, "Сигнал (Окоп)": sig, "Цена": f"{pr:.5f}"})
+                radar_results.append({"Asset": asset_name, "HTF Trend": trend, "Signal (Kijun)": sig, "Price": f"{pr:.5f}"})
             except: pass
             
         my_bar.empty()
-        if radar_results:
-            st.dataframe(pd.DataFrame(radar_results), use_container_width=True, hide_index=True)
-        else:
-            st.warning("Радар не смог просканировать рынки.")
+        if radar_results: st.dataframe(pd.DataFrame(radar_results), use_container_width=True, hide_index=True)
+        else: st.warning("Scan completed. No valid data retrieved.")
 
-
-# ==========================================
-# 📈 ВКЛАДКА 2: ТЕРМИНАЛ ИШИМОКУ (TwelveData)
-# ==========================================
-with tab_terminal:
-    st.markdown("#### ⚙️ Настройки Терминала")
-    
-    # Горизонтальные настройки (вместо боковой панели)
-    col_s1, col_s2, col_s3 = st.columns(3)
-    with col_s1: asset_name_term = st.selectbox("Символ:", list(ASSETS.keys()), index=0, key="term_asset")
-    with col_s2: tf_name = st.selectbox("Таймфрейм:", list(TF_MAP.keys()), index=4, key="term_tf")
-    with col_s3: offset_choice = st.selectbox("Время сервера MT5", ["Авто (EET)", "UTC+2", "UTC+3", "UTC"], index=0)
-    
-    col_s4, col_s5, col_s6 = st.columns(3)
-    with col_s4: count_weekend = st.checkbox("Считать субботу и ночь закрытия", value=False)
-    with col_s5: drop_clearing = st.checkbox("Убирать час клиринга 23:00", value=False)
-    with col_s6: 
-        if st.button("🗑 Очистить точки A-B-C", use_container_width=True):
+elif app_mode == "Analytical Terminal":
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown("### Terminal Settings")
+        asset_name = st.selectbox("Symbol:", list(ASSET_ROUTER.keys()), index=0)
+        tf_name = st.selectbox("Timeframe:", list(TF_MAP.keys()), index=4)
+        
+        st.markdown("---")
+        st.markdown("### Wave Points (A-B-C)")
+        labels = ["A (Start)", "B (Peak/Trough)", "C (Retracement)"]
+        for i in range(3):
+            if i < len(st.session_state.abc_points): st.success(f"{labels[i]}: {st.session_state.abc_points[i]['y']:.5f}")
+            else: st.info(f"Awaiting {labels[i]}...")
+        if st.button("Clear Points", use_container_width=True):
             st.session_state.abc_points = []
             st.rerun()
 
-    offset = server_offset_hours(offset_choice)
-    ticker = ASSETS[asset_name_term]
+    df_raw = fetch_smart_data(asset_name, tf_name)
 
-    # Табло точек
-    st.markdown(f"**Выбрано точек:** {len(st.session_state.abc_points)}/3")
-    cols_pts = st.columns(3)
-    labels = ["A (Старт)", "B (Вершина/Дно)", "C (Откат)"]
-    for i in range(3):
-        with cols_pts[i]:
-            if i < len(st.session_state.abc_points): st.success(f"{labels[i]}: {fmt_price(st.session_state.abc_points[i]['y'])}")
-            else: st.info(f"Ожидаю {labels[i]}")
-
-    st.markdown("---")
-
-    df, err, dropped = load_chart(ticker, tf_name, offset, not count_weekend, drop_clearing)
-
-    if err: st.error("Twelve Data: " + str(err))
-    elif df.empty: st.warning("Нет данных после фильтра сессии.")
+    if df_raw.empty:
+        st.warning("Market data is currently unavailable.")
     else:
-        df = add_indicators(df)
+        df = add_indicators(df_raw)
         df_plot = df.tail(250).copy()
         df_plot["x_idx"] = np.arange(len(df_plot))
         
@@ -300,29 +207,32 @@ with tab_terminal:
         fig.add_trace(go.Candlestick(
             x=df_plot["x_idx"], open=df_plot["Open"], high=df_plot["High"], low=df_plot["Low"], close=df_plot["Close"],
             increasing_line_color="#2c3e50", increasing_fillcolor="white", increasing_line_width=1,
-            decreasing_line_color="#2c3e50", decreasing_fillcolor="#2c3e50", decreasing_line_width=1, name="Свечи"
+            decreasing_line_color="#2c3e50", decreasing_fillcolor="#2c3e50", decreasing_line_width=1, name="Price"
         ))
 
-        minor_high = df_plot["Minor_High"] & df_plot["Major_High"].eq(False)
-        minor_low = df_plot["Minor_Low"] & df_plot["Major_Low"].eq(False)
-        add_dots(fig, df_plot.loc[minor_high], "High", 1, 0.20, 5, "#95a5a6", "Minor High", "H")
-        add_dots(fig, df_plot.loc[minor_low], "Low", -1, 0.20, 5, "#95a5a6", "Minor Low", "L")
+        # Фракталы
+        minor_high = df_plot["Minor_High"] & ~df_plot["Major_High"]
+        minor_low = df_plot["Minor_Low"] & ~df_plot["Major_Low"]
+        fig.add_trace(go.Scatter(x=df_plot.loc[minor_high, "x_idx"], y=df_plot.loc[minor_high, "High"] + df_plot.loc[minor_high, "ATR"]*0.2, mode="markers", marker=dict(size=5, color="#95a5a6"), name="Minor High"))
+        fig.add_trace(go.Scatter(x=df_plot.loc[minor_low, "x_idx"], y=df_plot.loc[minor_low, "Low"] - df_plot.loc[minor_low, "ATR"]*0.2, mode="markers", marker=dict(size=5, color="#95a5a6"), name="Minor Low"))
         
-        major_high = df_plot.loc[df_plot["Major_High"]]
-        major_low = df_plot.loc[df_plot["Major_Low"]]
-        add_dots(fig, major_high, "High", 1, 0.50, 10, "#2c3e50", "Major High", "H")
-        add_dots(fig, major_low, "Low", -1, 0.50, 10, "#2c3e50", "Major Low", "L")
+        major_high = df_plot["Major_High"]
+        major_low = df_plot["Major_Low"]
+        fig.add_trace(go.Scatter(x=df_plot.loc[major_high, "x_idx"], y=df_plot.loc[major_high, "High"] + df_plot.loc[major_high, "ATR"]*0.5, mode="markers", marker=dict(size=10, color="#2c3e50"), name="Major High"))
+        fig.add_trace(go.Scatter(x=df_plot.loc[major_low, "x_idx"], y=df_plot.loc[major_low, "Low"] - df_plot.loc[major_low, "ATR"]*0.5, mode="markers", marker=dict(size=10, color="#2c3e50"), name="Major Low"))
 
-        fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["tenkan"], line=dict(color="#2980b9", width=1.5), name="Tenkan"))
-        fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["kijun"], line=dict(color="#e74c3c", width=2), name="Kijun"))
-        fig.add_trace(go.Scatter(x=df_plot["x_idx"] - 26, y=df_plot["Close"], line=dict(color="#1e8449", width=1.2), name="Chikou"))
+        # Ишимоку
+        fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["tenkan"], line=dict(color="#2980b9", width=1.5), name="Tenkan-sen"))
+        fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["kijun"], line=dict(color="#e74c3c", width=2), name="Kijun-sen"))
+        fig.add_trace(go.Scatter(x=df_plot["x_idx"] - 26, y=df_plot["Close"], line=dict(color="#1e8449", width=1.2, dash='dashdot'), name="Chikou Span"))
 
         x_cloud = np.arange(len(df_plot)) + 26
         sa, sb = df_plot["raw_senkou_a"].to_numpy(dtype=float), df_plot["raw_senkou_b"].to_numpy(dtype=float)
         
-        fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", fill="toself", fillcolor="rgba(128,128,128,0.3)", line=dict(width=0), name="Kumo (Облако)", legendgroup="cloud"))
+        # Облако (Группировка для легенды)
+        fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", fill="toself", fillcolor="rgba(128,128,128,0.3)", line=dict(width=0), name="Kumo Cloud", legendgroup="cloud"))
         
-        i, n, shown_up, shown_dn = 0, len(sa), False, False
+        i, n = 0, len(sa)
         while i < n:
             if not (np.isfinite(sa[i]) and np.isfinite(sb[i])): i += 1; continue
             is_up = bool(sa[i] >= sb[i])
@@ -343,32 +253,42 @@ with tab_terminal:
             
             colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
             for name, val in {"V": V, "N": N, "E": E, "NT": NT}.items():
-                fig.add_hline(y=val, line_dash="dash", line_color=colors[name], annotation_text="Цель " + name + ": " + fmt_price(val), annotation_position="right")
+                fig.add_hline(y=val, line_dash="dash", line_color=colors[name], annotation_text=f"Target {name}: {val:.5f}", annotation_position="right")
             
             time_ab, time_ac = abs(B["x"] - A["x"]), abs(C["x"] - A["x"])
-            fig.add_vline(x=C["x"] + time_ab, line_dash="dot", line_color="blue", annotation_text="Тайёсуу A-B (" + str(int(time_ab)) + ")")
-            fig.add_vline(x=C["x"] + time_ac, line_dash="dot", line_color="teal", annotation_text="Тайёсуу A-C (" + str(int(time_ac)) + ")")
-            for k in KIHON_SUU: fig.add_vline(x=C["x"] + k - 1, line_dash="dash", line_color="gray", annotation_text="Кихон (" + str(k) + ")", opacity=0.35)
+            fig.add_vline(x=C["x"] + time_ab, line_dash="dot", line_color="blue", annotation_text=f"Taiyosuu A-B ({int(time_ab)})")
+            fig.add_vline(x=C["x"] + time_ac, line_dash="dot", line_color="teal", annotation_text=f"Taiyosuu A-C ({int(time_ac)})")
+            
+            for k in KIHON_SUU:
+                fig.add_vline(x=C["x"] + k - 1, line_dash="dash", line_color="gray", annotation_text=f"Kihon ({k})", opacity=0.35)
                 
-            fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]], mode="lines+markers", line=dict(color="gold", width=3), marker=dict(size=10), name="Волна A-B-C"))
+            fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]], mode="lines+markers", line=dict(color="#f39c12", width=2), marker=dict(size=8), name="Wave A-B-C"))
 
         tick_step = max(1, len(df_plot) // 10)
         fig.update_layout(
-            xaxis_rangeslider_visible=False, height=750, template="plotly_white", plot_bgcolor="#ffffff", paper_bgcolor="#ffffff",
-            margin=dict(l=20, r=80, t=40, b=80), yaxis=dict(side="right", tickformat=".5f", showgrid=True, gridcolor="#f0f0f0", fixedrange=False),
+            xaxis_rangeslider_visible=False, height=750, template="plotly_white",
+            plot_bgcolor="#ffffff", paper_bgcolor="#ffffff",
+            margin=dict(l=20, r=80, t=40, b=120), # 🛠 Отступ для легенды снизу
+            yaxis=dict(side="right", tickformat=".5f", showgrid=True, gridcolor="#f0f0f0", fixedrange=False),
             xaxis=dict(tickmode="array", tickvals=df_plot["x_idx"].to_numpy()[::tick_step], ticktext=df_plot.index.strftime("%Y-%m-%d %H:%M")[::tick_step], showgrid=True, gridcolor="#f0f0f0", tickangle=45, fixedrange=False),
-            hovermode="closest", clickmode="event+select", dragmode="pan", font=dict(color='#2c3e50'),
-            legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5)
+            hovermode="closest", clickmode="event+select", dragmode="pan",
+            font=dict(color='#2c3e50'),
+            legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5) # 🛠 Легенда смещена вниз
         )
         
         event = st.plotly_chart(fig, use_container_width=True, on_select="rerun", selection_mode="points", config={"scrollZoom": False, "displayModeBar": True}, theme=None)
+        
         if event and event.selection and event.selection.get("points"):
             clicked = event.selection["points"][0]
-            price = resolve_click(clicked, df_plot)
-            clicked_x = clicked.get("x")
-            if price is not None and clicked_x is not None:
-                if len(st.session_state.abc_points) < 3:
-                    same = any(p["x"] == clicked_x for p in st.session_state.abc_points)
-                    if not same:
-                        st.session_state.abc_points.append({"x": clicked_x, "y": price})
+            x_val = clicked.get("x")
+            
+            if x_val is not None:
+                rows = df_plot.loc[df_plot["x_idx"] == x_val]
+                if not rows.empty:
+                    row = rows.iloc[0]
+                    # 🎯 АБСОЛЮТНАЯ ТОЧНОСТЬ: берем реальный High/Low свечи
+                    price = float(row["High"]) if len(st.session_state.abc_points) == 1 else float(row["Low"])
+                    if len(st.session_state.abc_points) < 3 and not any(p["x"] == x_val for p in st.session_state.abc_points):
+                        st.session_state.abc_points.append({"x": x_val, "y": price})
                         st.rerun()
+        gc.collect()
