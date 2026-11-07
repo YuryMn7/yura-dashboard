@@ -237,13 +237,20 @@ if not df_raw.empty:
 
     tick_step = max(1, len(df_plot) // 10)
     fig.update_layout(
-        xaxis_rangeslider_visible=False, height=750, template="plotly_white", 
-        plot_bgcolor="#ffffff", paper_bgcolor="#ffffff", margin=dict(l=20, r=80, t=40, b=40),
+        xaxis_rangeslider_visible=False, height=750, template="plotly_white",
+        plot_bgcolor="#ffffff", paper_bgcolor="#ffffff", 
+        margin=dict(l=20, r=80, t=40, b=80), # 🛠 Увеличили нижнее поле (b=80), чтобы дать место кнопкам
         yaxis=dict(side="right", tickformat=".5f", showgrid=True, gridcolor="#f0f0f0", fixedrange=False),
         xaxis=dict(tickmode="array", tickvals=df_plot["x_idx"].to_numpy()[::tick_step], ticktext=df_plot.index.strftime("%d %b %H:%M")[::tick_step], showgrid=True, gridcolor="#f0f0f0", tickangle=45, fixedrange=False),
         hovermode="closest", clickmode="event+select", dragmode="pan",
-        # 🛠 ЖЕСТКО ЗАДАЕМ ЦВЕТ ТЕКСТА (чтобы не сливался в темной теме)
-        font=dict(color='#2c3e50')
+        font=dict(color='#2c3e50'),
+        
+        # 🛠 ИДЕАЛЬНАЯ ЛЕГЕНДА: Убираем её под график по центру!
+        legend=dict(
+            orientation="h", 
+            yanchor="top", y=-0.15, # Опускаем ниже оси X
+            xanchor="center", x=0.5   # Ставим ровно по центру
+        )
     )
     
     # 🛠 ОТКЛЮЧАЕМ ВМЕШАТЕЛЬСТВО СТРИМЛИТА В ДИЗАЙН (theme=None)
