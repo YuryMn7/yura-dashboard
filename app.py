@@ -5,7 +5,6 @@ import plotly.graph_objects as go
 import requests
 import yfinance as yf
 import gc
-from streamlit_plotly_events import plotly_events
 
 API_KEY = st.secrets["TWELVEDATA_KEY"]
 
@@ -82,7 +81,6 @@ with tab_radar:
             yf_sym = route["yf"]
             
             try:
-                # Скачиваем через Yahoo для скорости (БЕЗ ЛИМИТОВ)
                 per_ltf = "60d" if radar_tf in ["M15", "M30"] else "700d"
                 per_htf = "700d" if htf_radar in ["H4", "D1"] else "15y"
                 int_ltf = radar_tf.lower() if radar_tf in ["M15", "M30"] else ("1h" if "H" in radar_tf else "1d")
@@ -94,8 +92,9 @@ with tab_radar:
                 if df_ltf.empty or df_htf.empty: continue
                 if isinstance(df_ltf.columns, pd.MultiIndex): df_ltf.columns = df_ltf.columns.get_level_values(0)
                 if isinstance(df_htf.columns, pd.MultiIndex): df_htf.columns = df_htf.columns.get_level_values(0)
+                df_ltf.columns = [c.capitalize() for c in df_ltf.columns]
+                df_htf.columns = [c.capitalize() for c in df_htf.columns]
                 
-                # Кузница H4
                 if radar_tf == "H4": df_ltf = df_ltf.resample('4h').agg({'Open':'first', 'High':'max', 'Low':'min', 'Close':'last'}).dropna()
                 if htf_radar == "H4": df_htf = df_htf.resample('4h').agg({'Open':'first', 'High':'max', 'Low':'min', 'Close':'last'}).dropna()
                 
@@ -124,14 +123,10 @@ with tab_radar:
             except: pass
             
         my_bar.empty()
-        
-        # Вывод красивой таблицы
         if radar_results:
-            df_res = pd.DataFrame(radar_results)
-            st.dataframe(df_res, use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(radar_results), use_container_width=True, hide_index=True)
         else:
             st.warning("Не удалось просканировать рынки.")
-
 
 # ==========================================
 # 📈 ВКЛАДКА 2: ТЕРМИНАЛ (Работает через TwelveData)
@@ -145,7 +140,7 @@ with tab_terminal:
         st.markdown("---")
         st.markdown("### 🎯 Точки Волны (A-B-C)")
         
-        labels = ["A (Старт)", "B (Вершина/Дно)", "C (Откат)"]
+        labels = ["A (Старт)", "B (Верш/Дно)", "C (Откат)"]
         for i in range(3):
             if i < len(st.session_state.abc_points):
                 val = st.session_state.abc_points[i]['y']
@@ -188,6 +183,7 @@ with tab_terminal:
                 
                 df = yf.download(sym, period=per, interval=yf_int, progress=False)
                 if not df.empty and isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+                df.columns = [c.capitalize() for c in df.columns]
 
             if not df.empty and interval in ["H2", "H4", "H8"]:
                 if interval == "H2": df = df.resample('2h').agg({'Open':'first', 'High':'max', 'Low':'min', 'Close':'last'}).dropna()
@@ -221,15 +217,16 @@ with tab_terminal:
             increasing_line_width=1, decreasing_line_width=1, name='Свечи'
         ))
 
+        # 🛠 ИСПРАВЛЕНИЕ: Маленькая буква 'atr' везде!
         minor_highs = df_plot[df_plot['Minor_High'] & ~df_plot['Major_High']]
-        fig.add_trace(go.Scatter(x=minor_highs['x_idx'], y=minor_highs['High']+(minor_highs['ATR']*0.2), mode='markers', marker=dict(size=5, color='#95a5a6'), name='Minor High'))
+        fig.add_trace(go.Scatter(x=minor_highs['x_idx'], y=minor_highs['High']+(minor_highs['atr']*0.2), mode='markers', marker=dict(size=5, color='#95a5a6'), name='Minor High'))
         minor_lows = df_plot[df_plot['Minor_Low'] & ~df_plot['Major_Low']]
-        fig.add_trace(go.Scatter(x=minor_lows['x_idx'], y=minor_lows['Low']-(minor_lows['ATR']*0.2), mode='markers', marker=dict(size=5, color='#95a5a6'), name='Minor Low'))
+        fig.add_trace(go.Scatter(x=minor_lows['x_idx'], y=minor_lows['Low']-(minor_lows['atr']*0.2), mode='markers', marker=dict(size=5, color='#95a5a6'), name='Minor Low'))
         
         major_highs = df_plot[df_plot['Major_High']]
-        fig.add_trace(go.Scatter(x=major_highs['x_idx'], y=major_highs['High']+(major_highs['ATR']*0.5), mode='markers', marker=dict(size=10, color='#2c3e50'), name='Major High'))
+        fig.add_trace(go.Scatter(x=major_highs['x_idx'], y=major_highs['High']+(major_highs['atr']*0.5), mode='markers', marker=dict(size=10, color='#2c3e50'), name='Major High'))
         major_lows = df_plot[df_plot['Major_Low']]
-        fig.add_trace(go.Scatter(x=major_lows['x_idx'], y=major_lows['Low']-(major_lows['ATR']*0.5), mode='markers', marker=dict(size=10, color='#2c3e50'), name='Major Low'))
+        fig.add_trace(go.Scatter(x=major_lows['x_idx'], y=major_lows['Low']-(major_lows['atr']*0.5), mode='markers', marker=dict(size=10, color='#2c3e50'), name='Major Low'))
 
         fig.add_trace(go.Scatter(x=df_plot['x_idx'], y=df_plot['tenkan'], line=dict(color='#2980b9', width=1.5), name='Tenkan'))
         fig.add_trace(go.Scatter(x=df_plot['x_idx'], y=df_plot['kijun'], line=dict(color='#e74c3c', width=2), name='Kijun'))
@@ -263,7 +260,7 @@ with tab_terminal:
 
         tick_step = max(1, len(df_plot) // 10)
         tick_vals = df_plot['x_idx'].values[::tick_step]
-        tick_texts = df_plot.index.strftime('%Y-%m-%d %H:%M')[::tick_step]
+        tick_texts = df_plot.index.strftime('%d %b %H:%M')[::tick_step]
 
         fig.update_layout(
             xaxis_rangeslider_visible=False, height=750, template="plotly_white",
@@ -284,7 +281,7 @@ with tab_terminal:
             if len(st.session_state.abc_points) < 3:
                 already_exists = any(p['x'] == clicked_x for p in st.session_state.abc_points)
                 if not already_exists and clicked_x is not None and clicked_y is not None:
-                    # Корректируем клик: если ткнули чуть выше/ниже, берем точный Хай или Лоу свечи!
+                    # 🎯 УМНЫЙ КЛИК: притягиваем к реальному Хаю или Лоу свечи!
                     exact_price = df_plot.loc[df_plot['x_idx'] == clicked_x, 'High'].values[0] if len(st.session_state.abc_points) == 1 else df_plot.loc[df_plot['x_idx'] == clicked_x, 'Low'].values[0]
                     st.session_state.abc_points.append({'x': clicked_x, 'y': exact_price})
                     st.rerun()
