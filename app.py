@@ -237,14 +237,17 @@ if not df_raw.empty:
 
     tick_step = max(1, len(df_plot) // 10)
     fig.update_layout(
-        xaxis_rangeslider_visible=False, height=750, template="plotly_white", plot_bgcolor="#ffffff", paper_bgcolor="#ffffff", margin=dict(l=20, r=80, t=40, b=40),
+        xaxis_rangeslider_visible=False, height=750, template="plotly_white", 
+        plot_bgcolor="#ffffff", paper_bgcolor="#ffffff", margin=dict(l=20, r=80, t=40, b=40),
         yaxis=dict(side="right", tickformat=".5f", showgrid=True, gridcolor="#f0f0f0", fixedrange=False),
         xaxis=dict(tickmode="array", tickvals=df_plot["x_idx"].to_numpy()[::tick_step], ticktext=df_plot.index.strftime("%d %b %H:%M")[::tick_step], showgrid=True, gridcolor="#f0f0f0", tickangle=45, fixedrange=False),
-        hovermode="closest", clickmode="event+select", dragmode="pan"
+        hovermode="closest", clickmode="event+select", dragmode="pan",
+        # 🛠 ЖЕСТКО ЗАДАЕМ ЦВЕТ ТЕКСТА (чтобы не сливался в темной теме)
+        font=dict(color='#2c3e50')
     )
     
-    event = st.plotly_chart(fig, use_container_width=True, on_select="rerun", selection_mode="points", config={"scrollZoom": False, "displayModeBar": True})
-    
+    # 🛠 ОТКЛЮЧАЕМ ВМЕШАТЕЛЬСТВО СТРИМЛИТА В ДИЗАЙН (theme=None)
+    event = st.plotly_chart(fig, use_container_width=True, on_select="rerun", selection_mode="points", config={"scrollZoom": False, "displayModeBar": True}, theme=None)
     if event and event.selection and event.selection.get("points"):
         clicked = event.selection["points"][0]
         curve = clicked.get("curveNumber", clicked.get("curve_number"))
