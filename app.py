@@ -301,8 +301,8 @@ else:
     ))
 
     # Порядок первых пяти трейсов важен: по нему клик понимает, хай это или лоу.
-    add_dots(fig, df_plot[df_plot["Minor_High"] & \~df_plot["Major_High"]], "High", +1, 0.20, 5, "#95a5a6", "Minor High", "H")
-    add_dots(fig, df_plot[df_plot["Minor_Low"] & \~df_plot["Major_Low"]], "Low", -1, 0.20, 5, "#95a5a6", "Minor Low", "L")
+    add_dots(fig, df_plot[df_plot["Minor_High"] & df_plot["Major_High"].eq(False)], "High", +1, 0.20, 5, "#95a5a6", "Minor High", "H")
+add_dots(fig, df_plot[df_plot["Minor_Low"] & df_plot["Major_Low"].eq(False)], "Low", -1, 0.20, 5, "#95a5a6", "Minor Low", "L")
     add_dots(fig, df_plot[df_plot["Major_High"]], "High", +1, 0.50, 10, "#2c3e50", "Major High", "H")
     add_dots(fig, df_plot[df_plot["Major_Low"]], "Low", -1, 0.50, 10, "#2c3e50", "Major Low", "L")
 
