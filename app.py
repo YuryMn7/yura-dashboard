@@ -109,16 +109,18 @@ def forex_session(df_utc: pd.DataFrame, offset: int, drop_weekend: bool, drop_cl
     """
     if df_utc.empty or not (drop_weekend or drop_clearing):
         return df_utc
-    minutes = df_utc.index.hour * 60 + df_utc.index.minute
-    dow = df_utc.index.dayofweek
-    closed = pd.Series(False, index=df_utc.index)
+    minutes = np.asarray(df_utc.index.hour * 60 + df_utc.index.minute)
+    dow = np.asarray(df_utc.index.dayofweek)
+    closed = np.zeros(len(df_utc), dtype=bool)
     if drop_weekend:
         close_min = ((24 - offset) % 24) * 60
         closed = (dow == 5) | ((dow == 4) & (minutes >= close_min)) | ((dow == 6) & (minutes < close_min))
     if drop_clearing and offset != 0:
         break_min = ((23 - offset) % 24) * 60
-        closed = closed | ((minutes >= break_min) & (minutes < break_min + 60))
-    return df_utc.loc[closed.eq(False)]
+        clearing = (minutes >= break_min) & (minutes < break_min + 60)
+        closed = np.asarray(closed) | np.asarray(clearing)
+    keep = np.asarray(closed) == False
+    return df_utc.iloc[np.flatnonzero(keep)]
 
 
 def to_server_naive(df_utc: pd.DataFrame, offset: int) -> pd.DataFrame:
@@ -305,6 +307,7 @@ else:
     add_dots(fig, df_plot[df_plot["Minor_Low"] & df_plot["Major_Low"].eq(False)], "Low", -1, 0.20, 5, "#95a5a6", "Minor Low", "L")
     add_dots(fig, df_plot[df_plot["Major_High"]], "High", +1, 0.50, 10, "#2c3e50", "Major High", "H")
     add_dots(fig, df_plot[df_plot["Major_Low"]], "Low", -1, 0.50, 10, "#2c3e50", "Major Low", "L")
+
     fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["tenkan"], line=dict(color="#2980b9", width=1.5), name="Tenkan"))
     fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["kijun"], line=dict(color="#e74c3c", width=2), name="Kijun"))
     fig.add_trace(go.Scatter(
@@ -348,40 +351,4 @@ else:
         time_ab = abs(B["x"] - A["x"])
         time_ac = abs(C["x"] - A["x"])
         fig.add_vline(x=C["x"] + time_ab, line_dash="dot", line_color="blue", annotation_text=f"Тайёсуу A-B ({int(time_ab)})")
-        fig.add_vline(x=C["x"] + time_ac, line_dash="dot", line_color="teal", annotation_text=f"Тайёсуу A-C ({int(time_ac)})")
-        for k in KIHON_SUU:
-            fig.add_vline(x=C["x"] + k - 1, line_dash="dash", line_color="gray", annotation_text=f"Кихон ({k})", opacity=0.35)
-        fig.add_trace(go.Scatter(
-            x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]],
-            mode="lines+markers", line=dict(color="gold", width=3),
-            marker=dict(size=10), name="Волна A-B-C",
-        ))
-
-    tick_step = max(1, len(df_plot) // 10)
-    fig.update_layout(
-        xaxis_rangeslider_visible=False, height=750, template="plotly_white",
-        plot_bgcolor="#ffffff", paper_bgcolor="#ffffff",
-        margin=dict(l=20, r=80, t=40, b=40),
-        yaxis=dict(side="right", tickformat=".5f", showgrid=True, gridcolor="#f0f0f0", fixedrange=False),
-        xaxis=dict(
-            tickmode="array",
-            tickvals=df_plot["x_idx"].to_numpy()[::tick_step],
-            ticktext=df_plot.index.strftime("%Y-%m-%d %H:%M")[::tick_step],
-            showgrid=True, gridcolor="#f0f0f0", tickangle=45, fixedrange=False,
-        ),
-        hovermode="closest", clickmode="event+select", dragmode="pan",
-    )
-
-    event = st.plotly_chart(
-        fig, use_container_width=True, on_select="rerun", selection_mode="points",
-        config={"scrollZoom": False, "displayModeBar": True},
-    )
-
-    if event and event.selection and event.selection.get("points"):
-        clicked = event.selection["points"][0]
-        price = resolve_click(clicked, df_plot)
-        clicked_x = clicked.get("x")
-        if price is not None and clicked_x is not None and len(st.session_state.abc_points) < 3:
-            if not any(p["x"] == clicked_x for p in st.session_state.abc_points):
-                st.session_state.abc_points.append({"x": clicked_x, "y": price})
-                st.rerun()
+        fig.add_vline(x=C["x"] + time_ac, line_dash="dot", line_color="teal", annotation_text=f"Тайёсуу A-
