@@ -1,3 +1,38 @@
+"""
+Quantitative Analysis Terminal — исправленная версия.
+
+Что исправлено относительно исходного файла:
+ 1. NameError: ASSETS -> sym из ASSET_ROUTER (is_fx_flag).
+ 2. Опечатка y_int -> yf_int (месячные данные Yahoo теперь грузятся).
+ 3. Интервалы Yahoo: "m5" -> "5m" и т.д. (единая таблица YF_MAP).
+ 4. price больше не может остаться неопределённой при клике по Tenkan/Kijun/Chikou.
+ 5. "Clear Points" сбрасывает и выделение на графике (key графика меняется).
+ 6. Голые except заменены: ошибки показываются (ключ API из текста ошибок вырезается).
+ 7. Радар: правильные минимумы баров (LTF >= 110, HTF >= 80), кэш Yahoo, список пропущенных активов.
+ 8. Опция "UTC": пятница больше не вырезается целиком.
+ 9. H2/H4/H8 ресемплятся ПОСЛЕ перевода в серверное время (как в MT5); Auto (EET) учитывает летнее время.
+Дополнительно:
+ - st.set_page_config вызывается первым;
+ - совместимость с новыми версиями Streamlit (width="stretch" вместо use_container_width);
+ - точки A-B-C привязаны к времени свечи, а не к номеру (не "плывут" при появлении новой свечи);
+ - точки сбрасываются при смене символа / таймфрейма / настроек времени;
+ - 6- и 24-месячные свечи выровнены по календарю (Янв/Июл и чётные годы);
+ - формат цен радара и оси Y зависит от величины цены.
+ - выходные режутся по времени Нью-Йорка (пт 17:00 -> вс 17:00 NY): суббота убрана, воскресный вечер остаётся;
+   D1: суббота убрана, воскресенье приклеено к понедельнику; галочка "raw" отключает всю фильтрацию;
+ - новая опция сервера "NY close (UTC+2/+3)": переход на летнее время по правилам США (как у многих брокеров);
+ - подсказки маркеров High/Low показывают High/Low свечи, а не позицию маркера.
+ - Chikou Span: сплошная линия, без выхода за левый край графика.
+ - "Drop 23:00 Clearing" по умолчанию выключено (в MT5 час 23:00 есть);
+ - подписи Kihon/Taiyosuu компактные: серые числа — Kihon suu, "AB n"/"AC n" — Taiyosuu, подписи целей короче.
+ - радар использует тот же конвейер prepare_ohlc, что и терминал (выходные по NY, серверное время, клиринг,
+   ресемплинг H2/H4/H8 в серверном времени); настройки данных вынесены в общий блок сайдбара.
+ - D1 собирается из ЧАСОВЫХ свечей тем же конвейером, что H4 (выходные по NY -> серверное время -> день по серверной
+   полуночи): нет лишней «понедельничной» свечи в воскресенье, границы дня как в MT5. Терминал грузит до 3 страниц
+   по 5000 часовых свечей (старые страницы кэшируются на 6 часов). W1/MN1 по-прежнему берутся у провайдера.
+ - переключатель языка English / Русский (первый элемент боковой панели); язык по умолчанию — DEFAULT_LANG;
+   все тексты интерфейса лежат в словаре I18N; результаты радара сохраняются при смене языка.
+"""
 import gc
 import re
 from datetime import timedelta, timezone
@@ -59,13 +94,17 @@ YF_MAP = {
     "M1": ("1m", "5d"),
     "M5": ("5m", "60d"), "M15": ("15m", "60d"), "M30": ("30m", "60d"),
     "H1": ("1h", "700d"), "H2": ("1h", "700d"), "H4": ("1h", "700d"), "H8": ("1h", "700d"),
-    "D1": ("1d", "10y"), "W1": ("1wk", "15y"),
+    "D1": ("1h", "700d"), "W1": ("1wk", "15y"),   # D1 собирается из часовых (см. BASE_TF)
     "MN1": ("1mo", "max"), "MN6": ("1mo", "max"), "MN24": ("1mo", "max"),
 }
 
 # Таймфреймы, которые собираются ресемплингом из базового
-BASE_TF = {"H2": "H1", "H4": "H1", "H8": "H1", "MN6": "MN1", "MN24": "MN1"}
-RESAMPLE_RULE = {"H2": "2h", "H4": "4h", "H8": "8h", "MN6": "6MS", "MN24": "24MS"}
+BASE_TF = {"H2": "H1", "H4": "H1", "H8": "H1", "D1": "H1", "MN6": "MN1", "MN24": "MN1"}
+RESAMPLE_RULE = {"H2": "2h", "H4": "4h", "H8": "8h", "D1": "1D", "MN6": "6MS", "MN24": "24MS"}
+
+# Twelve Data отдаёт не больше 5000 свечей за запрос. Для D1 (из часовых) нужна история глубже -> несколько страниц.
+TD_PAGE_SIZE = 5000
+TD_PAGES = {"D1": 3}  # 3 x 5000 часовых свечей ~ 450+ торговых дней
 
 RADAR_HTF_MAP = {
     "M15": "H4", "M30": "H4", "H1": "D1", "H2": "D1", "H4": "W1", "H8": "W1",
@@ -154,6 +193,7 @@ I18N = {
         "err_no_processed": "no data after processing",
         "err_few_bars": "not enough bars (LTF {ltf}/{min_ltf}, HTF {htf}/{min_htf})",
         "err_nan": "indicators not ready (NaN)",
+        "history_partial": "Part of the history could not be loaded ({detail}); the chart may be shorter than usual.",
     },
     "ru": {
         "nav": "Навигация",
@@ -222,6 +262,7 @@ I18N = {
         "err_no_processed": "нет данных после обработки",
         "err_few_bars": "мало баров (LTF {ltf}/{min_ltf}, HTF {htf}/{min_htf})",
         "err_nan": "индикаторы не готовы (NaN)",
+        "history_partial": "Часть истории не загрузилась ({detail}); график может быть короче обычного.",
     },
 }
 
@@ -345,18 +386,13 @@ def prepare_ohlc(df_utc, tf, is_fx, raw, drop_clearing, server_choice):
         return df_utc
     filter_on = is_fx and not raw
     df = df_utc.copy()
-    if tf == "D1":
-        # D1: без сдвига времени; суббота — мусор, воскресенье приклеивается к понедельнику
-        df.index = df.index.tz_localize(None)
-        if filter_on:
-            df = df[np.asarray(df.index.dayofweek) != 5]
-            df = glue_sunday(df)
-    elif tf in ("W1", "MN1", "MN6", "MN24"):
+    if tf in ("W1", "MN1", "MN6", "MN24"):
         df.index = df.index.tz_localize(None)
         if tf in RESAMPLE_RULE:
             df = resample_ohlc(df, RESAMPLE_RULE[tf])
     else:
-        # внутридневные: выходные (по NY) -> серверное время -> клиринг -> ресемплинг (H2/H4/H8)
+        # внутридневные и D1 (D1 собирается из часовых): выходные (по NY) -> серверное время -> клиринг
+        # -> ресемплинг (H2/H4/H8/D1: день режется по серверной полуночи, как в MT5)
         if filter_on:
             df = drop_weekend_ny(df)
         if not df.empty:
@@ -365,6 +401,8 @@ def prepare_ohlc(df_utc, tf, is_fx, raw, drop_clearing, server_choice):
                 df = drop_clearing_hour(df, server_choice)
             if tf in RESAMPLE_RULE:
                 df = resample_ohlc(df, RESAMPLE_RULE[tf])
+            if tf == "D1" and filter_on:
+                df = glue_sunday(df)  # редкий случай: воскресный вечер попал на воскресенье сервера -> к понедельнику
     if not df.empty:
         df = df[~df.index.duplicated(keep="last")].sort_index()
     return df
@@ -390,20 +428,17 @@ def fetch_yahoo(sym, interval):
         return pd.DataFrame(), E("exception", detail=safe_err(e))
 
 
-@st.cache_data(ttl=60, show_spinner=False)
-def fetch_smart_data(asset_key, interval):
-    """Возвращает (df_utc, error). Данные БЕЗ ресемплинга (базовый ТФ)."""
-    route = ASSET_ROUTER[asset_key]
-    if route["prov"] == "yahoo":
-        return fetch_yahoo(route["yf"], interval)
+class TDError(Exception):
+    """Ошибка страницы Twelve Data. Исключения не кэшируются st.cache_data — сбой не «залипает»."""
 
+
+def _td_request(sym, base_int, end_date=None):
+    """Одна страница Twelve Data (до 5000 свечей, UTC). Возвращает (df_utc, error)."""
+    params = {"symbol": sym, "interval": base_int, "apikey": API_KEY, "outputsize": TD_PAGE_SIZE, "timezone": "UTC"}
+    if end_date:
+        params["end_date"] = end_date
     try:
-        base_int = TF_MAP[BASE_TF.get(interval, interval)]
-        r = requests.get(
-            "https://api.twelvedata.com/time_series",
-            params={"symbol": route["sym"], "interval": base_int, "apikey": API_KEY, "outputsize": 5000, "timezone": "UTC"},
-            timeout=10,
-        )
+        r = requests.get("https://api.twelvedata.com/time_series", params=params, timeout=15)
         res = r.json()
         if "values" not in res:
             return pd.DataFrame(), (E("td", detail=res["message"]) if res.get("message") else E("td_nodata"))
@@ -419,6 +454,56 @@ def fetch_smart_data(asset_key, interval):
         return df, None
     except Exception as e:
         return pd.DataFrame(), E("exception", detail=safe_err(e))
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def _td_old_page(sym, base_int, end_date):
+    """Старая страница истории: она не меняется, поэтому кэшируем на 6 часов (ошибки не кэшируются)."""
+    df, err = _td_request(sym, base_int, end_date)
+    if err:
+        raise TDError(err)
+    return df
+
+
+def _next_monday(ts):
+    """Ближайший понедельник 00:00 строго позже ts — граница страницы стабильна в течение недели (кэш работает)."""
+    d = ts.normalize()
+    return d + pd.Timedelta(days=(7 - d.dayofweek) % 7 or 7)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def fetch_smart_data(asset_key, interval):
+    """Возвращает (df_utc, error). Данные БЕЗ ресемплинга (базовый ТФ).
+    error при непустом df означает, что часть истории не загрузилась."""
+    route = ASSET_ROUTER[asset_key]
+    if route["prov"] == "yahoo":
+        return fetch_yahoo(route["yf"], interval)
+
+    base_int = TF_MAP[BASE_TF.get(interval, interval)]
+    df, err = _td_request(route["sym"], base_int)
+    if err or df.empty:
+        return df, err or E("td_nodata")
+
+    frames, page, partial_err = [df], df, None
+    for _ in range(TD_PAGES.get(interval, 1) - 1):
+        if len(page) < TD_PAGE_SIZE - 100:  # страница неполная -> история закончилась
+            break
+        end = _next_monday(page.index.min())
+        try:
+            page = _td_old_page(route["sym"], base_int, end.strftime("%Y-%m-%d %H:%M:%S"))
+        except TDError as ex:
+            err_t = ex.args[0]
+            detail = str(err_t[1].get("detail", "")) if isinstance(err_t, tuple) else ""
+            if "no data" not in detail.lower():  # "нет данных" на этих датах = начало истории, не ошибка
+                partial_err = err_t
+            break
+        if page.empty:
+            break
+        frames.append(page)
+
+    out = pd.concat(frames).sort_index()
+    out = out[~out.index.duplicated(keep="last")]
+    return out, partial_err
 
 
 def add_indicators(df):
@@ -667,6 +752,8 @@ elif app_mode == "terminal":
         if fetch_err:
             st.caption(t("reason", detail=fmt_err(fetch_err)))
     else:
+        if fetch_err:  # данные есть, но часть истории не загрузилась
+            st.caption(t("history_partial", detail=fmt_err(fetch_err)))
         df = add_indicators(df_raw)
         df_plot = df.tail(250).copy()
         df_plot["x_idx"] = np.arange(len(df_plot))
