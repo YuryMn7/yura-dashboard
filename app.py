@@ -481,7 +481,10 @@ elif app_mode == "Analytical Terminal":
 
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["tenkan"], line=dict(color="#2980b9", width=1.5), name="Tenkan-sen"))  # 5
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["kijun"], line=dict(color="#e74c3c", width=2), name="Kijun-sen"))  # 6
-        fig.add_trace(go.Scatter(x=df_plot["x_idx"] - 26, y=df_plot["Close"], line=dict(color="#1e8449", width=1.2, dash="dashdot"), name="Chikou Span"))  # 7
+        # Chikou = Close, сдвинутый на 26 баров НАЗАД (Close[t+26] рисуется на баре t) — как в MT5.
+        # Берём готовую колонку chikou (посчитана по всей истории): линия начинается с первой видимой свечи
+        # (не вылезает за левый край) и заканчивается за 26 баров до правого края. Линия сплошная.
+        fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["chikou"], line=dict(color="#1e8449", width=1.2), name="Chikou Span"))  # 7
 
         x_cloud = np.arange(len(df_plot)) + 26
         sa, sb = df_plot["raw_senkou_a"].to_numpy(dtype=float), df_plot["raw_senkou_b"].to_numpy(dtype=float)
