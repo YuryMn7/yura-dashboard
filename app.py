@@ -115,6 +115,31 @@ def resample_ohlc(df, rule):
     return out.loc[(out["High"] >= out["Low"]) & (out["Close"] > 0)]
 
 
+def drop_weekend_ny(df_utc):
+    """Межбанк закрыт: пятница 17:00 NY -> воскресенье 17:00 NY.
+    Убираем субботу и закрытые часы; воскресный вечер (после 17:00 NY) ОСТАВЛЯЕМ.
+    Считаем по времени Нью-Йорка, поэтому летнее время (21:00/22:00 UTC) учтено автоматически.
+    Индекс бара = время открытия бара."""
+    if df_utc.empty:
+        return df_utc
+    ny = df_utc.index.tz_convert("America/New_York")
+    dow = np.asarray(ny.dayofweek)
+    hour = np.asarray(ny.hour)
+    closed = (dow == 5) | ((dow == 4) & (hour >= 17)) | ((dow == 6) & (hour < 17))
+    return df_utc.iloc[np.flatnonzero(~closed)]
+
+
+def glue_sunday(df):
+    """D1: воскресная свеча приклеивается к понедельнику (как в MT5)."""
+    if df.empty:
+        return df
+    df = df.sort_index()
+    shift = pd.to_timedelta((np.asarray(df.index.dayofweek) == 6).astype(int), unit="D")
+    out = df.copy()
+    out.index = df.index + shift
+    return out.groupby(level=0).agg({"Open": "first", "High": "max", "Low": "min", "Close": "last"})
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_yahoo(sym, interval):
     """Возвращает (df_utc, error). Данные БЕЗ ресемплинга (базовый ТФ)."""
@@ -146,7 +171,7 @@ def fetch_smart_data(asset_key, interval):
         base_int = TF_MAP[BASE_TF.get(interval, interval)]
         r = requests.get(
             "https://api.twelvedata.com/time_series",
-            params={"symbol": route["sym"], "interval": base_int, "apikey": API_KEY, "outputsize": 5000},
+            params={"symbol": route["sym"], "interval": base_int, "apikey": API_KEY, "outputsize": 5000, "timezone": "UTC"},
             timeout=10,
         )
         res = r.json()
@@ -325,45 +350,43 @@ if app_mode == "Market Scanner (Radar)":
 # ==========================================
 elif app_mode == "Analytical Terminal":
 
+    SERVER_CHOICES = ["Auto (EET)", "NY close (UTC+2/+3)", "UTC+2", "UTC+3", "UTC"]
+
     def to_server_time(df_utc, choice):
-        """UTC -> серверное время (наивный индекс). Auto (EET) учитывает летнее время."""
-        tz = {
-            "Auto (EET)": "Europe/Bucharest",
-            "UTC+2": timezone(timedelta(hours=2)),
-            "UTC+3": timezone(timedelta(hours=3)),
-            "UTC": timezone.utc,
-        }[choice]
+        """UTC -> серверное время (наивный индекс)."""
         out = df_utc.copy()
-        out.index = out.index.tz_convert(tz).tz_localize(None)
+        if choice == "NY close (UTC+2/+3)":
+            # сервер = время Нью-Йорка + 7 ч (переход на летнее время по правилам США):
+            # пт 17:00 NY = пт 24:00 сервера, вс 17:00 NY = пн 00:00 сервера
+            out.index = out.index.tz_convert("America/New_York").tz_localize(None) + pd.Timedelta(hours=7)
+        else:
+            tz = {
+                "Auto (EET)": "Europe/Bucharest",  # летнее время по правилам ЕС
+                "UTC+2": timezone(timedelta(hours=2)),
+                "UTC+3": timezone(timedelta(hours=3)),
+                "UTC": timezone.utc,
+            }[choice]
+            out.index = out.index.tz_convert(tz).tz_localize(None)
         return out
 
-    def drop_closed(df, choice, drop_weekend, drop_clearing, is_fx):
-        """Фильтр сессии. df — наивный индекс в серверном времени."""
-        if df.empty or not is_fx or not (drop_weekend or drop_clearing):
-            return df
-        dow = np.asarray(df.index.dayofweek)
-        hour = np.asarray(df.index.hour)
-        minutes = hour * 60 + np.asarray(df.index.minute)
-        closed = np.zeros(len(df), dtype=bool)
-        if drop_weekend:
-            if choice == "UTC":
-                cut = 22 * 60  # рынок закрывается в пт ~22:00 UTC, открывается в вс ~22:00 UTC
-                closed = (dow == 5) | ((dow == 4) & (minutes >= cut)) | ((dow == 6) & (minutes < cut))
-            else:
-                # серверное время MT5 (EET, привязано к закрытию NY): сб и вс закрыты целиком
-                closed = dow >= 5
-        if drop_clearing and choice != "UTC":
-            closed = closed | (hour == 23)
-        return df.iloc[np.flatnonzero(~closed)]
+    def drop_clearing_hour(df_srv, choice):
+        """Убираем час 23:00 серверного времени (клиринг). Для UTC не применяется."""
+        if df_srv.empty or choice == "UTC":
+            return df_srv
+        return df_srv[np.asarray(df_srv.index.hour) != 23]
 
     with st.sidebar:
         st.markdown("---")
         st.markdown("### Terminal Settings")
         asset_name = st.selectbox("Symbol:", list(ASSET_ROUTER.keys()), index=0)
         tf_name = st.selectbox("Timeframe:", list(TF_MAP.keys()), index=4)
-        offset_choice = st.selectbox("Server Time (MT5):", ["Auto (EET)", "UTC+2", "UTC+3", "UTC"], index=0)
-        count_weekend = st.checkbox("Include Weekend/Night", value=False)
-        drop_clearing = st.checkbox("Drop 23:00 Clearing", value=True)
+        offset_choice = st.selectbox("Server Time (MT5):", SERVER_CHOICES, index=0)
+        count_weekend = st.checkbox(
+            "Include Saturday & closing night (raw)", value=False,
+            help="Выкл: суббота и закрытые часы (пт 17:00 NY — вс 17:00 NY) убраны, воскресный вечер остаётся. "
+                 "Вкл: сырые данные провайдера без какой-либо фильтрации.",
+        )
+        drop_clearing = st.checkbox("Drop 23:00 Clearing", value=True, disabled=count_weekend)
 
         # смена символа/ТФ/настроек времени -> старые точки теряют смысл
         ctx = (asset_name, tf_name, offset_choice, count_weekend, drop_clearing)
@@ -390,23 +413,29 @@ elif app_mode == "Analytical Terminal":
     is_fx_flag = ("/" in sym) and ("BTC" not in sym)
 
     if not df_raw.empty:
+        filter_on = is_fx_flag and not count_weekend  # raw-режим: никакой фильтрации
         if tf_name == "D1":
-            # дневные свечи: без сдвига в серверное время, только убираем сб/вс
+            # D1: без сдвига времени; суббота — мусор, воскресенье приклеивается к понедельнику
             df_raw = df_raw.copy()
             df_raw.index = df_raw.index.tz_localize(None)
-            if is_fx_flag and not count_weekend:
-                df_raw = df_raw[df_raw.index.dayofweek < 5]
+            if filter_on:
+                df_raw = df_raw[np.asarray(df_raw.index.dayofweek) != 5]
+                df_raw = glue_sunday(df_raw)
         elif tf_name in ("W1", "MN1", "MN6", "MN24"):
             df_raw = df_raw.copy()
             df_raw.index = df_raw.index.tz_localize(None)
             if tf_name in RESAMPLE_RULE:
                 df_raw = resample_ohlc(df_raw, RESAMPLE_RULE[tf_name])
         else:
-            # внутридневные: UTC -> серверное время -> фильтр сессии -> ресемплинг (H2/H4/H8)
-            df_raw = to_server_time(df_raw, offset_choice)
-            df_raw = drop_closed(df_raw, offset_choice, not count_weekend, drop_clearing, is_fx_flag)
-            if tf_name in RESAMPLE_RULE:
-                df_raw = resample_ohlc(df_raw, RESAMPLE_RULE[tf_name])
+            # внутридневные: выходные (по NY) -> серверное время -> клиринг -> ресемплинг (H2/H4/H8)
+            if filter_on:
+                df_raw = drop_weekend_ny(df_raw)
+            if not df_raw.empty:
+                df_raw = to_server_time(df_raw, offset_choice)
+                if filter_on and drop_clearing:
+                    df_raw = drop_clearing_hour(df_raw, offset_choice)
+                if tf_name in RESAMPLE_RULE:
+                    df_raw = resample_ohlc(df_raw, RESAMPLE_RULE[tf_name])
         if not df_raw.empty:
             df_raw = df_raw[~df_raw.index.duplicated(keep="last")].sort_index()
 
@@ -426,15 +455,29 @@ elif app_mode == "Analytical Terminal":
             decreasing_line_color="#2c3e50", decreasing_fillcolor="#2c3e50", decreasing_line_width=1, name="Price",
         ))  # trace 0
 
+        last_close = float(df_plot["Close"].iloc[-1])
+        pfmt = tick_fmt(last_close)
+        time_txt = df_plot.index.strftime("%Y-%m-%d %H:%M").to_numpy()
+
+        def marker_trace(mask, kind, price_col, offset_mult, size, color, name):
+            """Маркер стоит выше/ниже свечи, но подсказка показывает именно High/Low свечи."""
+            sub = df_plot.loc[mask]
+            sign = 1 if kind == "High" else -1
+            return go.Scatter(
+                x=sub["x_idx"], y=sub[price_col] + sign * sub["ATR"] * offset_mult,
+                mode="markers", marker=dict(size=size, color=color), name=name,
+                customdata=sub[price_col].to_numpy(dtype=float), text=time_txt[np.flatnonzero(mask.to_numpy())],
+                hovertemplate=f"{name}<br>{kind}: %{{customdata:{pfmt}}}<br>%{{text}}<extra></extra>",
+            )
+
         minor_high = df_plot["Minor_High"] & ~df_plot["Major_High"]
         minor_low = df_plot["Minor_Low"] & ~df_plot["Major_Low"]
-        fig.add_trace(go.Scatter(x=df_plot.loc[minor_high, "x_idx"], y=df_plot.loc[minor_high, "High"] + df_plot.loc[minor_high, "ATR"] * 0.2, mode="markers", marker=dict(size=5, color="#95a5a6"), name="Minor High"))  # 1
-        fig.add_trace(go.Scatter(x=df_plot.loc[minor_low, "x_idx"], y=df_plot.loc[minor_low, "Low"] - df_plot.loc[minor_low, "ATR"] * 0.2, mode="markers", marker=dict(size=5, color="#95a5a6"), name="Minor Low"))  # 2
-
         major_high = df_plot["Major_High"]
         major_low = df_plot["Major_Low"]
-        fig.add_trace(go.Scatter(x=df_plot.loc[major_high, "x_idx"], y=df_plot.loc[major_high, "High"] + df_plot.loc[major_high, "ATR"] * 0.5, mode="markers", marker=dict(size=10, color="#2c3e50"), name="Major High"))  # 3
-        fig.add_trace(go.Scatter(x=df_plot.loc[major_low, "x_idx"], y=df_plot.loc[major_low, "Low"] - df_plot.loc[major_low, "ATR"] * 0.5, mode="markers", marker=dict(size=10, color="#2c3e50"), name="Major Low"))  # 4
+        fig.add_trace(marker_trace(minor_high, "High", "High", 0.2, 5, "#95a5a6", "Minor High"))   # 1
+        fig.add_trace(marker_trace(minor_low, "Low", "Low", 0.2, 5, "#95a5a6", "Minor Low"))       # 2
+        fig.add_trace(marker_trace(major_high, "High", "High", 0.5, 10, "#2c3e50", "Major High"))  # 3
+        fig.add_trace(marker_trace(major_low, "Low", "Low", 0.5, 10, "#2c3e50", "Major Low"))      # 4
 
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["tenkan"], line=dict(color="#2980b9", width=1.5), name="Tenkan-sen"))  # 5
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["kijun"], line=dict(color="#e74c3c", width=2), name="Kijun-sen"))  # 6
@@ -487,10 +530,9 @@ elif app_mode == "Analytical Terminal":
             for k in KIHON_SUU:
                 fig.add_vline(x=C["x"] + k - 1, line_dash="dash", line_color="gray", annotation_text=f"Kihon ({k})", opacity=0.35)
 
-            fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]], mode="lines+markers", line=dict(color="#f39c12", width=2), marker=dict(size=8), name="Wave A-B-C"))
+            fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]], mode="lines+markers", line=dict(color="#f39c12", width=2), marker=dict(size=8), name="Wave A-B-C", hovertemplate=f"%{{y:{pfmt}}}<extra>Wave A-B-C</extra>"))
 
         tick_step = max(1, len(df_plot) // 10)
-        last_close = float(df_plot["Close"].iloc[-1])
         fig.update_layout(
             xaxis_rangeslider_visible=False, height=750, template="plotly_white",
             plot_bgcolor="#ffffff", paper_bgcolor="#ffffff",
