@@ -36,6 +36,10 @@ Quantitative Analysis Terminal — исправленная версия.
    в Радаре убраны MN6 и MN24 (остались в Терминале); список таймфреймов Радара — radar_tfs;
  - Радар: Smart Filter (скрыть "Ждем") и кнопка "Сканировать все таймфреймы"; активы без сигнала теперь
    попадают в таблицу как "Ждем" и скрываются фильтром (включён по умолчанию).
+ - Проект «Алиса» (ML на лету): оценка вероятности достижения цели Хосоды (по умолчанию N) для волны A-B-C.
+   scikit-learn (RandomForest), обучение на исторических волнах самого инструмента (минорные фракталы),
+   только на волнах с известным до точки C исходом (без утечки), отложенная выборка по времени (AUC),
+   кэш st.cache_data. Требуется строка в requirements.txt: scikit-learn
  - переключатель языка English / Русский (первый элемент боковой панели); язык по умолчанию — DEFAULT_LANG;
    все тексты интерфейса лежат в словаре I18N; результаты радара сохраняются при смене языка.
 """
@@ -49,6 +53,13 @@ import plotly.graph_objects as go
 import requests
 import streamlit as st
 import yfinance as yf
+
+try:
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.metrics import roc_auc_score
+    SKLEARN_OK = True
+except ImportError:  # приложение работает и без ML-блока
+    SKLEARN_OK = False
 
 # set_page_config должен быть первым вызовом Streamlit
 st.set_page_config(page_title="Quantitative Analysis Terminal", layout="wide")
@@ -120,6 +131,9 @@ RADAR_HTF_MAP = {
     "M15": "H4", "M30": "H4", "H1": "D1", "H2": "D1", "H4": "W1", "H8": "W1",
     "D1": "MN1", "W1": "MN3", "MN1": "MN3", "MN3": "MN3",
 }
+
+# Старший таймфрейм для всех таймфреймов Терминала (используется ML-блоком «Алиса»)
+TERMINAL_HTF_MAP = {**RADAR_HTF_MAP, "M1": "M15", "M5": "H1", "MN6": "MN24", "MN24": "MN24"}
 
 # Минимум баров: Senkou B = 52 + сдвиг 26 -> первое валидное значение на индексе 77.
 # LTF смотрим на iloc[-28] -> нужно >= 105; HTF на iloc[-2] -> нужно >= 79.
@@ -204,6 +218,26 @@ I18N = {
         "err_no_processed": "no data after processing",
         "err_few_bars": "not enough bars (LTF {ltf}/{min_ltf}, HTF {htf}/{min_htf})",
         "err_nan": "indicators not ready (NaN)",
+        "ai_title": "AI Probability Analysis (Alice Model)",
+        "ai_hint": "Select points A, B and C on the chart to run the model.",
+        "ai_prob": "Probability of reaching Target {target}",
+        "ai_stats": "Samples: {n} | Historical hit rate: {base}% | Holdout AUC: {auc} | Horizon: {h} bars",
+        "ai_na": "n/a",
+        "ai_uplift": "Ichimoku-feature uplift (AUC vs distance-only model): {v}",
+        "ai_rel_high": "Model confidence: high",
+        "ai_rel_mod": "Model confidence: moderate",
+        "ai_rel_low": "Model confidence: low - the estimate mostly reflects the target distance, Ichimoku features add little",
+        "ai_disclaimer": "Statistical estimate from this instrument's own history. Training uses only waves that were "
+                         "resolved before point C. Not a trading signal.",
+        "ai_htf_missing": "Higher-timeframe trend is unavailable; a neutral value was used.",
+        "ai_err_sklearn": "scikit-learn is not installed. Add it to requirements.txt.",
+        "ai_err_fresh": "Point C is too recent: at least {lag} bars after C are required.",
+        "ai_err_geom": "Invalid wave geometry: point C must lie between A and B.",
+        "ai_err_stop": "Level C was already broken after the point, so the wave is invalid.",
+        "ai_err_nan": "Indicators are not ready at point C (not enough history).",
+        "ai_err_target": "Target {target} was already reached by the entry time.",
+        "ai_err_samples": "Not enough comparable historical waves ({n} found, at least {min} required).",
+        "ai_err_classes": "Historical outcomes are one-sided, so the model was not trained.",
         "history_partial": "Part of the history could not be loaded ({detail}); the chart may be shorter than usual.",
     },
     "ru": {
@@ -274,6 +308,26 @@ I18N = {
         "err_no_processed": "нет данных после обработки",
         "err_few_bars": "мало баров (LTF {ltf}/{min_ltf}, HTF {htf}/{min_htf})",
         "err_nan": "индикаторы не готовы (NaN)",
+        "ai_title": "ИИ-анализ вероятности (модель Alice)",
+        "ai_hint": "Выберите на графике точки A, B и C, чтобы запустить модель.",
+        "ai_prob": "Вероятность достижения цели {target}",
+        "ai_stats": "Выборка: {n} | Историческая частота: {base}% | AUC на отложенной выборке: {auc} | Горизонт: {h} баров",
+        "ai_na": "н/д",
+        "ai_uplift": "Вклад признаков Ишимоку (AUC против модели только по дистанции): {v}",
+        "ai_rel_high": "Уверенность модели: высокая",
+        "ai_rel_mod": "Уверенность модели: умеренная",
+        "ai_rel_low": "Уверенность модели: низкая — оценка в основном отражает дальность цели, признаки Ишимоку добавляют мало",
+        "ai_disclaimer": "Статистическая оценка по собственной истории инструмента. Обучение использует только волны, "
+                         "исход которых был известен до точки C. Не торговый сигнал.",
+        "ai_htf_missing": "Тренд старшего таймфрейма недоступен, использовано нейтральное значение.",
+        "ai_err_sklearn": "Библиотека scikit-learn не установлена. Добавьте её в requirements.txt.",
+        "ai_err_fresh": "Точка C слишком свежая: после C нужно минимум {lag} бара.",
+        "ai_err_geom": "Некорректная геометрия волны: точка C должна лежать между A и B.",
+        "ai_err_stop": "Уровень C уже пробит после этой точки, волна недействительна.",
+        "ai_err_nan": "На точке C индикаторы ещё не готовы (мало истории).",
+        "ai_err_target": "Цель {target} уже достигнута к моменту входа.",
+        "ai_err_samples": "Недостаточно похожих исторических волн (найдено {n}, нужно минимум {min}).",
+        "ai_err_classes": "Исторические исходы односторонние, модель не обучалась.",
         "history_partial": "Часть истории не загрузилась ({detail}); график может быть короче обычного.",
     },
 }
@@ -559,6 +613,221 @@ def tick_fmt(price):
     if price >= 10:
         return ".3f"
     return ".5f"
+
+
+# ==========================================
+# ЦЕЛИ ХОСОДЫ И ПРОЕКТ «АЛИСА» (ML на лету)
+# ==========================================
+def hosoda_targets(a, b, c):
+    """Цели Хосоды V, N, E, NT по ценам точек A, B, C."""
+    if b > a:
+        return {"V": b + (b - c), "N": c + (b - a), "E": b + (b - a), "NT": c + (c - a)}
+    return {"V": b - (c - b), "N": c - (a - b), "E": b - (a - b), "NT": c - (a - c)}
+
+
+ALICE_TARGETS = ("N",)      # цели, для которых считается вероятность; можно ("V", "N", "E", "NT")
+ALICE_HORIZON = 50          # окно исхода: сколько баров после входа ждём цель
+ALICE_LAG = 2               # вход через 2 бара после C (подтверждение минорного фрактала)
+ALICE_LOOKBACK = 52         # глубина поиска точек A и B перед C
+ALICE_MIN_LEG_ATR = 2.0     # минимальная длина волны A-B в единицах ATR
+ALICE_RETR = (0.2, 0.95)    # допустимая глубина отката C (доля от A-B) в обучающих волнах
+ALICE_MIN_SAMPLES = 80      # минимум исторических волн для обучения
+ALICE_MIN_CLASS = 10        # минимум успехов и минимум неудач
+ALICE_USE_GEOMETRY = True   # + признаки геометрии волны (дистанция до цели и до стопа в ATR, глубина отката)
+ALICE_BASE_FEATURES = ["kumo_w", "dist_kijun", "tk_spread", "atr_rel", "htf"]
+
+
+def htf_trend_series(df_htf, ltf_index):
+    """Тренд старшего ТФ (+1 бычий / -1 медвежий / 0 нейтральный) на каждом баре младшего ТФ.
+    Берётся только ЗАКРЫТЫЙ старший бар (shift(1)) — без заглядывания в будущее."""
+    h = add_indicators(df_htf)
+    cl = h["Close"].to_numpy(dtype=float)
+    tk, kj = h["tenkan"].to_numpy(dtype=float), h["kijun"].to_numpy(dtype=float)
+    sa, sb = h["senkou_a"].to_numpy(dtype=float), h["senkou_b"].to_numpy(dtype=float)
+    up = (cl > np.maximum(sa, sb)) & (tk >= kj)
+    dn = (cl < np.minimum(sa, sb)) & (tk <= kj)
+    tr = pd.Series(np.where(up, 1.0, np.where(dn, -1.0, 0.0)), index=h.index).shift(1)
+    return tr.reindex(ltf_index, method="ffill").fillna(0.0).to_numpy(dtype=float)
+
+
+def _alice_arrays(df, htf):
+    cols = {"hi": "High", "lo": "Low", "cl": "Close", "atr": "ATR", "tk": "tenkan", "kj": "kijun",
+            "sa": "senkou_a", "sb": "senkou_b"}
+    ar = {k: df[c].to_numpy(dtype=float) for k, c in cols.items()}
+    ar["htf"] = np.asarray(htf, dtype=float)
+    return ar
+
+
+def _alice_base(ar, e, d):
+    """Признаки на баре входа e (только данные до e). Направленные признаки умножены на d (+1 вверх / -1 вниз)."""
+    atr, cl = ar["atr"][e], ar["cl"][e]
+    if not (np.isfinite(atr) and atr > 0 and np.isfinite(cl) and cl > 0):
+        return None
+    v = [
+        (ar["sa"][e] - ar["sb"][e]) / atr * d,   # ширина Kumo
+        (cl - ar["kj"][e]) / atr * d,            # дистанция цены до Kijun
+        (ar["tk"][e] - ar["kj"][e]) / atr * d,   # спред Tenkan-Kijun
+        atr / cl,                                # текущий ATR (в долях цены)
+        ar["htf"][e] * d,                        # тренд старшего ТФ
+    ]
+    return v if np.all(np.isfinite(v)) else None
+
+
+def _alice_label(hi_m, lo_m, e, target, stop, horizon):
+    """1 — цель достигнута раньше стопа за horizon баров после входа; 0 — иначе (ничья в одном баре = стоп)."""
+    th = hi_m[e + 1:e + horizon + 1] >= target
+    sh = lo_m[e + 1:e + horizon + 1] <= stop
+    ti = int(np.argmax(th)) if th.any() else horizon + 1
+    si = int(np.argmax(sh)) if sh.any() else horizon + 1
+    return 1 if ti < si else 0
+
+
+def alice_build_samples(df, htf, targets=ALICE_TARGETS, horizon=ALICE_HORIZON):
+    """Исторические волны A-B-C по минорным фракталам -> признаки на баре входа + исход по каждой цели.
+    Нисходящие волны зеркалятся (цены с обратным знаком), поэтому модель обучается на обоих направлениях."""
+    ar = _alice_arrays(df, htf)
+    n = len(df)
+    pivots = {1: np.flatnonzero(df["Minor_Low"].to_numpy(dtype=bool)),
+              -1: np.flatnonzero(df["Minor_High"].to_numpy(dtype=bool))}
+    rows = []
+    for d, piv in pivots.items():
+        hi_m, lo_m, cl_m = (ar["hi"], ar["lo"], ar["cl"]) if d > 0 else (-ar["lo"], -ar["hi"], -ar["cl"])
+        for c in piv:
+            e = c + ALICE_LAG
+            if e + horizon >= n:      # исход ещё не известен — в обучение не берём
+                continue
+            w0 = max(0, c - ALICE_LOOKBACK)
+            if c - w0 < 6:
+                continue
+            b = w0 + int(np.argmax(hi_m[w0:c - 2]))        # B: максимум перед откатом
+            a = w0 + int(np.argmin(lo_m[w0:b + 1]))        # A: минимум перед B
+            if a >= b:
+                continue
+            Ap, Bp, Cp = lo_m[a], hi_m[b], lo_m[c]
+            atr = ar["atr"][e]
+            leg = Bp - Ap
+            if not (np.isfinite(atr) and atr > 0 and leg >= ALICE_MIN_LEG_ATR * atr):
+                continue
+            retr = (Bp - Cp) / leg
+            if not (ALICE_RETR[0] <= retr <= ALICE_RETR[1]):
+                continue
+            if c - b > 1 and Cp > lo_m[b + 1:c].min():     # C — самое глубокое дно отката
+                continue
+            base = _alice_base(ar, e, d)
+            entry = cl_m[e]
+            if base is None or entry <= Cp:
+                continue
+            tg = hosoda_targets(Ap, Bp, Cp)
+            row = {"c": c, "e": e, "d": d, "retr": retr, "risk": (entry - Cp) / atr}
+            row.update(zip(ALICE_BASE_FEATURES, base))
+            for name in targets:
+                T = tg[name]
+                if T <= entry:                              # цель уже позади — пример не годится
+                    row["reward_" + name], row["y_" + name] = np.nan, np.nan
+                else:
+                    row["reward_" + name] = (T - entry) / atr
+                    row["y_" + name] = _alice_label(hi_m, lo_m, e, T, Cp, horizon)
+            rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _alice_fit(X, y):
+    return RandomForestClassifier(
+        n_estimators=100, max_depth=5, min_samples_leaf=8, random_state=42, n_jobs=1
+    ).fit(X, y)
+
+
+def alice_reliability(n, auc, uplift):
+    """Уверенность модели. AUC сам по себе не доказывает «предсказательную силу»: вероятность достижения цели
+    механически зависит от её дальности в ATR. Поэтому учитываем uplift — на сколько признаки Ишимоку
+    улучшают AUC относительно модели «только дистанции» (если геометрия выключена, uplift не применяется)."""
+    # Пороги намеренно консервативны: волны перекрываются по времени, эффективный размер выборки меньше n,
+    # а AUC/uplift на отложенной выборке из ~50 волн шумят на +-0.1. При малой выборке «высокой» уверенности не бывает.
+    if auc is None:
+        return "low"
+    ok_high = uplift is None or uplift >= 0.05
+    ok_mod = uplift is None or uplift >= 0.03
+    if n >= 400 and auc >= 0.60 and ok_high:
+        return "high"
+    if n >= 250 and auc >= 0.55 and ok_mod:
+        return "mod"
+    return "low"
+
+
+def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS, horizon=ALICE_HORIZON):
+    """Обучает модель на истории df и оценивает вероятность достижения целей для волны A-B-C пользователя.
+    Обучение — только на волнах, исход которых полностью известен ДО момента входа текущей волны (без утечки)."""
+    if not SKLEARN_OK:
+        return {"status": "sklearn"}
+    n = len(df)
+    if c_t not in df.index:
+        return {"status": "nan"}
+    c = int(df.index.get_loc(c_t))
+    e = c + ALICE_LAG
+    if e >= n:
+        return {"status": "fresh", "kw": {"lag": ALICE_LAG}}
+    d = 1 if b_y > a_y else -1
+    Ap, Bp, Cp = d * a_y, d * b_y, d * c_y                  # зеркалим вниз-волну в вверх-волну
+    if not (Ap < Cp < Bp):
+        return {"status": "geom"}
+    ar = _alice_arrays(df, htf)
+    entry, atr = d * ar["cl"][e], ar["atr"][e]
+    base = _alice_base(ar, e, d)
+    if base is None:
+        return {"status": "nan"}
+    if entry <= Cp:
+        return {"status": "stop"}
+
+    retr = (Bp - Cp) / (Bp - Ap)
+    tg = hosoda_targets(Ap, Bp, Cp)
+    samples = alice_build_samples(df, htf, targets, horizon)
+    out = {}
+    for name in targets:
+        T = tg[name]
+        if T <= entry:
+            out[name] = {"status": "target", "kw": {"target": name}}
+            continue
+        ycol, rcol = "y_" + name, "reward_" + name
+        tr = samples[(samples["e"] + horizon <= e) & samples[ycol].notna()] if len(samples) else samples
+        m = len(tr)
+        if m < ALICE_MIN_SAMPLES:
+            out[name] = {"status": "samples", "kw": {"n": m, "min": ALICE_MIN_SAMPLES}}
+            continue
+        tr = tr.sort_values("e")
+        y = tr[ycol].to_numpy(dtype=int)
+        pos = int(y.sum())
+        if min(pos, m - pos) < ALICE_MIN_CLASS:
+            out[name] = {"status": "classes"}
+            continue
+        X = tr[ALICE_BASE_FEATURES].to_numpy(dtype=float)
+        x = np.asarray(base, dtype=float)
+        if ALICE_USE_GEOMETRY:
+            X = np.column_stack([X, tr[["retr", "risk", rcol]].to_numpy(dtype=float)])
+            x = np.append(x, [retr, (entry - Cp) / atr, (T - entry) / atr])
+
+        # отложенная выборка по времени (с «зазором» на длину окна исхода) — честная оценка качества
+        e_arr = tr["e"].to_numpy()
+        e_cut = e_arr[int(m * 0.75)]
+        fit_i, val_i = np.flatnonzero(e_arr + horizon < e_cut), np.flatnonzero(e_arr >= e_cut)
+        auc = uplift = None
+        if len(fit_i) >= 40 and len(val_i) >= 15 and 0 < y[val_i].sum() < len(val_i) and 0 < y[fit_i].sum() < len(fit_i):
+            auc = float(roc_auc_score(y[val_i], _alice_fit(X[fit_i], y[fit_i]).predict_proba(X[val_i])[:, 1]))
+            if ALICE_USE_GEOMETRY:   # модель «только дистанции» (retr, risk, reward) — база для сравнения
+                gcols = slice(len(ALICE_BASE_FEATURES), None)
+                auc_geom = float(roc_auc_score(
+                    y[val_i], _alice_fit(X[fit_i][:, gcols], y[fit_i]).predict_proba(X[val_i][:, gcols])[:, 1]))
+                uplift = auc - auc_geom
+
+        prob = float(_alice_fit(X, y).predict_proba(x.reshape(1, -1))[0, 1])
+        out[name] = {"status": "ok", "prob": prob, "n": m, "base": pos / m, "auc": auc, "uplift": uplift,
+                     "reliability": alice_reliability(m, auc, uplift)}
+    return {"status": "ok", "targets": out}
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def alice_run(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets):
+    """Кэшируем результат: ML не пересчитывается при каждой перерисовке страницы."""
+    return alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets)
 
 
 # ==========================================
@@ -865,11 +1134,8 @@ elif app_mode == "terminal":
 
         if len(pts) == 3:
             A, B, C = pts
-            is_up = B["y"] > A["y"]
-            if is_up:
-                V, N, E, NT = B["y"] + (B["y"] - C["y"]), C["y"] + (B["y"] - A["y"]), B["y"] + (B["y"] - A["y"]), C["y"] + (C["y"] - A["y"])
-            else:
-                V, N, E, NT = B["y"] - (C["y"] - B["y"]), C["y"] - (A["y"] - B["y"]), B["y"] - (A["y"] - B["y"]), C["y"] - (A["y"] - C["y"])
+            tg = hosoda_targets(A["y"], B["y"], C["y"])
+            V, N, E, NT = tg["V"], tg["N"], tg["E"], tg["NT"]
 
             colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
             for name, val in {"V": V, "N": N, "E": E, "NT": NT}.items():
@@ -920,6 +1186,51 @@ elif app_mode == "terminal":
 
         if len(st.session_state.abc_points) == 3 and len(pts) < 3:
             st.info(t("points_outside"))
+
+        # ---- Проект «Алиса»: ML-оценка вероятности достижения целей Хосоды ----
+        st.markdown(f"#### {t('ai_title')}")
+        abc = st.session_state.abc_points
+        if len(abc) < 3:
+            st.caption(t("ai_hint"))
+        elif not SKLEARN_OK:
+            st.warning(t("ai_err_sklearn"))
+        else:
+            htf_tf = TERMINAL_HTF_MAP.get(tf_name, tf_name)
+            if htf_tf == tf_name:
+                df_h = df_raw
+            else:
+                df_h_raw, _htf_err = fetch_smart_data(asset_name, htf_tf)
+                df_h = prepare_ohlc(
+                    df_h_raw, htf_tf, is_fx_asset(ASSET_ROUTER[asset_name]), count_weekend, drop_clearing, offset_choice
+                )
+            htf_missing = df_h.empty
+            htf_arr = np.zeros(len(df)) if htf_missing else htf_trend_series(df_h, df.index)
+            A_, B_, C_ = abc
+            res = alice_run(df, htf_arr, A_["t"], A_["y"], B_["t"], B_["y"], C_["t"], C_["y"], ALICE_TARGETS)
+            if res["status"] != "ok":
+                st.info(t("ai_err_" + res["status"], **res.get("kw", {})))
+            else:
+                if htf_missing:
+                    st.caption(t("ai_htf_missing"))
+                shown = 0
+                for name in ALICE_TARGETS:
+                    r = res["targets"][name]
+                    if r["status"] != "ok":
+                        st.caption(t("ai_err_" + r["status"], **r.get("kw", {})))
+                        continue
+                    pct = int(round(r["prob"] * 100))
+                    if shown == 0:
+                        st.markdown(f"**{t('ai_prob', target=name)}: {pct}%**")
+                        st.progress(float(r["prob"]))
+                    else:
+                        st.caption(f"{t('ai_prob', target=name)}: {pct}%")
+                    shown += 1
+                    auc_txt = f"{r['auc']:.2f}" if r["auc"] is not None else t("ai_na")
+                    st.caption(t("ai_stats", n=r["n"], base=int(round(r["base"] * 100)), auc=auc_txt, h=ALICE_HORIZON))
+                    if r["uplift"] is not None:
+                        st.caption(t("ai_uplift", v=f"{r['uplift']:+.2f}"))
+                    st.caption(t("ai_rel_" + r["reliability"]))
+                st.caption(t("ai_disclaimer"))
 
         if event and event.selection and event.selection.get("points") and len(st.session_state.abc_points) < 3:
             clicked = event.selection["points"][0]
