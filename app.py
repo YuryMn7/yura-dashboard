@@ -386,7 +386,10 @@ elif app_mode == "Analytical Terminal":
             help="Выкл: суббота и закрытые часы (пт 17:00 NY — вс 17:00 NY) убраны, воскресный вечер остаётся. "
                  "Вкл: сырые данные провайдера без какой-либо фильтрации.",
         )
-        drop_clearing = st.checkbox("Drop 23:00 Clearing", value=True, disabled=count_weekend)
+        drop_clearing = st.checkbox(
+            "Drop 23:00 Clearing", value=False, disabled=count_weekend,
+            help="Вырезает час 23:00 серверного времени (в MT5 этот час есть). По умолчанию выключено.",
+        )
 
         # смена символа/ТФ/настроек времени -> старые точки теряют смысл
         ctx = (asset_name, tf_name, offset_choice, count_weekend, drop_clearing)
@@ -524,14 +527,26 @@ elif app_mode == "Analytical Terminal":
 
             colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
             for name, val in {"V": V, "N": N, "E": E, "NT": NT}.items():
-                fig.add_hline(y=val, line_dash="dash", line_color=colors[name], annotation_text=f"Target {name}: {fmt_price(val)}", annotation_position="right")
+                fig.add_hline(y=val, line_dash="dash", line_color=colors[name], annotation_text=f"{name} {fmt_price(val)}", annotation_position="right", annotation_font_size=10, annotation_font_color=colors[name])
 
             time_ab, time_ac = abs(B["x"] - A["x"]), abs(C["x"] - A["x"])
-            fig.add_vline(x=C["x"] + time_ab, line_dash="dot", line_color="blue", annotation_text=f"Taiyosuu A-B ({int(time_ab)})")
-            fig.add_vline(x=C["x"] + time_ac, line_dash="dot", line_color="teal", annotation_text=f"Taiyosuu A-C ({int(time_ac)})")
+            def vlabel(x, text, color, y):
+                """Компактная вертикальная подпись у верхнего края (y — доля высоты графика)."""
+                fig.add_annotation(
+                    x=x, y=y, xref="x", yref="paper", text=text, textangle=-90, showarrow=False,
+                    xanchor="center", yanchor="middle", font=dict(size=9, color=color),
+                    bgcolor="rgba(255,255,255,0.75)", borderpad=1,
+                )
+
+            # Taiyosuu: синяя = A-B, бирюзовая = A-C (подпись ниже, чтобы не налезала на Kihon)
+            fig.add_vline(x=C["x"] + time_ab, line_dash="dot", line_color="blue")
+            vlabel(C["x"] + time_ab, f"AB {int(time_ab)}", "blue", 0.84)
+            fig.add_vline(x=C["x"] + time_ac, line_dash="dot", line_color="teal")
+            vlabel(C["x"] + time_ac, f"AC {int(time_ac)}", "teal", 0.84)
 
             for k in KIHON_SUU:
-                fig.add_vline(x=C["x"] + k - 1, line_dash="dash", line_color="gray", annotation_text=f"Kihon ({k})", opacity=0.35)
+                fig.add_vline(x=C["x"] + k - 1, line_dash="dash", line_color="gray", opacity=0.35)
+                vlabel(C["x"] + k - 1, str(k), "#7f8c8d", 0.95)  # серые числа — Kihon suu
 
             fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]], mode="lines+markers", line=dict(color="#f39c12", width=2), marker=dict(size=8), name="Wave A-B-C", hovertemplate=f"%{{y:{pfmt}}}<extra>Wave A-B-C</extra>"))
 
@@ -539,7 +554,7 @@ elif app_mode == "Analytical Terminal":
         fig.update_layout(
             xaxis_rangeslider_visible=False, height=750, template="plotly_white",
             plot_bgcolor="#ffffff", paper_bgcolor="#ffffff",
-            margin=dict(l=20, r=80, t=40, b=120),
+            margin=dict(l=20, r=110, t=40, b=120),
             yaxis=dict(side="right", tickformat=tick_fmt(last_close), showgrid=True, gridcolor="#f0f0f0", fixedrange=False),
             xaxis=dict(tickmode="array", tickvals=df_plot["x_idx"].to_numpy()[::tick_step], ticktext=df_plot.index.strftime("%Y-%m-%d %H:%M")[::tick_step], showgrid=True, gridcolor="#f0f0f0", tickangle=45, fixedrange=False),
             hovermode="closest", clickmode="event+select", dragmode="pan",
