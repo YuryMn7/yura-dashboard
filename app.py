@@ -79,6 +79,170 @@ MIN_HTF_BARS = 80
 
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
 
+# ==========================================
+# ПЕРЕВОДЫ (English / Русский)
+# ==========================================
+LANGS = {"English": "en", "Русский": "ru"}
+DEFAULT_LANG = "Русский"  # язык по умолчанию: "English" или "Русский"
+LANG = LANGS[DEFAULT_LANG]
+
+I18N = {
+    "en": {
+        "nav": "Navigation",
+        "module": "Select Module:",
+        "mode_radar": "Market Scanner (Radar)",
+        "mode_terminal": "Analytical Terminal",
+        "data_settings": "Data Settings (Radar + Terminal)",
+        "server_time": "Server Time (MT5):",
+        "raw": "Include Saturday & closing night (raw)",
+        "raw_help": "Off: Saturday and closed hours (Fri 17:00 NY - Sun 17:00 NY) are removed, Sunday evening is kept. "
+                    "On: raw provider data with no filtering at all.",
+        "clearing": "Drop 23:00 Clearing",
+        "clearing_help": "Removes the 23:00 server-time hour (it exists in MT5). Off by default.",
+        "terminal_settings": "Terminal Settings",
+        "symbol": "Symbol:",
+        "timeframe": "Timeframe:",
+        "wave_points": "Wave Points (A-B-C)",
+        "pt_a": "A (Start)",
+        "pt_b": "B (Peak/Trough)",
+        "pt_c": "C (Retracement)",
+        "awaiting": "Awaiting {label}...",
+        "clear_points": "Clear Points",
+        "scanner_title": "Global Market Scanner",
+        "select_tf": "Select Timeframe:",
+        "radar_caption": 'Candles as in the terminal: server "{server}", {mode}. Settings are in the sidebar (Data Settings).',
+        "mode_raw": "raw data, no filtering",
+        "mode_filtered": "weekends removed",
+        "mode_clearing": ", 23:00 hour removed",
+        "run_scan": "Execute Market Scan",
+        "scanning": "Scanning market data...",
+        "processing": "Processing {asset}...",
+        "col_asset": "Asset",
+        "col_signal": "Signal",
+        "col_htf": "HTF Trend",
+        "col_price": "Price",
+        "col_kijun": "Kijun",
+        "col_reason": "Reason",
+        "trend_up": "🟢 UP",
+        "trend_down": "🔴 DOWN",
+        "trend_flat": "➖ FLAT",
+        "sig_strong_buy": "🦅 STRONG BUY (HTF Confirmed)",
+        "sig_local_buy": "🟢 Local BUY",
+        "sig_strong_sell": "🦅 STRONG SELL (HTF Confirmed)",
+        "sig_local_sell": "🔴 Local SELL",
+        "no_setups": "Scan completed. No valid entry setups found near Kijun-sen.",
+        "skipped": "Skipped assets ({n})",
+        "stale_scan": "These results are from an earlier scan (the timeframe or data settings have changed since). "
+                      "Run the scan again to refresh them.",
+        "no_data": "Market data is currently unavailable.",
+        "reason": "Reason: {detail}",
+        "points_outside": "Some A-B-C points are outside the visible 250 candles - press Clear Points or change the timeframe.",
+        "chart_price": "Price",
+        "chart_kumo": "Kumo Cloud",
+        "chart_minor_high": "Minor High",
+        "chart_minor_low": "Minor Low",
+        "chart_major_high": "Major High",
+        "chart_major_low": "Major Low",
+        "hover_high": "High",
+        "hover_low": "Low",
+        "chart_wave": "Wave A-B-C",
+        "err_nodata": "no data",
+        "err_yahoo_nodata": "Yahoo: no data for {detail}",
+        "err_td": "TwelveData: {detail}",
+        "err_td_nodata": "TwelveData: no data",
+        "err_exception": "{detail}",
+        "err_no_processed": "no data after processing",
+        "err_few_bars": "not enough bars (LTF {ltf}/{min_ltf}, HTF {htf}/{min_htf})",
+        "err_nan": "indicators not ready (NaN)",
+    },
+    "ru": {
+        "nav": "Навигация",
+        "module": "Выберите модуль:",
+        "mode_radar": "Сканер рынка (Радар)",
+        "mode_terminal": "Аналитический терминал",
+        "data_settings": "Настройки данных (Радар + Терминал)",
+        "server_time": "Серверное время (MT5):",
+        "raw": "Считать субботу и ночь закрытия (сырые данные)",
+        "raw_help": "Выкл: суббота и закрытые часы (пт 17:00 NY — вс 17:00 NY) убраны, воскресный вечер остаётся. "
+                    "Вкл: сырые данные провайдера без какой-либо фильтрации.",
+        "clearing": "Убрать клиринг 23:00",
+        "clearing_help": "Вырезает час 23:00 серверного времени (в MT5 этот час есть). По умолчанию выключено.",
+        "terminal_settings": "Настройки терминала",
+        "symbol": "Инструмент:",
+        "timeframe": "Таймфрейм:",
+        "wave_points": "Точки волны (A-B-C)",
+        "pt_a": "A (начало)",
+        "pt_b": "B (пик/впадина)",
+        "pt_c": "C (откат)",
+        "awaiting": "Ожидается {label}...",
+        "clear_points": "Сбросить точки",
+        "scanner_title": "Глобальный сканер рынка",
+        "select_tf": "Выберите таймфрейм:",
+        "radar_caption": "Свечи как в терминале: сервер «{server}», {mode}. Настройки — в боковой панели (Настройки данных).",
+        "mode_raw": "сырые данные без фильтрации",
+        "mode_filtered": "выходные убраны",
+        "mode_clearing": ", час 23:00 вырезан",
+        "run_scan": "Запустить сканирование",
+        "scanning": "Сканирование рынка...",
+        "processing": "Обработка: {asset}...",
+        "col_asset": "Актив",
+        "col_signal": "Сигнал",
+        "col_htf": "Старший тренд",
+        "col_price": "Цена",
+        "col_kijun": "Киджун",
+        "col_reason": "Причина",
+        "trend_up": "🟢 ВВЕРХ",
+        "trend_down": "🔴 ВНИЗ",
+        "trend_flat": "➖ ФЛЭТ",
+        "sig_strong_buy": "🦅 СИЛЬНАЯ ПОКУПКА (старший ТФ подтверждает)",
+        "sig_local_buy": "🟢 Локальная ПОКУПКА",
+        "sig_strong_sell": "🦅 СИЛЬНАЯ ПРОДАЖА (старший ТФ подтверждает)",
+        "sig_local_sell": "🔴 Локальная ПРОДАЖА",
+        "no_setups": "Сканирование завершено. Подходящих точек входа у Киджун-сен не найдено.",
+        "skipped": "Пропущенные активы ({n})",
+        "stale_scan": "Эти результаты получены в предыдущем сканировании (с тех пор изменились таймфрейм или настройки данных). "
+                      "Запустите сканирование заново, чтобы обновить их.",
+        "no_data": "Рыночные данные сейчас недоступны.",
+        "reason": "Причина: {detail}",
+        "points_outside": "Часть точек A-B-C вышла за пределы видимых 250 свечей — нажмите «Сбросить точки» или смените таймфрейм.",
+        "chart_price": "Цена",
+        "chart_kumo": "Облако Кумо",
+        "chart_minor_high": "Малый максимум",
+        "chart_minor_low": "Малый минимум",
+        "chart_major_high": "Главный максимум",
+        "chart_major_low": "Главный минимум",
+        "hover_high": "Хай",
+        "hover_low": "Лоу",
+        "chart_wave": "Волна A-B-C",
+        "err_nodata": "нет данных",
+        "err_yahoo_nodata": "Yahoo: нет данных для {detail}",
+        "err_td": "TwelveData: {detail}",
+        "err_td_nodata": "TwelveData: нет данных",
+        "err_exception": "{detail}",
+        "err_no_processed": "нет данных после обработки",
+        "err_few_bars": "мало баров (LTF {ltf}/{min_ltf}, HTF {htf}/{min_htf})",
+        "err_nan": "индикаторы не готовы (NaN)",
+    },
+}
+
+
+def t(key, **kw):
+    """Строка интерфейса на выбранном языке (если перевода нет — английская)."""
+    text = I18N.get(LANG, {}).get(key) or I18N["en"].get(key, key)
+    return text.format(**kw) if kw else text
+
+
+def E(code, **kw):
+    """Языконезависимая ошибка: (код, параметры). Текст строится при показе (fmt_err)."""
+    return (code, kw)
+
+
+def fmt_err(err):
+    if isinstance(err, tuple):
+        return t("err_" + err[0], **err[1])
+    return str(err)
+
+
 
 # ==========================================
 # 2. ЯДРО ОБРАБОТКИ ДАННЫХ
@@ -213,7 +377,7 @@ def fetch_yahoo(sym, interval):
     try:
         df = yf.download(sym, period=per, interval=yf_int, progress=False, auto_adjust=True)
         if df is None or df.empty:
-            return pd.DataFrame(), f"Yahoo: нет данных для {sym} ({yf_int})"
+            return pd.DataFrame(), E("yahoo_nodata", detail=f"{sym} ({yf_int})")
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
         df = df.rename(columns=lambda x: str(x).capitalize())
@@ -223,7 +387,7 @@ def fetch_yahoo(sym, interval):
         df = df[~df.index.duplicated(keep="last")].sort_index()
         return df, None
     except Exception as e:
-        return pd.DataFrame(), safe_err(e)
+        return pd.DataFrame(), E("exception", detail=safe_err(e))
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -242,7 +406,7 @@ def fetch_smart_data(asset_key, interval):
         )
         res = r.json()
         if "values" not in res:
-            return pd.DataFrame(), f"TwelveData: {res.get('message', 'нет данных')}"
+            return pd.DataFrame(), (E("td", detail=res["message"]) if res.get("message") else E("td_nodata"))
 
         df = pd.DataFrame(res["values"])
         df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
@@ -254,7 +418,7 @@ def fetch_smart_data(asset_key, interval):
         df = df[~df.index.duplicated(keep="last")]
         return df, None
     except Exception as e:
-        return pd.DataFrame(), safe_err(e)
+        return pd.DataFrame(), E("exception", detail=safe_err(e))
 
 
 def add_indicators(df):
@@ -301,58 +465,69 @@ def tick_fmt(price):
 # ==========================================
 # 3. НАВИГАЦИЯ И ИНТЕРФЕЙС
 # ==========================================
+# Ключи виджетов, значения которых сохраняем при смене языка
+# (в старых версиях Streamlit смена подписи виджета сбрасывает его состояние).
+PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf"]
+
+
+def _on_lang_change():
+    st.session_state["_keep"] = {k: st.session_state[k] for k in PERSIST_KEYS if k in st.session_state}
+
+
+_keep = st.session_state.pop("_keep", None)
+if _keep:
+    for _k, _v in _keep.items():
+        st.session_state[_k] = _v
+
+st.session_state.setdefault("lang", DEFAULT_LANG)
+st.session_state.setdefault("w_tf", "H1")
+st.session_state.setdefault("w_radar_tf", "D1")
+
 with st.sidebar:
-    st.markdown("### Navigation")
-    app_mode = st.radio("Select Module:", ["Market Scanner (Radar)", "Analytical Terminal"])
+    lang_label = st.radio("Language / Язык", list(LANGS.keys()), horizontal=True, key="lang", on_change=_on_lang_change)
+    LANG = LANGS[lang_label]
 
     st.markdown("---")
-    st.markdown("### Data Settings (Radar + Terminal)")
-    offset_choice = st.selectbox("Server Time (MT5):", SERVER_CHOICES, index=0)
-    count_weekend = st.checkbox(
-        "Include Saturday & closing night (raw)", value=False,
-        help="Выкл: суббота и закрытые часы (пт 17:00 NY — вс 17:00 NY) убраны, воскресный вечер остаётся. "
-             "Вкл: сырые данные провайдера без какой-либо фильтрации.",
-    )
-    drop_clearing = st.checkbox(
-        "Drop 23:00 Clearing", value=False, disabled=count_weekend,
-        help="Вырезает час 23:00 серверного времени (в MT5 этот час есть). По умолчанию выключено.",
-    )
+    st.markdown(f"### {t('nav')}")
+    app_mode = st.radio(t("module"), ["radar", "terminal"], format_func=lambda k: t("mode_" + k), key="w_mode")
+
+    st.markdown("---")
+    st.markdown(f"### {t('data_settings')}")
+    offset_choice = st.selectbox(t("server_time"), SERVER_CHOICES, key="w_server")
+    count_weekend = st.checkbox(t("raw"), help=t("raw_help"), key="w_raw")
+    drop_clearing = st.checkbox(t("clearing"), disabled=count_weekend, help=t("clearing_help"), key="w_clear")
 
 # ==========================================
 # Вкладка 1: РАДАР
 # ==========================================
-if app_mode == "Market Scanner (Radar)":
-    st.markdown("<h2 style='color: #2c3e50;'>Global Market Scanner</h2>", unsafe_allow_html=True)
+if app_mode == "radar":
+    st.markdown(f"<h2 style='color: #2c3e50;'>{t('scanner_title')}</h2>", unsafe_allow_html=True)
     radar_tf = st.selectbox(
-        "Select Timeframe:",
+        t("select_tf"),
         ["M15", "M30", "H1", "H2", "H4", "H8", "D1", "W1", "MN1", "MN6", "MN24"],
-        index=6,
+        key="w_radar_tf",
     )
 
-    st.caption(
-        f"Свечи как в терминале: сервер «{offset_choice}», "
-        + ("сырые данные без фильтрации" if count_weekend
-           else "выходные убраны" + (", час 23:00 вырезан" if drop_clearing else ""))
-        + ". Настройки — в боковой панели (Data Settings)."
-    )
+    mode_txt = t("mode_raw") if count_weekend else t("mode_filtered") + (t("mode_clearing") if drop_clearing else "")
+    st.caption(t("radar_caption", server=offset_choice, mode=mode_txt))
 
     def fetch_radar(route, tf):
         """Yahoo (UTC) -> тот же конвейер prepare_ohlc, что и в терминале."""
         df, err = fetch_yahoo(route["yf"], tf)
         if err or df.empty:
-            return df, err or "нет данных"
+            return df, err or E("nodata")
         df = prepare_ohlc(df, tf, is_fx_asset(route), count_weekend, drop_clearing, offset_choice)
         if df.empty:
-            return df, "нет данных после обработки"
+            return df, E("no_processed")
         return df, None
 
-    if st.button("Execute Market Scan", **WIDE):
-        my_bar = st.progress(0, text="Scanning market data...")
+    if st.button(t("run_scan"), **WIDE):
+        my_bar = st.progress(0, text=t("scanning"))
         radar_results, skipped = [], []
         htf_radar = RADAR_HTF_MAP.get(radar_tf, "MN1")
 
         for i, (asset_name, route) in enumerate(ASSET_ROUTER.items()):
-            my_bar.progress((i + 1) / len(ASSET_ROUTER), text=f"Processing {asset_name}...")
+            my_bar.progress((i + 1) / len(ASSET_ROUTER), text=t("processing", asset=asset_name))
             try:
                 df_ltf, err_l = fetch_radar(route, radar_tf)
                 df_htf, err_h = fetch_radar(route, htf_radar)
@@ -360,10 +535,9 @@ if app_mode == "Market Scanner (Radar)":
                     skipped.append((asset_name, err_l or err_h))
                     continue
                 if len(df_ltf) < MIN_LTF_BARS or len(df_htf) < MIN_HTF_BARS:
-                    skipped.append((
-                        asset_name,
-                        f"мало баров (LTF {len(df_ltf)}/{MIN_LTF_BARS}, HTF {len(df_htf)}/{MIN_HTF_BARS})",
-                    ))
+                    skipped.append((asset_name, E(
+                        "few_bars", ltf=len(df_ltf), min_ltf=MIN_LTF_BARS, htf=len(df_htf), min_htf=MIN_HTF_BARS
+                    )))
                     continue
 
                 df_ltf = add_indicators(df_ltf)
@@ -377,7 +551,7 @@ if app_mode == "Market Scanner (Radar)":
                 l_v = l_c[["Close", "tenkan", "kijun", "senkou_a", "senkou_b", "ATR"]].astype(float)
                 p_v = p_b[["High", "Low", "senkou_a", "senkou_b"]].astype(float)
                 if h_v.isna().any() or l_v.isna().any() or p_v.isna().any():
-                    skipped.append((asset_name, "индикаторы не готовы (NaN)"))
+                    skipped.append((asset_name, E("nan")))
                     continue
 
                 # --- СТАРШИЙ ТРЕНД ---
@@ -385,7 +559,7 @@ if app_mode == "Market Scanner (Radar)":
                 h_kumo_bot = min(h_v["senkou_a"], h_v["senkou_b"])
                 htf_bullish = h_v["Close"] > h_kumo_top and h_v["tenkan"] >= h_v["kijun"]
                 htf_bearish = h_v["Close"] < h_kumo_bot and h_v["tenkan"] <= h_v["kijun"]
-                trend_txt = "🟢 UP" if htf_bullish else ("🔴 DOWN" if htf_bearish else "➖ FLAT")
+                trend_code = "up" if htf_bullish else ("down" if htf_bearish else "flat")
 
                 # --- ЛОКАЛЬНАЯ ЗАСАДА ---
                 pr, kijun = l_v["Close"], l_v["kijun"]
@@ -401,45 +575,67 @@ if app_mode == "Market Scanner (Radar)":
                 bearish = l_v["tenkan"] < kijun and pr < l_kumo_bot and chikou_sell
                 near_kijun = abs(pr - kijun) <= l_v["ATR"] * 0.3
 
-                # --- СИГНАЛ ---
+                # --- СИГНАЛ (код, текст подставляется при показе на выбранном языке) ---
                 sig = None
                 if near_kijun:
                     if bullish:
-                        sig = "🦅 STRONG BUY (HTF Confirmed)" if htf_bullish else "🟢 Local BUY"
+                        sig = "strong_buy" if htf_bullish else "local_buy"
                     elif bearish:
-                        sig = "🦅 STRONG SELL (HTF Confirmed)" if htf_bearish else "🔴 Local SELL"
+                        sig = "strong_sell" if htf_bearish else "local_sell"
 
                 if sig:
                     radar_results.append({
-                        "Asset": asset_name,
-                        "Signal": sig,
-                        "HTF Trend": trend_txt,
-                        "Price": fmt_price(pr),
-                        "Kijun": fmt_price(kijun),
+                        "asset": asset_name, "sig": sig, "trend": trend_code,
+                        "price": fmt_price(pr), "kijun": fmt_price(kijun),
                     })
             except Exception as e:
-                skipped.append((asset_name, safe_err(e)))
+                skipped.append((asset_name, E("exception", detail=safe_err(e))))
 
         my_bar.empty()
-        if radar_results:
-            st.dataframe(pd.DataFrame(radar_results), hide_index=True, **WIDE)
-        else:
-            st.info("Scan completed. No valid entry setups found near Kijun-sen.")
+        # результаты хранятся в session_state — не пропадают при смене языка
+        st.session_state["radar_out"] = {
+            "ctx": (radar_tf, offset_choice, count_weekend, drop_clearing),
+            "results": radar_results,
+            "skipped": skipped,
+        }
 
-        if skipped:
-            with st.expander(f"Skipped assets ({len(skipped)})"):
-                st.dataframe(pd.DataFrame(skipped, columns=["Asset", "Reason"]), hide_index=True, **WIDE)
+    out = st.session_state.get("radar_out")
+    if out:
+        if out["ctx"] != (radar_tf, offset_choice, count_weekend, drop_clearing):
+            st.caption(t("stale_scan"))
+        if out["results"]:
+            rows_df = pd.DataFrame([
+                {
+                    t("col_asset"): r["asset"],
+                    t("col_signal"): t("sig_" + r["sig"]),
+                    t("col_htf"): t("trend_" + r["trend"]),
+                    t("col_price"): r["price"],
+                    t("col_kijun"): r["kijun"],
+                }
+                for r in out["results"]
+            ])
+            st.dataframe(rows_df, hide_index=True, **WIDE)
+        else:
+            st.info(t("no_setups"))
+
+        if out["skipped"]:
+            with st.expander(t("skipped", n=len(out["skipped"]))):
+                st.dataframe(
+                    pd.DataFrame([(a_, fmt_err(e_)) for a_, e_ in out["skipped"]],
+                                 columns=[t("col_asset"), t("col_reason")]),
+                    hide_index=True, **WIDE,
+                )
 
 # ==========================================
 # Вкладка 2: ТЕРМИНАЛ
 # ==========================================
-elif app_mode == "Analytical Terminal":
+elif app_mode == "terminal":
 
     with st.sidebar:
         st.markdown("---")
-        st.markdown("### Terminal Settings")
-        asset_name = st.selectbox("Symbol:", list(ASSET_ROUTER.keys()), index=0)
-        tf_name = st.selectbox("Timeframe:", list(TF_MAP.keys()), index=4)
+        st.markdown(f"### {t('terminal_settings')}")
+        asset_name = st.selectbox(t("symbol"), list(ASSET_ROUTER.keys()), key="w_symbol")
+        tf_name = st.selectbox(t("timeframe"), list(TF_MAP.keys()), key="w_tf")
 
         # смена символа/ТФ/настроек времени -> старые точки теряют смысл
         ctx = (asset_name, tf_name, offset_choice, count_weekend, drop_clearing)
@@ -449,15 +645,15 @@ elif app_mode == "Analytical Terminal":
             st.session_state.ctx = ctx
 
         st.markdown("---")
-        st.markdown("### Wave Points (A-B-C)")
-        labels = ["A (Start)", "B (Peak/Trough)", "C (Retracement)"]
+        st.markdown(f"### {t('wave_points')}")
+        labels = [t("pt_a"), t("pt_b"), t("pt_c")]
         for i in range(3):
             if i < len(st.session_state.abc_points):
                 p = st.session_state.abc_points[i]
                 st.success(f"{labels[i]}: {fmt_price(p['y'])}  ({p['t']:%Y-%m-%d %H:%M})")
             else:
-                st.info(f"Awaiting {labels[i]}...")
-        if st.button("Clear Points", **WIDE):
+                st.info(t("awaiting", label=labels[i]))
+        if st.button(t("clear_points"), **WIDE):
             reset_points()
             st.rerun()
 
@@ -467,9 +663,9 @@ elif app_mode == "Analytical Terminal":
     )
 
     if df_raw.empty:
-        st.warning("Market data is currently unavailable.")
+        st.warning(t("no_data"))
         if fetch_err:
-            st.caption(f"Причина: {fetch_err}")
+            st.caption(t("reason", detail=fmt_err(fetch_err)))
     else:
         df = add_indicators(df_raw)
         df_plot = df.tail(250).copy()
@@ -479,7 +675,7 @@ elif app_mode == "Analytical Terminal":
         fig.add_trace(go.Candlestick(
             x=df_plot["x_idx"], open=df_plot["Open"], high=df_plot["High"], low=df_plot["Low"], close=df_plot["Close"],
             increasing_line_color="#2c3e50", increasing_fillcolor="white", increasing_line_width=1,
-            decreasing_line_color="#2c3e50", decreasing_fillcolor="#2c3e50", decreasing_line_width=1, name="Price",
+            decreasing_line_color="#2c3e50", decreasing_fillcolor="#2c3e50", decreasing_line_width=1, name=t("chart_price"),
         ))  # trace 0
 
         last_close = float(df_plot["Close"].iloc[-1])
@@ -494,17 +690,17 @@ elif app_mode == "Analytical Terminal":
                 x=sub["x_idx"], y=sub[price_col] + sign * sub["ATR"] * offset_mult,
                 mode="markers", marker=dict(size=size, color=color), name=name,
                 customdata=sub[price_col].to_numpy(dtype=float), text=time_txt[np.flatnonzero(mask.to_numpy())],
-                hovertemplate=f"{name}<br>{kind}: %{{customdata:{pfmt}}}<br>%{{text}}<extra></extra>",
+                hovertemplate=f"{name}<br>{t('hover_' + kind.lower())}: %{{customdata:{pfmt}}}<br>%{{text}}<extra></extra>",
             )
 
         minor_high = df_plot["Minor_High"] & ~df_plot["Major_High"]
         minor_low = df_plot["Minor_Low"] & ~df_plot["Major_Low"]
         major_high = df_plot["Major_High"]
         major_low = df_plot["Major_Low"]
-        fig.add_trace(marker_trace(minor_high, "High", "High", 0.2, 5, "#95a5a6", "Minor High"))   # 1
-        fig.add_trace(marker_trace(minor_low, "Low", "Low", 0.2, 5, "#95a5a6", "Minor Low"))       # 2
-        fig.add_trace(marker_trace(major_high, "High", "High", 0.5, 10, "#2c3e50", "Major High"))  # 3
-        fig.add_trace(marker_trace(major_low, "Low", "Low", 0.5, 10, "#2c3e50", "Major Low"))      # 4
+        fig.add_trace(marker_trace(minor_high, "High", "High", 0.2, 5, "#95a5a6", t("chart_minor_high")))   # 1
+        fig.add_trace(marker_trace(minor_low, "Low", "Low", 0.2, 5, "#95a5a6", t("chart_minor_low")))       # 2
+        fig.add_trace(marker_trace(major_high, "High", "High", 0.5, 10, "#2c3e50", t("chart_major_high")))  # 3
+        fig.add_trace(marker_trace(major_low, "Low", "Low", 0.5, 10, "#2c3e50", t("chart_major_low")))      # 4
 
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["tenkan"], line=dict(color="#2980b9", width=1.5), name="Tenkan-sen"))  # 5
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["kijun"], line=dict(color="#e74c3c", width=2), name="Kijun-sen"))  # 6
@@ -516,7 +712,7 @@ elif app_mode == "Analytical Terminal":
         x_cloud = np.arange(len(df_plot)) + 26
         sa, sb = df_plot["raw_senkou_a"].to_numpy(dtype=float), df_plot["raw_senkou_b"].to_numpy(dtype=float)
 
-        fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", fill="toself", fillcolor="rgba(128,128,128,0.3)", line=dict(width=0), name="Kumo Cloud", legendgroup="cloud"))
+        fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", fill="toself", fillcolor="rgba(128,128,128,0.3)", line=dict(width=0), name=t("chart_kumo"), legendgroup="cloud"))
 
         i, n = 0, len(sa)
         while i < n:
@@ -572,7 +768,7 @@ elif app_mode == "Analytical Terminal":
                 fig.add_vline(x=C["x"] + k - 1, line_dash="dash", line_color="gray", opacity=0.35)
                 vlabel(C["x"] + k - 1, str(k), "#7f8c8d", 0.95)  # серые числа — Kihon suu
 
-            fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]], mode="lines+markers", line=dict(color="#f39c12", width=2), marker=dict(size=8), name="Wave A-B-C", hovertemplate=f"%{{y:{pfmt}}}<extra>Wave A-B-C</extra>"))
+            fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]], mode="lines+markers", line=dict(color="#f39c12", width=2), marker=dict(size=8), name=t("chart_wave"), hovertemplate=f"%{{y:{pfmt}}}<extra>{t('chart_wave')}</extra>"))
 
         tick_step = max(1, len(df_plot) // 10)
         fig.update_layout(
@@ -597,7 +793,7 @@ elif app_mode == "Analytical Terminal":
         )
 
         if len(st.session_state.abc_points) == 3 and len(pts) < 3:
-            st.info("Часть точек A-B-C вышла за пределы видимых 250 свечей — нажмите Clear Points или смените ТФ.")
+            st.info(t("points_outside"))
 
         if event and event.selection and event.selection.get("points") and len(st.session_state.abc_points) < 3:
             clicked = event.selection["points"][0]
