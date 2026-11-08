@@ -140,6 +140,72 @@ def glue_sunday(df):
     return out.groupby(level=0).agg({"Open": "first", "High": "max", "Low": "min", "Close": "last"})
 
 
+SERVER_CHOICES = ["Auto (EET)", "NY close (UTC+2/+3)", "UTC+2", "UTC+3", "UTC"]
+
+
+def to_server_time(df_utc, choice):
+    """UTC -> серверное время (наивный индекс)."""
+    out = df_utc.copy()
+    if choice == "NY close (UTC+2/+3)":
+        # сервер = время Нью-Йорка + 7 ч (переход на летнее время по правилам США):
+        # пт 17:00 NY = пт 24:00 сервера, вс 17:00 NY = пн 00:00 сервера
+        out.index = out.index.tz_convert("America/New_York").tz_localize(None) + pd.Timedelta(hours=7)
+    else:
+        tz = {
+            "Auto (EET)": "Europe/Bucharest",  # летнее время по правилам ЕС
+            "UTC+2": timezone(timedelta(hours=2)),
+            "UTC+3": timezone(timedelta(hours=3)),
+            "UTC": timezone.utc,
+        }[choice]
+        out.index = out.index.tz_convert(tz).tz_localize(None)
+    return out
+
+
+def drop_clearing_hour(df_srv, choice):
+    """Убираем час 23:00 серверного времени (клиринг). Для UTC не применяется."""
+    if df_srv.empty or choice == "UTC":
+        return df_srv
+    return df_srv[np.asarray(df_srv.index.hour) != 23]
+
+
+def is_fx_asset(route):
+    """Форекс и золото (символы с "/", кроме BTC): к ним применяется фильтр выходных."""
+    sym = route["sym"]
+    return ("/" in sym) and ("BTC" not in sym)
+
+
+def prepare_ohlc(df_utc, tf, is_fx, raw, drop_clearing, server_choice):
+    """ЕДИНЫЙ конвейер для терминала и радара: UTC-данные провайдера -> свечи как в MT5.
+    raw=True — никакой фильтрации (сырые данные провайдера)."""
+    if df_utc.empty:
+        return df_utc
+    filter_on = is_fx and not raw
+    df = df_utc.copy()
+    if tf == "D1":
+        # D1: без сдвига времени; суббота — мусор, воскресенье приклеивается к понедельнику
+        df.index = df.index.tz_localize(None)
+        if filter_on:
+            df = df[np.asarray(df.index.dayofweek) != 5]
+            df = glue_sunday(df)
+    elif tf in ("W1", "MN1", "MN6", "MN24"):
+        df.index = df.index.tz_localize(None)
+        if tf in RESAMPLE_RULE:
+            df = resample_ohlc(df, RESAMPLE_RULE[tf])
+    else:
+        # внутридневные: выходные (по NY) -> серверное время -> клиринг -> ресемплинг (H2/H4/H8)
+        if filter_on:
+            df = drop_weekend_ny(df)
+        if not df.empty:
+            df = to_server_time(df, server_choice)
+            if filter_on and drop_clearing:
+                df = drop_clearing_hour(df, server_choice)
+            if tf in RESAMPLE_RULE:
+                df = resample_ohlc(df, RESAMPLE_RULE[tf])
+    if not df.empty:
+        df = df[~df.index.duplicated(keep="last")].sort_index()
+    return df
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_yahoo(sym, interval):
     """Возвращает (df_utc, error). Данные БЕЗ ресемплинга (базовый ТФ)."""
@@ -239,6 +305,19 @@ with st.sidebar:
     st.markdown("### Navigation")
     app_mode = st.radio("Select Module:", ["Market Scanner (Radar)", "Analytical Terminal"])
 
+    st.markdown("---")
+    st.markdown("### Data Settings (Radar + Terminal)")
+    offset_choice = st.selectbox("Server Time (MT5):", SERVER_CHOICES, index=0)
+    count_weekend = st.checkbox(
+        "Include Saturday & closing night (raw)", value=False,
+        help="Выкл: суббота и закрытые часы (пт 17:00 NY — вс 17:00 NY) убраны, воскресный вечер остаётся. "
+             "Вкл: сырые данные провайдера без какой-либо фильтрации.",
+    )
+    drop_clearing = st.checkbox(
+        "Drop 23:00 Clearing", value=False, disabled=count_weekend,
+        help="Вырезает час 23:00 серверного времени (в MT5 этот час есть). По умолчанию выключено.",
+    )
+
 # ==========================================
 # Вкладка 1: РАДАР
 # ==========================================
@@ -250,15 +329,21 @@ if app_mode == "Market Scanner (Radar)":
         index=6,
     )
 
+    st.caption(
+        f"Свечи как в терминале: сервер «{offset_choice}», "
+        + ("сырые данные без фильтрации" if count_weekend
+           else "выходные убраны" + (", час 23:00 вырезан" if drop_clearing else ""))
+        + ". Настройки — в боковой панели (Data Settings)."
+    )
+
     def fetch_radar(route, tf):
-        """Yahoo (UTC) + ресемплинг для H2/H4/H8/MN6/MN24."""
+        """Yahoo (UTC) -> тот же конвейер prepare_ohlc, что и в терминале."""
         df, err = fetch_yahoo(route["yf"], tf)
         if err or df.empty:
             return df, err or "нет данных"
-        if tf in RESAMPLE_RULE:
-            df = resample_ohlc(df, RESAMPLE_RULE[tf])
-            if df.empty:
-                return df, "нет данных после ресемплинга"
+        df = prepare_ohlc(df, tf, is_fx_asset(route), count_weekend, drop_clearing, offset_choice)
+        if df.empty:
+            return df, "нет данных после обработки"
         return df, None
 
     if st.button("Execute Market Scan", **WIDE):
@@ -350,46 +435,11 @@ if app_mode == "Market Scanner (Radar)":
 # ==========================================
 elif app_mode == "Analytical Terminal":
 
-    SERVER_CHOICES = ["Auto (EET)", "NY close (UTC+2/+3)", "UTC+2", "UTC+3", "UTC"]
-
-    def to_server_time(df_utc, choice):
-        """UTC -> серверное время (наивный индекс)."""
-        out = df_utc.copy()
-        if choice == "NY close (UTC+2/+3)":
-            # сервер = время Нью-Йорка + 7 ч (переход на летнее время по правилам США):
-            # пт 17:00 NY = пт 24:00 сервера, вс 17:00 NY = пн 00:00 сервера
-            out.index = out.index.tz_convert("America/New_York").tz_localize(None) + pd.Timedelta(hours=7)
-        else:
-            tz = {
-                "Auto (EET)": "Europe/Bucharest",  # летнее время по правилам ЕС
-                "UTC+2": timezone(timedelta(hours=2)),
-                "UTC+3": timezone(timedelta(hours=3)),
-                "UTC": timezone.utc,
-            }[choice]
-            out.index = out.index.tz_convert(tz).tz_localize(None)
-        return out
-
-    def drop_clearing_hour(df_srv, choice):
-        """Убираем час 23:00 серверного времени (клиринг). Для UTC не применяется."""
-        if df_srv.empty or choice == "UTC":
-            return df_srv
-        return df_srv[np.asarray(df_srv.index.hour) != 23]
-
     with st.sidebar:
         st.markdown("---")
         st.markdown("### Terminal Settings")
         asset_name = st.selectbox("Symbol:", list(ASSET_ROUTER.keys()), index=0)
         tf_name = st.selectbox("Timeframe:", list(TF_MAP.keys()), index=4)
-        offset_choice = st.selectbox("Server Time (MT5):", SERVER_CHOICES, index=0)
-        count_weekend = st.checkbox(
-            "Include Saturday & closing night (raw)", value=False,
-            help="Выкл: суббота и закрытые часы (пт 17:00 NY — вс 17:00 NY) убраны, воскресный вечер остаётся. "
-                 "Вкл: сырые данные провайдера без какой-либо фильтрации.",
-        )
-        drop_clearing = st.checkbox(
-            "Drop 23:00 Clearing", value=False, disabled=count_weekend,
-            help="Вырезает час 23:00 серверного времени (в MT5 этот час есть). По умолчанию выключено.",
-        )
 
         # смена символа/ТФ/настроек времени -> старые точки теряют смысл
         ctx = (asset_name, tf_name, offset_choice, count_weekend, drop_clearing)
@@ -412,35 +462,9 @@ elif app_mode == "Analytical Terminal":
             st.rerun()
 
     df_raw, fetch_err = fetch_smart_data(asset_name, tf_name)
-    sym = ASSET_ROUTER[asset_name]["sym"]
-    is_fx_flag = ("/" in sym) and ("BTC" not in sym)
-
-    if not df_raw.empty:
-        filter_on = is_fx_flag and not count_weekend  # raw-режим: никакой фильтрации
-        if tf_name == "D1":
-            # D1: без сдвига времени; суббота — мусор, воскресенье приклеивается к понедельнику
-            df_raw = df_raw.copy()
-            df_raw.index = df_raw.index.tz_localize(None)
-            if filter_on:
-                df_raw = df_raw[np.asarray(df_raw.index.dayofweek) != 5]
-                df_raw = glue_sunday(df_raw)
-        elif tf_name in ("W1", "MN1", "MN6", "MN24"):
-            df_raw = df_raw.copy()
-            df_raw.index = df_raw.index.tz_localize(None)
-            if tf_name in RESAMPLE_RULE:
-                df_raw = resample_ohlc(df_raw, RESAMPLE_RULE[tf_name])
-        else:
-            # внутридневные: выходные (по NY) -> серверное время -> клиринг -> ресемплинг (H2/H4/H8)
-            if filter_on:
-                df_raw = drop_weekend_ny(df_raw)
-            if not df_raw.empty:
-                df_raw = to_server_time(df_raw, offset_choice)
-                if filter_on and drop_clearing:
-                    df_raw = drop_clearing_hour(df_raw, offset_choice)
-                if tf_name in RESAMPLE_RULE:
-                    df_raw = resample_ohlc(df_raw, RESAMPLE_RULE[tf_name])
-        if not df_raw.empty:
-            df_raw = df_raw[~df_raw.index.duplicated(keep="last")].sort_index()
+    df_raw = prepare_ohlc(
+        df_raw, tf_name, is_fx_asset(ASSET_ROUTER[asset_name]), count_weekend, drop_clearing, offset_choice
+    )
 
     if df_raw.empty:
         st.warning("Market data is currently unavailable.")
