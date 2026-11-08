@@ -32,6 +32,10 @@ Quantitative Analysis Terminal — исправленная версия.
    по 5000 часовых свечей (старые страницы кэшируются на 6 часов). W1/MN1 по-прежнему берутся у провайдера.
  - радар: сигналы и тренд — строгие геометрические символы (▲ ▼ ◆) вместо цветных эмодзи; пояснительная строка под
    выбором таймфрейма убрана.
+ - MN3 (квартал): добавлен в словари и в Радар/Терминал; старший ТФ: W1 -> MN3, MN1 -> MN3, MN3 -> MN3;
+   в Радаре убраны MN6 и MN24 (остались в Терминале); список таймфреймов Радара — radar_tfs;
+ - Радар: Smart Filter (скрыть "Ждем") и кнопка "Сканировать все таймфреймы"; активы без сигнала теперь
+   попадают в таблицу как "Ждем" и скрываются фильтром (включён по умолчанию).
  - переключатель языка English / Русский (первый элемент боковой панели); язык по умолчанию — DEFAULT_LANG;
    все тексты интерфейса лежат в словаре I18N; результаты радара сохраняются при смене языка.
 """
@@ -88,7 +92,7 @@ ASSET_ROUTER = {
 TF_MAP = {
     "M1": "1min", "M5": "5min", "M15": "15min", "M30": "30min",
     "H1": "1h", "H2": "2h", "H4": "4h", "H8": "8h",
-    "D1": "1day", "W1": "1week", "MN1": "1month", "MN6": "6month", "MN24": "24month",
+    "D1": "1day", "W1": "1week", "MN1": "1month", "MN3": "3month", "MN6": "6month", "MN24": "24month",
 }
 
 # Интервалы Yahoo: (interval, period)
@@ -97,20 +101,24 @@ YF_MAP = {
     "M5": ("5m", "60d"), "M15": ("15m", "60d"), "M30": ("30m", "60d"),
     "H1": ("1h", "700d"), "H2": ("1h", "700d"), "H4": ("1h", "700d"), "H8": ("1h", "700d"),
     "D1": ("1h", "700d"), "W1": ("1wk", "15y"),   # D1 собирается из часовых (см. BASE_TF)
-    "MN1": ("1mo", "max"), "MN6": ("1mo", "max"), "MN24": ("1mo", "max"),
+    "MN1": ("1mo", "max"), "MN3": ("1mo", "max"), "MN6": ("1mo", "max"), "MN24": ("1mo", "max"),
 }
 
 # Таймфреймы, которые собираются ресемплингом из базового
-BASE_TF = {"H2": "H1", "H4": "H1", "H8": "H1", "D1": "H1", "MN6": "MN1", "MN24": "MN1"}
-RESAMPLE_RULE = {"H2": "2h", "H4": "4h", "H8": "8h", "D1": "1D", "MN6": "6MS", "MN24": "24MS"}
+BASE_TF = {"H2": "H1", "H4": "H1", "H8": "H1", "D1": "H1", "MN3": "MN1", "MN6": "MN1", "MN24": "MN1"}
+RESAMPLE_RULE = {"H2": "2h", "H4": "4h", "H8": "8h", "D1": "1D", "MN3": "3MS", "MN6": "6MS", "MN24": "24MS"}
 
 # Twelve Data отдаёт не больше 5000 свечей за запрос. Для D1 (из часовых) нужна история глубже -> несколько страниц.
 TD_PAGE_SIZE = 5000
 TD_PAGES = {"D1": 3}  # 3 x 5000 часовых свечей ~ 450+ торговых дней
 
+# Таймфреймы Радара. MN6 и MN24 здесь убраны (нужна слишком глубокая история для Облака) — они остаются в Терминале.
+radar_tfs = ["M15", "M30", "H1", "H2", "H4", "H8", "D1", "W1", "MN1", "MN3"]
+
+# Старший таймфрейм для каждого таймфрейма Радара
 RADAR_HTF_MAP = {
     "M15": "H4", "M30": "H4", "H1": "D1", "H2": "D1", "H4": "W1", "H8": "W1",
-    "D1": "MN1", "W1": "MN1", "MN1": "MN1", "MN6": "MN24", "MN24": "MN24",
+    "D1": "MN1", "W1": "MN3", "MN1": "MN3", "MN3": "MN3",
 }
 
 # Минимум баров: Senkou B = 52 + сдвиг 26 -> первое валидное значение на индексе 77.
@@ -150,6 +158,11 @@ I18N = {
         "awaiting": "Awaiting {label}...",
         "clear_points": "Clear Points",
         "scanner_title": "Global Market Scanner",
+        "filter_active": "Show active signals only (hide 'Waiting')",
+        "run_scan_all": "Scan all timeframes",
+        "processing_tf": "Processing {asset} / {tf}...",
+        "col_tf": "TF",
+        "sig_wait": "◇ Waiting",
         "select_tf": "Select Timeframe:",
         "run_scan": "Execute Market Scan",
         "scanning": "Scanning market data...",
@@ -215,6 +228,11 @@ I18N = {
         "awaiting": "Ожидается {label}...",
         "clear_points": "Сбросить точки",
         "scanner_title": "Глобальный сканер рынка",
+        "filter_active": "Показывать только активные сигналы (Скрыть 'Ждем')",
+        "run_scan_all": "Сканировать все таймфреймы",
+        "processing_tf": "Обработка: {asset} / {tf}...",
+        "col_tf": "ТФ",
+        "sig_wait": "◇ Ждем",
         "select_tf": "Выберите таймфрейм:",
         "run_scan": "Запустить сканирование",
         "scanning": "Сканирование рынка...",
@@ -288,10 +306,12 @@ def safe_err(e):
 
 
 def align_start(df, rule):
-    """6- и 24-месячные свечи начинаем с календарной границы (Янв/Июл; чётный год)."""
+    """3-, 6- и 24-месячные свечи начинаем с календарной границы (кварталы; Янв/Июл; чётный год)."""
     if df.empty:
         return df
-    if rule == "6MS":
+    if rule == "3MS":
+        ok = np.asarray(df.index.month.isin([1, 4, 7, 10]))
+    elif rule == "6MS":
         ok = np.asarray(df.index.month.isin([1, 7]))
     elif rule == "24MS":
         ok = np.asarray(df.index.month == 1) & np.asarray(df.index.year % 2 == 0)
@@ -380,7 +400,7 @@ def prepare_ohlc(df_utc, tf, is_fx, raw, drop_clearing, server_choice):
         return df_utc
     filter_on = is_fx and not raw
     df = df_utc.copy()
-    if tf in ("W1", "MN1", "MN6", "MN24"):
+    if tf in ("W1", "MN1", "MN3", "MN6", "MN24"):
         df.index = df.index.tz_localize(None)
         if tf in RESAMPLE_RULE:
             df = resample_ohlc(df, RESAMPLE_RULE[tf])
@@ -546,7 +566,7 @@ def tick_fmt(price):
 # ==========================================
 # Ключи виджетов, значения которых сохраняем при смене языка
 # (в старых версиях Streamlit смена подписи виджета сбрасывает его состояние).
-PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf"]
+PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active"]
 
 
 def _on_lang_change():
@@ -561,6 +581,7 @@ if _keep:
 st.session_state.setdefault("lang", DEFAULT_LANG)
 st.session_state.setdefault("w_tf", "H1")
 st.session_state.setdefault("w_radar_tf", "D1")
+st.session_state.setdefault("w_radar_active", True)  # Smart Filter включён по умолчанию
 
 with st.sidebar:
     lang_label = st.radio("Language / Язык", list(LANGS.keys()), horizontal=True, key="lang", on_change=_on_lang_change)
@@ -581,11 +602,9 @@ with st.sidebar:
 # ==========================================
 if app_mode == "radar":
     st.markdown(f"<h2 style='color: #2c3e50;'>{t('scanner_title')}</h2>", unsafe_allow_html=True)
-    radar_tf = st.selectbox(
-        t("select_tf"),
-        ["M15", "M30", "H1", "H2", "H4", "H8", "D1", "W1", "MN1", "MN6", "MN24"],
-        key="w_radar_tf",
-    )
+    if st.session_state.get("w_radar_tf") not in radar_tfs:  # напр. раньше был выбран MN6/MN24
+        st.session_state["w_radar_tf"] = "D1"
+    radar_tf = st.selectbox(t("select_tf"), radar_tfs, key="w_radar_tf")
 
     def fetch_radar(route, tf):
         """Yahoo (UTC) -> тот же конвейер prepare_ohlc, что и в терминале."""
@@ -597,110 +616,139 @@ if app_mode == "radar":
             return df, E("no_processed")
         return df, None
 
-    if st.button(t("run_scan"), **WIDE):
+    def scan_one(asset_name, route, tf):
+        """Один актив на одном таймфрейме. Возвращает (запись, ошибка); сигнал "wait" = активного сигнала нет."""
+        htf_radar = RADAR_HTF_MAP.get(tf, "MN3")
+        try:
+            df_ltf, err_l = fetch_radar(route, tf)
+            df_htf, err_h = fetch_radar(route, htf_radar)
+            if err_l or err_h:
+                return None, err_l or err_h
+            if len(df_ltf) < MIN_LTF_BARS or len(df_htf) < MIN_HTF_BARS:
+                return None, E("few_bars", ltf=len(df_ltf), min_ltf=MIN_LTF_BARS, htf=len(df_htf), min_htf=MIN_HTF_BARS)
+
+            df_ltf = add_indicators(df_ltf)
+            df_htf = add_indicators(df_htf)
+
+            h_c = df_htf.iloc[-2]
+            l_c = df_ltf.iloc[-2]
+            p_b = df_ltf.iloc[-28]  # свеча для проверки Чикоу (26 назад + сдвиг 2)
+
+            h_v = h_c[["Close", "tenkan", "kijun", "senkou_a", "senkou_b"]].astype(float)
+            l_v = l_c[["Close", "tenkan", "kijun", "senkou_a", "senkou_b", "ATR"]].astype(float)
+            p_v = p_b[["High", "Low", "senkou_a", "senkou_b"]].astype(float)
+            if h_v.isna().any() or l_v.isna().any() or p_v.isna().any():
+                return None, E("nan")
+
+            # --- СТАРШИЙ ТРЕНД ---
+            h_kumo_top = max(h_v["senkou_a"], h_v["senkou_b"])
+            h_kumo_bot = min(h_v["senkou_a"], h_v["senkou_b"])
+            htf_bullish = h_v["Close"] > h_kumo_top and h_v["tenkan"] >= h_v["kijun"]
+            htf_bearish = h_v["Close"] < h_kumo_bot and h_v["tenkan"] <= h_v["kijun"]
+            trend_code = "up" if htf_bullish else ("down" if htf_bearish else "flat")
+
+            # --- ЛОКАЛЬНАЯ ЗАСАДА ---
+            pr, kijun = l_v["Close"], l_v["kijun"]
+            l_kumo_top = max(l_v["senkou_a"], l_v["senkou_b"])
+            l_kumo_bot = min(l_v["senkou_a"], l_v["senkou_b"])
+            p_kumo_top = max(p_v["senkou_a"], p_v["senkou_b"])
+            p_kumo_bot = min(p_v["senkou_a"], p_v["senkou_b"])
+
+            chikou_buy = pr > p_v["High"] and pr > p_kumo_top
+            chikou_sell = pr < p_v["Low"] and pr < p_kumo_bot
+
+            bullish = l_v["tenkan"] > kijun and pr > l_kumo_top and chikou_buy
+            bearish = l_v["tenkan"] < kijun and pr < l_kumo_bot and chikou_sell
+            near_kijun = abs(pr - kijun) <= l_v["ATR"] * 0.3
+
+            # --- СИГНАЛ (код; текст подставляется при показе на выбранном языке) ---
+            sig = "wait"
+            if near_kijun:
+                if bullish:
+                    sig = "strong_buy" if htf_bullish else "local_buy"
+                elif bearish:
+                    sig = "strong_sell" if htf_bearish else "local_sell"
+
+            return {
+                "asset": asset_name, "tf": tf, "sig": sig, "trend": trend_code,
+                "price": fmt_price(pr), "kijun": fmt_price(kijun),
+            }, None
+        except Exception as e:
+            return None, E("exception", detail=safe_err(e))
+
+    def run_scan(tf_list):
+        """Сканирует все активы на переданных таймфреймах. Возвращает (результаты, пропущенные)."""
+        total = len(ASSET_ROUTER) * len(tf_list)
         my_bar = st.progress(0, text=t("scanning"))
-        radar_results, skipped = [], []
-        htf_radar = RADAR_HTF_MAP.get(radar_tf, "MN1")
-
-        for i, (asset_name, route) in enumerate(ASSET_ROUTER.items()):
-            my_bar.progress((i + 1) / len(ASSET_ROUTER), text=t("processing", asset=asset_name))
-            try:
-                df_ltf, err_l = fetch_radar(route, radar_tf)
-                df_htf, err_h = fetch_radar(route, htf_radar)
-                if err_l or err_h:
-                    skipped.append((asset_name, err_l or err_h))
-                    continue
-                if len(df_ltf) < MIN_LTF_BARS or len(df_htf) < MIN_HTF_BARS:
-                    skipped.append((asset_name, E(
-                        "few_bars", ltf=len(df_ltf), min_ltf=MIN_LTF_BARS, htf=len(df_htf), min_htf=MIN_HTF_BARS
-                    )))
-                    continue
-
-                df_ltf = add_indicators(df_ltf)
-                df_htf = add_indicators(df_htf)
-
-                h_c = df_htf.iloc[-2]
-                l_c = df_ltf.iloc[-2]
-                p_b = df_ltf.iloc[-28]  # свеча для проверки Чикоу (26 назад + сдвиг 2)
-
-                h_v = h_c[["Close", "tenkan", "kijun", "senkou_a", "senkou_b"]].astype(float)
-                l_v = l_c[["Close", "tenkan", "kijun", "senkou_a", "senkou_b", "ATR"]].astype(float)
-                p_v = p_b[["High", "Low", "senkou_a", "senkou_b"]].astype(float)
-                if h_v.isna().any() or l_v.isna().any() or p_v.isna().any():
-                    skipped.append((asset_name, E("nan")))
-                    continue
-
-                # --- СТАРШИЙ ТРЕНД ---
-                h_kumo_top = max(h_v["senkou_a"], h_v["senkou_b"])
-                h_kumo_bot = min(h_v["senkou_a"], h_v["senkou_b"])
-                htf_bullish = h_v["Close"] > h_kumo_top and h_v["tenkan"] >= h_v["kijun"]
-                htf_bearish = h_v["Close"] < h_kumo_bot and h_v["tenkan"] <= h_v["kijun"]
-                trend_code = "up" if htf_bullish else ("down" if htf_bearish else "flat")
-
-                # --- ЛОКАЛЬНАЯ ЗАСАДА ---
-                pr, kijun = l_v["Close"], l_v["kijun"]
-                l_kumo_top = max(l_v["senkou_a"], l_v["senkou_b"])
-                l_kumo_bot = min(l_v["senkou_a"], l_v["senkou_b"])
-                p_kumo_top = max(p_v["senkou_a"], p_v["senkou_b"])
-                p_kumo_bot = min(p_v["senkou_a"], p_v["senkou_b"])
-
-                chikou_buy = pr > p_v["High"] and pr > p_kumo_top
-                chikou_sell = pr < p_v["Low"] and pr < p_kumo_bot
-
-                bullish = l_v["tenkan"] > kijun and pr > l_kumo_top and chikou_buy
-                bearish = l_v["tenkan"] < kijun and pr < l_kumo_bot and chikou_sell
-                near_kijun = abs(pr - kijun) <= l_v["ATR"] * 0.3
-
-                # --- СИГНАЛ (код, текст подставляется при показе на выбранном языке) ---
-                sig = None
-                if near_kijun:
-                    if bullish:
-                        sig = "strong_buy" if htf_bullish else "local_buy"
-                    elif bearish:
-                        sig = "strong_sell" if htf_bearish else "local_sell"
-
-                if sig:
-                    radar_results.append({
-                        "asset": asset_name, "sig": sig, "trend": trend_code,
-                        "price": fmt_price(pr), "kijun": fmt_price(kijun),
-                    })
-            except Exception as e:
-                skipped.append((asset_name, E("exception", detail=safe_err(e))))
-
+        results, skipped, done = [], [], 0
+        for tf in tf_list:
+            for asset_name, route in ASSET_ROUTER.items():
+                done += 1
+                label = (t("processing", asset=asset_name) if len(tf_list) == 1
+                         else t("processing_tf", asset=asset_name, tf=tf))
+                my_bar.progress(done / total, text=label)
+                rec, err = scan_one(asset_name, route, tf)
+                if rec:
+                    results.append(rec)
+                else:
+                    skipped.append((asset_name, tf, err))
         my_bar.empty()
-        # результаты хранятся в session_state — не пропадают при смене языка
-        st.session_state["radar_out"] = {
+        return results, skipped
+
+    if st.button(t("run_scan"), **WIDE):
+        res, sk = run_scan([radar_tf])
+        # результаты хранятся в session_state — не пропадают при смене языка и при переключении фильтра
+        st.session_state["radar_out2"] = {
             "ctx": (radar_tf, offset_choice, count_weekend, drop_clearing),
-            "results": radar_results,
-            "skipped": skipped,
+            "all": False, "results": res, "skipped": sk,
+        }
+    if st.button(t("run_scan_all"), **WIDE):
+        res, sk = run_scan(radar_tfs)
+        st.session_state["radar_out2"] = {
+            "ctx": ("ALL", offset_choice, count_weekend, drop_clearing),
+            "all": True, "results": res, "skipped": sk,
         }
 
-    out = st.session_state.get("radar_out")
+    only_active = st.checkbox(t("filter_active"), key="w_radar_active")  # Smart Filter
+
+    out = st.session_state.get("radar_out2")
     if out:
-        if out["ctx"] != (radar_tf, offset_choice, count_weekend, drop_clearing):
+        scan_tag = "ALL" if out["all"] else radar_tf
+        if out["ctx"] != (scan_tag, offset_choice, count_weekend, drop_clearing):
             st.caption(t("stale_scan"))
-        if out["results"]:
-            rows_df = pd.DataFrame([
-                {
-                    t("col_asset"): r["asset"],
-                    t("col_signal"): t("sig_" + r["sig"]),
-                    t("col_htf"): t("trend_" + r["trend"]),
-                    t("col_price"): r["price"],
-                    t("col_kijun"): r["kijun"],
-                }
-                for r in out["results"]
-            ])
-            st.dataframe(rows_df, hide_index=True, **WIDE)
-        else:
+
+        asset_order = {name: i for i, name in enumerate(ASSET_ROUTER)}
+        rows = out["results"]
+        if only_active:
+            rows = [r for r in rows if r["sig"] != "wait"]
+        rows = sorted(rows, key=lambda r: (r["sig"] == "wait", asset_order[r["asset"]], radar_tfs.index(r["tf"])))
+
+        if rows:
+            records = []
+            for r in rows:
+                rec = {t("col_asset"): r["asset"]}
+                if out["all"]:
+                    rec[t("col_tf")] = r["tf"]
+                rec[t("col_signal")] = t("sig_" + r["sig"])
+                rec[t("col_htf")] = t("trend_" + r["trend"])
+                rec[t("col_price")] = r["price"]
+                rec[t("col_kijun")] = r["kijun"]
+                records.append(rec)
+            st.dataframe(pd.DataFrame(records), hide_index=True, **WIDE)
+        elif out["results"]:
             st.info(t("no_setups"))
+        else:
+            st.warning(t("no_data"))
 
         if out["skipped"]:
             with st.expander(t("skipped", n=len(out["skipped"]))):
-                st.dataframe(
-                    pd.DataFrame([(a_, fmt_err(e_)) for a_, e_ in out["skipped"]],
-                                 columns=[t("col_asset"), t("col_reason")]),
-                    hide_index=True, **WIDE,
-                )
+                if out["all"]:
+                    sk_df = pd.DataFrame([(a_, tf_, fmt_err(e_)) for a_, tf_, e_ in out["skipped"]],
+                                         columns=[t("col_asset"), t("col_tf"), t("col_reason")])
+                else:
+                    sk_df = pd.DataFrame([(a_, fmt_err(e_)) for a_, _tf, e_ in out["skipped"]],
+                                         columns=[t("col_asset"), t("col_reason")])
+                st.dataframe(sk_df, hide_index=True, **WIDE)
 
 # ==========================================
 # Вкладка 2: ТЕРМИНАЛ
