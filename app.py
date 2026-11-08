@@ -30,6 +30,8 @@ Quantitative Analysis Terminal — исправленная версия.
  - D1 собирается из ЧАСОВЫХ свечей тем же конвейером, что H4 (выходные по NY -> серверное время -> день по серверной
    полуночи): нет лишней «понедельничной» свечи в воскресенье, границы дня как в MT5. Терминал грузит до 3 страниц
    по 5000 часовых свечей (старые страницы кэшируются на 6 часов). W1/MN1 по-прежнему берутся у провайдера.
+ - радар: сигналы и тренд — строгие геометрические символы (▲ ▼ ◆) вместо цветных эмодзи; пояснительная строка под
+   выбором таймфрейма убрана.
  - переключатель языка English / Русский (первый элемент боковой панели); язык по умолчанию — DEFAULT_LANG;
    все тексты интерфейса лежат в словаре I18N; результаты радара сохраняются при смене языка.
 """
@@ -149,10 +151,6 @@ I18N = {
         "clear_points": "Clear Points",
         "scanner_title": "Global Market Scanner",
         "select_tf": "Select Timeframe:",
-        "radar_caption": 'Candles as in the terminal: server "{server}", {mode}. Settings are in the sidebar (Data Settings).',
-        "mode_raw": "raw data, no filtering",
-        "mode_filtered": "weekends removed",
-        "mode_clearing": ", 23:00 hour removed",
         "run_scan": "Execute Market Scan",
         "scanning": "Scanning market data...",
         "processing": "Processing {asset}...",
@@ -162,13 +160,13 @@ I18N = {
         "col_price": "Price",
         "col_kijun": "Kijun",
         "col_reason": "Reason",
-        "trend_up": "🟢 UP",
-        "trend_down": "🔴 DOWN",
-        "trend_flat": "➖ FLAT",
-        "sig_strong_buy": "🦅 STRONG BUY (HTF Confirmed)",
-        "sig_local_buy": "🟢 Local BUY",
-        "sig_strong_sell": "🦅 STRONG SELL (HTF Confirmed)",
-        "sig_local_sell": "🔴 Local SELL",
+        "trend_up": "▲ UP",
+        "trend_down": "▼ DOWN",
+        "trend_flat": "◆ FLAT",
+        "sig_strong_buy": "▲▲ STRONG BUY (HTF Confirmed)",
+        "sig_local_buy": "▲ Local BUY",
+        "sig_strong_sell": "▼▼ STRONG SELL (HTF Confirmed)",
+        "sig_local_sell": "▼ Local SELL",
         "no_setups": "Scan completed. No valid entry setups found near Kijun-sen.",
         "skipped": "Skipped assets ({n})",
         "stale_scan": "These results are from an earlier scan (the timeframe or data settings have changed since). "
@@ -218,10 +216,6 @@ I18N = {
         "clear_points": "Сбросить точки",
         "scanner_title": "Глобальный сканер рынка",
         "select_tf": "Выберите таймфрейм:",
-        "radar_caption": "Свечи как в терминале: сервер «{server}», {mode}. Настройки — в боковой панели (Настройки данных).",
-        "mode_raw": "сырые данные без фильтрации",
-        "mode_filtered": "выходные убраны",
-        "mode_clearing": ", час 23:00 вырезан",
         "run_scan": "Запустить сканирование",
         "scanning": "Сканирование рынка...",
         "processing": "Обработка: {asset}...",
@@ -231,13 +225,13 @@ I18N = {
         "col_price": "Цена",
         "col_kijun": "Киджун",
         "col_reason": "Причина",
-        "trend_up": "🟢 ВВЕРХ",
-        "trend_down": "🔴 ВНИЗ",
-        "trend_flat": "➖ ФЛЭТ",
-        "sig_strong_buy": "🦅 СИЛЬНАЯ ПОКУПКА (старший ТФ подтверждает)",
-        "sig_local_buy": "🟢 Локальная ПОКУПКА",
-        "sig_strong_sell": "🦅 СИЛЬНАЯ ПРОДАЖА (старший ТФ подтверждает)",
-        "sig_local_sell": "🔴 Локальная ПРОДАЖА",
+        "trend_up": "▲ ВВЕРХ",
+        "trend_down": "▼ ВНИЗ",
+        "trend_flat": "◆ ФЛЭТ",
+        "sig_strong_buy": "▲▲ СИЛЬНАЯ ПОКУПКА (старший ТФ подтверждает)",
+        "sig_local_buy": "▲ Локальная ПОКУПКА",
+        "sig_strong_sell": "▼▼ СИЛЬНАЯ ПРОДАЖА (старший ТФ подтверждает)",
+        "sig_local_sell": "▼ Локальная ПРОДАЖА",
         "no_setups": "Сканирование завершено. Подходящих точек входа у Киджун-сен не найдено.",
         "skipped": "Пропущенные активы ({n})",
         "stale_scan": "Эти результаты получены в предыдущем сканировании (с тех пор изменились таймфрейм или настройки данных). "
@@ -592,9 +586,6 @@ if app_mode == "radar":
         ["M15", "M30", "H1", "H2", "H4", "H8", "D1", "W1", "MN1", "MN6", "MN24"],
         key="w_radar_tf",
     )
-
-    mode_txt = t("mode_raw") if count_weekend else t("mode_filtered") + (t("mode_clearing") if drop_clearing else "")
-    st.caption(t("radar_caption", server=offset_choice, mode=mode_txt))
 
     def fetch_radar(route, tf):
         """Yahoo (UTC) -> тот же конвейер prepare_ohlc, что и в терминале."""
