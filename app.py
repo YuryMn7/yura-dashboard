@@ -40,6 +40,12 @@ Quantitative Analysis Terminal — исправленная версия.
    scikit-learn (RandomForest), обучение на исторических волнах самого инструмента (минорные фракталы),
    только на волнах с известным до точки C исходом (без утечки), отложенная выборка по времени (AUC),
    кэш st.cache_data. Требуется строка в requirements.txt: scikit-learn
+   Класс волны (главные/малые фракталы A, B, C) определяется по точкам пользователя; вход через 2 бара после малого C
+   и через 10 после главного (когда фрактал подтверждён); горизонт = время A-C (мин. 50); дистанции безразмерные.
+ - «Алиса» учитывает класс точек: A/B главные или малые, C главный или малый (в т.ч. смешанный случай). Обучение — на
+   волнах того же класса из истории инструмента; горизонт — время A-C (мин. 50, макс. 300 баров), дистанции в
+   единицах ATR*sqrt(горизонт). Для очень редких исходов вместо модели показывается историческая частота.
+   Для свежей точки C (флаг «главный/малый» ещё не окончателен) — режим реального времени.
  - переключатель языка English / Русский (первый элемент боковой панели); язык по умолчанию — DEFAULT_LANG;
    все тексты интерфейса лежат в словаре I18N; результаты радара сохраняются при смене языка.
 """
@@ -221,14 +227,20 @@ I18N = {
         "ai_title": "AI Probability Analysis (Alice Model)",
         "ai_hint": "Select points A, B and C on the chart to run the model.",
         "ai_prob": "Probability of reaching Target {target}",
-        "ai_stats": "Samples: {n} | Historical hit rate: {base}% | Holdout AUC: {auc} | Horizon: {h} bars",
+        "ai_stats": "Samples: {n} | Historical hit rate: {base}% | Holdout AUC: {auc}",
+        "ai_setup": "Fractals: A/B {ab}, C {cls} | Entry: bar C + {lag} | Horizon, bars: {h} (A-C time, min {hmin})",
+        "ai_cls_major": "major",
+        "ai_cls_minor": "minor",
+        "ai_pooled": "Too few waves of this exact class: the model was trained on waves of all fractal classes (scale-free distances).",
+        "ai_live": "Point C is recent: its fractal class is not final yet, so the model was trained in real-time mode.",
+        "ai_freq_only": "Too few rare outcomes to train a model ({k} of {n} similar waves reached the target, or nearly all did); showing the historical frequency.",
         "ai_na": "n/a",
         "ai_uplift": "Ichimoku-feature uplift (AUC vs distance-only model): {v}",
         "ai_rel_high": "Model confidence: high",
         "ai_rel_mod": "Model confidence: moderate",
-        "ai_rel_low": "Model confidence: low - the estimate mostly reflects the target distance, Ichimoku features add little",
+        "ai_rel_low": "Model confidence: low - the estimate mostly reflects wave geometry, Ichimoku features add little",
         "ai_disclaimer": "Statistical estimate from this instrument's own history. Training uses only waves that were "
-                         "resolved before point C. Not a trading signal.",
+                         "resolved before the entry. Not a trading signal.",
         "ai_htf_missing": "Higher-timeframe trend is unavailable; a neutral value was used.",
         "ai_err_sklearn": "scikit-learn is not installed. Add it to requirements.txt.",
         "ai_err_fresh": "Point C is too recent: at least {lag} bars after C are required.",
@@ -311,14 +323,20 @@ I18N = {
         "ai_title": "ИИ-анализ вероятности (модель Alice)",
         "ai_hint": "Выберите на графике точки A, B и C, чтобы запустить модель.",
         "ai_prob": "Вероятность достижения цели {target}",
-        "ai_stats": "Выборка: {n} | Историческая частота: {base}% | AUC на отложенной выборке: {auc} | Горизонт: {h} баров",
+        "ai_stats": "Выборка: {n} | Историческая частота: {base}% | AUC на отложенной выборке: {auc}",
+        "ai_setup": "Фракталы: A/B — {ab}, C — {cls} | Вход: бар C + {lag} | Горизонт, баров: {h} (время A-C, минимум {hmin})",
+        "ai_cls_major": "главный",
+        "ai_cls_minor": "малый",
+        "ai_pooled": "Волн именно этого класса слишком мало: модель обучена на волнах всех классов фракталов (безразмерные дистанции).",
+        "ai_live": "Точка C свежая: её класс фрактала ещё не окончателен, поэтому модель обучена в режиме реального времени.",
+        "ai_freq_only": "Редких исходов слишком мало для обучения модели ({k} из {n} похожих волн дошли до цели, либо почти все); показана историческая частота.",
         "ai_na": "н/д",
         "ai_uplift": "Вклад признаков Ишимоку (AUC против модели только по дистанции): {v}",
         "ai_rel_high": "Уверенность модели: высокая",
         "ai_rel_mod": "Уверенность модели: умеренная",
-        "ai_rel_low": "Уверенность модели: низкая — оценка в основном отражает дальность цели, признаки Ишимоку добавляют мало",
+        "ai_rel_low": "Уверенность модели: низкая — оценка в основном отражает геометрию волны, признаки Ишимоку добавляют мало",
         "ai_disclaimer": "Статистическая оценка по собственной истории инструмента. Обучение использует только волны, "
-                         "исход которых был известен до точки C. Не торговый сигнал.",
+                         "исход которых был известен до входа. Не торговый сигнал.",
         "ai_htf_missing": "Тренд старшего таймфрейма недоступен, использовано нейтральное значение.",
         "ai_err_sklearn": "Библиотека scikit-learn не установлена. Добавьте её в requirements.txt.",
         "ai_err_fresh": "Точка C слишком свежая: после C нужно минимум {lag} бара.",
@@ -626,15 +644,19 @@ def hosoda_targets(a, b, c):
 
 
 ALICE_TARGETS = ("N",)      # цели, для которых считается вероятность; можно ("V", "N", "E", "NT")
-ALICE_HORIZON = 50          # окно исхода: сколько баров после входа ждём цель
-ALICE_LAG = 2               # вход через 2 бара после C (подтверждение минорного фрактала)
-ALICE_LOOKBACK = 52         # глубина поиска точек A и B перед C
+ALICE_HORIZON = 50          # минимальный горизонт (баров); у крупных волн горизонт = время A-C (Тайёсуу A-C)
+ALICE_HORIZON_MAX = 300     # верхняя граница горизонта
+ALICE_LAG = {"minor": 2, "major": 10}   # вход после подтверждения фрактала точки C: малый — 2 бара, главный — 10
 ALICE_MIN_LEG_ATR = 2.0     # минимальная длина волны A-B в единицах ATR
-ALICE_RETR = (0.2, 0.95)    # допустимая глубина отката C (доля от A-B) в обучающих волнах
 ALICE_MIN_SAMPLES = 80      # минимум исторических волн для обучения
+ALICE_MIN_FREQ = 30         # от скольких волн своего класса уже честна «чистая частота» (если редких исходов < ALICE_MIN_CLASS)
 ALICE_MIN_CLASS = 10        # минимум успехов и минимум неудач
-ALICE_USE_GEOMETRY = True   # + признаки геометрии волны (дистанция до цели и до стопа в ATR, глубина отката)
+ALICE_MAX_SAMPLES = 500     # обучаем на самых свежих волнах (ограничивает время обучения)
+ALICE_USE_GEOMETRY = True   # + безразмерные признаки геометрии волны (откат, дистанция до стопа и до цели)
 ALICE_BASE_FEATURES = ["kumo_w", "dist_kijun", "tk_spread", "atr_rel", "htf"]
+ALICE_GEOM_FEATURES = ["retr", "risk_z", "reward_z"]
+# классы волн: (класс фракталов A/B, класс фрактала C); пользователь выбирает «главные» и «малые» точки
+ALICE_CLASSES = [("minor", "minor"), ("major", "major"), ("major", "minor"), ("minor", "major")]
 
 
 def htf_trend_series(df_htf, ltf_index):
@@ -673,6 +695,18 @@ def _alice_base(ar, e, d):
     return v if np.all(np.isfinite(v)) else None
 
 
+def _alice_horizon(c, a):
+    """Горизонт исхода = время A-C (Тайёсуу A-C), но не меньше ALICE_HORIZON и не больше ALICE_HORIZON_MAX."""
+    return int(min(ALICE_HORIZON_MAX, max(ALICE_HORIZON, c - a)))
+
+
+def _alice_geom(entry, atr, horizon, Ap, Bp, Cp, T):
+    """Безразмерная геометрия волны: откат, дистанция до стопа и до цели в единицах ATR*sqrt(горизонт).
+    Масштабная независимость позволяет сравнивать малые и главные волны."""
+    scale = atr * np.sqrt(horizon)
+    return [(Bp - Cp) / (Bp - Ap), (entry - Cp) / scale, (T - entry) / scale]
+
+
 def _alice_label(hi_m, lo_m, e, target, stop, horizon):
     """1 — цель достигнута раньше стопа за horizon баров после входа; 0 — иначе (ничья в одном баре = стоп)."""
     th = hi_m[e + 1:e + horizon + 1] >= target
@@ -682,52 +716,82 @@ def _alice_label(hi_m, lo_m, e, target, stop, horizon):
     return 1 if ti < si else 0
 
 
-def alice_build_samples(df, htf, targets=ALICE_TARGETS, horizon=ALICE_HORIZON):
-    """Исторические волны A-B-C по минорным фракталам -> признаки на баре входа + исход по каждой цели.
-    Нисходящие волны зеркалятся (цены с обратным знаком), поэтому модель обучается на обоих направлениях."""
+def _alice_pivots(df, d, cls, strict=False):
+    """Индексы пивотов в «зеркальном» пространстве: (минимумы, максимумы) для направления d и класса фракталов.
+    strict=True: «малый» пивот = малый И НЕ главный — так, как маркеры выглядят на графике (главный пивот
+    всегда ещё и малый, но он «выжил» ещё 10 баров, поэтому исходы у них разные)."""
+    pref = "Major" if cls == "major" else "Minor"
+    low_col, high_col = (pref + "_Low", pref + "_High") if d > 0 else (pref + "_High", pref + "_Low")
+    lows, highs = df[low_col].to_numpy(dtype=bool), df[high_col].to_numpy(dtype=bool)
+    if strict and cls == "minor":
+        lows = lows & ~df["Major_Low" if d > 0 else "Major_High"].to_numpy(dtype=bool)
+        highs = highs & ~df["Major_High" if d > 0 else "Major_Low"].to_numpy(dtype=bool)
+    return np.flatnonzero(lows), np.flatnonzero(highs)
+
+
+def alice_build_samples(df, htf, targets, ab_cls, c_cls, strict=True):
+    """Исторические волны A-B-C заданного класса — так, как их выбирает человек по фракталам:
+    B — пивот-максимум, A — последний пивот-минимум перед B, C — пивот-минимум после B (самое глубокое дно с момента B,
+    пока цена не вышла выше B). Вход через ALICE_LAG[c_cls] баров после C (подтверждение фрактала), горизонт — время A-C.
+    Нисходящие волны зеркалятся (цены с обратным знаком), поэтому модель учится на обоих направлениях.
+    strict=True: классы не пересекаются и совпадают с тем, что видно на графике (малый C = не главный)."""
     ar = _alice_arrays(df, htf)
-    n = len(df)
-    pivots = {1: np.flatnonzero(df["Minor_Low"].to_numpy(dtype=bool)),
-              -1: np.flatnonzero(df["Minor_High"].to_numpy(dtype=bool))}
+    n, lag = len(df), ALICE_LAG[c_cls]
     rows = []
-    for d, piv in pivots.items():
+    for d in (1, -1):
         hi_m, lo_m, cl_m = (ar["hi"], ar["lo"], ar["cl"]) if d > 0 else (-ar["lo"], -ar["hi"], -ar["cl"])
-        for c in piv:
-            e = c + ALICE_LAG
-            if e + horizon >= n:      # исход ещё не известен — в обучение не берём
+        lows_ab, highs_ab = _alice_pivots(df, d, ab_cls)
+        lows_c, _ = _alice_pivots(df, d, c_cls, strict)
+        maj_lows, maj_highs = _alice_pivots(df, d, "major")  # главные пивоты: A — минимумы, B — максимумы
+        is_maj_a = np.zeros(n, dtype=bool)
+        is_maj_a[maj_lows] = True
+        is_maj_b = np.zeros(n, dtype=bool)
+        is_maj_b[maj_highs] = True
+        for b in highs_ab:
+            j = int(np.searchsorted(lows_ab, b)) - 1
+            if j < 0:
                 continue
-            w0 = max(0, c - ALICE_LOOKBACK)
-            if c - w0 < 6:
-                continue
-            b = w0 + int(np.argmax(hi_m[w0:c - 2]))        # B: максимум перед откатом
-            a = w0 + int(np.argmin(lo_m[w0:b + 1]))        # A: минимум перед B
-            if a >= b:
-                continue
-            Ap, Bp, Cp = lo_m[a], hi_m[b], lo_m[c]
-            atr = ar["atr"][e]
-            leg = Bp - Ap
-            if not (np.isfinite(atr) and atr > 0 and leg >= ALICE_MIN_LEG_ATR * atr):
-                continue
-            retr = (Bp - Cp) / leg
-            if not (ALICE_RETR[0] <= retr <= ALICE_RETR[1]):
-                continue
-            if c - b > 1 and Cp > lo_m[b + 1:c].min():     # C — самое глубокое дно отката
-                continue
-            base = _alice_base(ar, e, d)
-            entry = cl_m[e]
-            if base is None or entry <= Cp:
-                continue
-            tg = hosoda_targets(Ap, Bp, Cp)
-            row = {"c": c, "e": e, "d": d, "retr": retr, "risk": (entry - Cp) / atr}
-            row.update(zip(ALICE_BASE_FEATURES, base))
-            for name in targets:
-                T = tg[name]
-                if T <= entry:                              # цель уже позади — пример не годится
-                    row["reward_" + name], row["y_" + name] = np.nan, np.nan
-                else:
-                    row["reward_" + name] = (T - entry) / atr
-                    row["y_" + name] = _alice_label(hi_m, lo_m, e, T, Cp, horizon)
-            rows.append(row)
+            a = int(lows_ab[j])
+            Ap, Bp = lo_m[a], hi_m[b]
+            above = np.flatnonzero(hi_m[b + 1:] > Bp)            # волна жива, пока нет бара выше B
+            end = n if len(above) == 0 else b + 1 + int(above[0])
+            deepest = np.inf
+            for c in lows_c[(lows_c >= b + 3) & (lows_c < end)]:
+                c = int(c)
+                Cp = lo_m[c]
+                deepest = min(deepest, lo_m[b + 1:c].min())
+                if Cp > deepest:                                  # C — самое глубокое дно с момента B
+                    continue
+                e = c + lag
+                if ab_cls == "major" and b + ALICE_LAG["major"] > e:   # к моменту входа B ещё не подтверждён как главный
+                    continue
+                if strict and ab_cls == "minor" and is_maj_a[a] and is_maj_b[b] and b + ALICE_LAG["major"] <= e:
+                    continue                                      # такая волна относится к классу major/major
+                H = _alice_horizon(c, a)
+                if e + H >= n:                                    # исход ещё не известен — в обучение не берём
+                    continue
+                atr = ar["atr"][e]
+                leg = Bp - Ap
+                if not (np.isfinite(atr) and atr > 0 and leg >= ALICE_MIN_LEG_ATR * atr and Ap < Cp < Bp):
+                    continue
+                base, entry = _alice_base(ar, e, d), cl_m[e]
+                if base is None or entry <= Cp:
+                    continue
+                tg = hosoda_targets(Ap, Bp, Cp)
+                row = {"c": c, "e": e, "h": H, "d": d,
+                       "ab_major": 1.0 if ab_cls == "major" else 0.0, "c_major": 1.0 if c_cls == "major" else 0.0}
+                row.update(zip(ALICE_BASE_FEATURES, base))
+                for name in targets:
+                    T = tg[name]
+                    geom = _alice_geom(entry, atr, H, Ap, Bp, Cp, T)
+                    if name == targets[0]:
+                        row["retr"], row["risk_z"] = geom[0], geom[1]
+                    if T <= entry:                                # цель уже позади — пример не годится
+                        row["reward_z_" + name], row["y_" + name] = np.nan, np.nan
+                    else:
+                        row["reward_z_" + name] = geom[2]
+                        row["y_" + name] = _alice_label(hi_m, lo_m, e, T, Cp, H)
+                rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -739,8 +803,8 @@ def _alice_fit(X, y):
 
 def alice_reliability(n, auc, uplift):
     """Уверенность модели. AUC сам по себе не доказывает «предсказательную силу»: вероятность достижения цели
-    механически зависит от её дальности в ATR. Поэтому учитываем uplift — на сколько признаки Ишимоку
-    улучшают AUC относительно модели «только дистанции» (если геометрия выключена, uplift не применяется)."""
+    механически зависит от её дальности. Поэтому учитываем uplift — на сколько признаки Ишимоку улучшают AUC
+    относительно модели «только геометрия» (если геометрия выключена, uplift не применяется)."""
     # Пороги намеренно консервативны: волны перекрываются по времени, эффективный размер выборки меньше n,
     # а AUC/uplift на отложенной выборке из ~50 волн шумят на +-0.1. При малой выборке «высокой» уверенности не бывает.
     if auc is None:
@@ -754,19 +818,52 @@ def alice_reliability(n, auc, uplift):
     return "low"
 
 
-def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS, horizon=ALICE_HORIZON):
+def _alice_train_rows(samples, name, e):
+    """Только волны, исход которых полностью известен ДО момента входа текущей волны (без утечки)."""
+    if not len(samples) or ("y_" + name) not in samples:
+        return samples.iloc[0:0] if len(samples) else samples
+    tr = samples[(samples["e"] + samples["h"] <= e) & samples["y_" + name].notna()]
+    return tr.sort_values("e").tail(ALICE_MAX_SAMPLES)
+
+
+def _alice_matrix(tr, name):
+    """Матрица признаков: Ишимоку + (геометрия) + индикаторы класса волны (нужны, когда обучение объединяет классы)."""
+    X = tr[ALICE_BASE_FEATURES].to_numpy(dtype=float)
+    if ALICE_USE_GEOMETRY:
+        X = np.column_stack([X, tr[["retr", "risk_z", "reward_z_" + name]].to_numpy(dtype=float)])
+    return np.column_stack([X, tr[["ab_major", "c_major"]].to_numpy(dtype=float)])
+
+
+def _alice_freq_result(pos, m, H, lag, ab_cls, c_cls, pooled, strict):
+    """Исходы почти односторонние: модель не обучаем, показываем историческую частоту (сглаживание Лапласа)."""
+    return {"status": "ok", "prob": (pos + 1) / (m + 2), "n": m, "base": pos / m, "auc": None, "uplift": None,
+            "reliability": "low", "h": H, "lag": lag, "cls": c_cls, "ab": ab_cls, "pooled": pooled,
+            "strict": strict, "freq_only": True, "hits": pos}
+
+
+def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
     """Обучает модель на истории df и оценивает вероятность достижения целей для волны A-B-C пользователя.
-    Обучение — только на волнах, исход которых полностью известен ДО момента входа текущей волны (без утечки)."""
+    Класс волны (главные/малые фракталы) определяется по точкам пользователя; обучающие волны — того же класса."""
     if not SKLEARN_OK:
         return {"status": "sklearn"}
     n = len(df)
-    if c_t not in df.index:
+    try:
+        a, b, c = (int(df.index.get_loc(t_)) for t_ in (a_t, b_t, c_t))
+    except KeyError:
         return {"status": "nan"}
-    c = int(df.index.get_loc(c_t))
-    e = c + ALICE_LAG
-    if e >= n:
-        return {"status": "fresh", "kw": {"lag": ALICE_LAG}}
     d = 1 if b_y > a_y else -1
+    if not (a < b < c):
+        return {"status": "geom"}
+    flag_low = "Major_Low" if d > 0 else "Major_High"      # A и C — «нижние» точки волны, B — «верхняя»
+    flag_high = "Major_High" if d > 0 else "Major_Low"
+    c_cls = "major" if bool(df[flag_low].iloc[c]) else "minor"
+    lag = ALICE_LAG[c_cls]
+    e = c + lag
+    if e >= n:
+        return {"status": "fresh", "kw": {"lag": lag}}
+    # A/B считаются главными, только если B уже подтверждён к моменту входа (иначе класс зависел бы от будущего)
+    ab_cls = ("major" if (bool(df[flag_low].iloc[a]) and bool(df[flag_high].iloc[b])
+                          and b + ALICE_LAG["major"] <= e) else "minor")
     Ap, Bp, Cp = d * a_y, d * b_y, d * c_y                  # зеркалим вниз-волну в вверх-волну
     if not (Ap < Cp < Bp):
         return {"status": "geom"}
@@ -778,41 +875,57 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS, 
     if entry <= Cp:
         return {"status": "stop"}
 
-    retr = (Bp - Cp) / (Bp - Ap)
+    H = _alice_horizon(c, a)
     tg = hosoda_targets(Ap, Bp, Cp)
-    samples = alice_build_samples(df, htf, targets, horizon)
+    # Флаги «главный/малый» окончательны, только если после C есть 10 баров. Иначе (свежая точка) класс «малый» ещё
+    # может стать главным — обучаем на всех малых пивотах (режим реального времени).
+    strict = c + ALICE_LAG["major"] < n
+    own = alice_build_samples(df, htf, targets, ab_cls, c_cls, strict)
+    pool = None
     out = {}
     for name in targets:
         T = tg[name]
         if T <= entry:
             out[name] = {"status": "target", "kw": {"target": name}}
             continue
-        ycol, rcol = "y_" + name, "reward_" + name
-        tr = samples[(samples["e"] + horizon <= e) & samples[ycol].notna()] if len(samples) else samples
+        tr, pooled = _alice_train_rows(own, name, e), False
+        if ALICE_MIN_FREQ <= len(tr) < ALICE_MIN_SAMPLES:
+            pos_o = int(tr["y_" + name].sum())
+            if min(pos_o, len(tr) - pos_o) < ALICE_MIN_CLASS:   # свой класс мал и почти односторонний — чужие классы не подмешиваем
+                out[name] = _alice_freq_result(pos_o, len(tr), H, lag, ab_cls, c_cls, False, strict)
+                continue
+        if len(tr) < ALICE_MIN_SAMPLES:        # волн именно этого класса мало — берём волны всех классов (безразмерные дистанции)
+            if pool is None:
+                parts = [own] + [alice_build_samples(df, htf, targets, ab, cc, strict)
+                                 for ab, cc in ALICE_CLASSES if (ab, cc) != (ab_cls, c_cls)]
+                parts = [p_ for p_ in parts if len(p_)]
+                pool = pd.concat(parts, ignore_index=True) if parts else own
+            tr, pooled = _alice_train_rows(pool, name, e), True
         m = len(tr)
         if m < ALICE_MIN_SAMPLES:
             out[name] = {"status": "samples", "kw": {"n": m, "min": ALICE_MIN_SAMPLES}}
             continue
-        tr = tr.sort_values("e")
-        y = tr[ycol].to_numpy(dtype=int)
+        y = tr["y_" + name].to_numpy(dtype=int)
         pos = int(y.sum())
         if min(pos, m - pos) < ALICE_MIN_CLASS:
-            out[name] = {"status": "classes"}
+            # исходы почти односторонние (напр. цель смешанной волны практически недостижима): модель не обучаем,
+            # показываем честную историческую частоту (со сглаживанием Лапласа)
+            out[name] = _alice_freq_result(pos, m, H, lag, ab_cls, c_cls, pooled, strict)
             continue
-        X = tr[ALICE_BASE_FEATURES].to_numpy(dtype=float)
+        X = _alice_matrix(tr, name)
         x = np.asarray(base, dtype=float)
         if ALICE_USE_GEOMETRY:
-            X = np.column_stack([X, tr[["retr", "risk", rcol]].to_numpy(dtype=float)])
-            x = np.append(x, [retr, (entry - Cp) / atr, (T - entry) / atr])
+            x = np.append(x, _alice_geom(entry, atr, H, Ap, Bp, Cp, T))
+        x = np.append(x, [1.0 if ab_cls == "major" else 0.0, 1.0 if c_cls == "major" else 0.0])
 
         # отложенная выборка по времени (с «зазором» на длину окна исхода) — честная оценка качества
-        e_arr = tr["e"].to_numpy()
+        e_arr, h_arr = tr["e"].to_numpy(), tr["h"].to_numpy()
         e_cut = e_arr[int(m * 0.75)]
-        fit_i, val_i = np.flatnonzero(e_arr + horizon < e_cut), np.flatnonzero(e_arr >= e_cut)
+        fit_i, val_i = np.flatnonzero(e_arr + h_arr < e_cut), np.flatnonzero(e_arr >= e_cut)
         auc = uplift = None
         if len(fit_i) >= 40 and len(val_i) >= 15 and 0 < y[val_i].sum() < len(val_i) and 0 < y[fit_i].sum() < len(fit_i):
             auc = float(roc_auc_score(y[val_i], _alice_fit(X[fit_i], y[fit_i]).predict_proba(X[val_i])[:, 1]))
-            if ALICE_USE_GEOMETRY:   # модель «только дистанции» (retr, risk, reward) — база для сравнения
+            if ALICE_USE_GEOMETRY:   # модель «только геометрия» (откат, дистанции) — база для сравнения
                 gcols = slice(len(ALICE_BASE_FEATURES), None)
                 auc_geom = float(roc_auc_score(
                     y[val_i], _alice_fit(X[fit_i][:, gcols], y[fit_i]).predict_proba(X[val_i][:, gcols])[:, 1]))
@@ -820,7 +933,8 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS, 
 
         prob = float(_alice_fit(X, y).predict_proba(x.reshape(1, -1))[0, 1])
         out[name] = {"status": "ok", "prob": prob, "n": m, "base": pos / m, "auc": auc, "uplift": uplift,
-                     "reliability": alice_reliability(m, auc, uplift)}
+                     "reliability": alice_reliability(m, auc, uplift), "h": H, "lag": lag,
+                     "cls": c_cls, "ab": ab_cls, "pooled": pooled, "strict": strict, "freq_only": False, "hits": pos}
     return {"status": "ok", "targets": out}
 
 
@@ -1226,7 +1340,15 @@ elif app_mode == "terminal":
                         st.caption(f"{t('ai_prob', target=name)}: {pct}%")
                     shown += 1
                     auc_txt = f"{r['auc']:.2f}" if r["auc"] is not None else t("ai_na")
-                    st.caption(t("ai_stats", n=r["n"], base=int(round(r["base"] * 100)), auc=auc_txt, h=ALICE_HORIZON))
+                    st.caption(t("ai_stats", n=r["n"], base=int(round(r["base"] * 100)), auc=auc_txt))
+                    st.caption(t("ai_setup", ab=t("ai_cls_" + r["ab"]), cls=t("ai_cls_" + r["cls"]), lag=r["lag"],
+                                 h=r["h"], hmin=ALICE_HORIZON))
+                    if r["freq_only"]:
+                        st.caption(t("ai_freq_only", k=r["hits"], n=r["n"]))
+                    if r["pooled"]:
+                        st.caption(t("ai_pooled"))
+                    if not r["strict"] and r["cls"] == "minor":
+                        st.caption(t("ai_live"))
                     if r["uplift"] is not None:
                         st.caption(t("ai_uplift", v=f"{r['uplift']:+.2f}"))
                     st.caption(t("ai_rel_" + r["reliability"]))
