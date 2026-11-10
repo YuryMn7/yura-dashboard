@@ -46,6 +46,9 @@ Quantitative Analysis Terminal — исправленная версия.
    волнах того же класса из истории инструмента; горизонт — время A-C (мин. 50, макс. 300 баров), дистанции в
    единицах ATR*sqrt(горизонт). Для очень редких исходов вместо модели показывается историческая частота.
    Для свежей точки C (флаг «главный/малый» ещё не окончателен) — режим реального времени.
+ - «Алиса»: робастная классификация точек A/B/C (допуск на микровыбросы, привязка к соседней свече, Pending для
+   свежих точек); класс волны определяет пик B; Break-even вероятность и Statistical Edge (модель минус безубыточная);
+ - DXY (Yahoo DX-Y.NYB) добавлен как не-Форекс актив.
  - переключатель языка English / Русский (первый элемент боковой панели); язык по умолчанию — DEFAULT_LANG;
    все тексты интерфейса лежат в словаре I18N; результаты радара сохраняются при смене языка.
 """
@@ -103,7 +106,11 @@ ASSET_ROUTER = {
     "GER40 (DAX)": {"prov": "yahoo", "sym": "GDAXI", "yf": "^GDAXI"},
     "JPN225": {"prov": "yahoo", "sym": "N225", "yf": "^N225"},
     "AUS200": {"prov": "yahoo", "sym": "AUS200", "yf": "^AXJO"},
+    "Индекс Доллара (DXY)": {"prov": "yahoo", "sym": "DXY", "yf": "DX-Y.NYB"},  # не Форекс: символ без "/"
 }
+
+# Подписи активов для английского интерфейса (ключи ASSET_ROUTER не меняются)
+ASSET_LABELS_EN = {"Индекс Доллара (DXY)": "US Dollar Index (DXY)"}
 
 # Интервалы TwelveData
 TF_MAP = {
@@ -228,9 +235,19 @@ I18N = {
         "ai_hint": "Select points A, B and C on the chart to run the model.",
         "ai_prob": "Probability of reaching Target {target}",
         "ai_stats": "Samples: {n} | Historical hit rate: {base}% | Holdout AUC: {auc}",
-        "ai_setup": "Fractals: A/B {ab}, C {cls} | Entry: bar C + {lag} | Horizon, bars: {h} (A-C time, min {hmin})",
+        "ai_fractals": "Fractals: A - {a}, B - {b}, C - {c}",
+        "ai_fr_major": "Major",
+        "ai_fr_minor": "Minor",
+        "ai_fr_pending": "Pending (too recent for Major confirmation)",
+        "ai_setup": "Model class: B {ab} / C {cls} | Entry: bar C + {lag} | Horizon, bars: {h} (A-C time, min {hmin})",
         "ai_cls_major": "major",
         "ai_cls_minor": "minor",
+        "ai_be": "Break-even probability: {be}% (Risk : Reward = 1 : {rr})",
+        "ai_edge_pos": "Statistical Edge: Positive ({v}%)",
+        "ai_edge_neg": "Statistical Edge: Negative ({v}%)",
+        "ai_edge_note": "Estimation error (s.e.): +/-{se}% on {neff} distinct waves. Timeouts count as misses; spread and commissions are not included.",
+        "ai_edge_noise": "The edge is within twice the estimation error.",
+        "ai_other": "Target {target}: probability {p}% | break-even {be}% | edge {edge}%",
         "ai_pooled": "Too few waves of this exact class: the model was trained on waves of all fractal classes (scale-free distances).",
         "ai_live": "Point C is recent: its fractal class is not final yet, so the model was trained in real-time mode.",
         "ai_freq_only": "Too few rare outcomes to train a model ({k} of {n} similar waves reached the target, or nearly all did); showing the historical frequency.",
@@ -324,9 +341,19 @@ I18N = {
         "ai_hint": "Выберите на графике точки A, B и C, чтобы запустить модель.",
         "ai_prob": "Вероятность достижения цели {target}",
         "ai_stats": "Выборка: {n} | Историческая частота: {base}% | AUC на отложенной выборке: {auc}",
-        "ai_setup": "Фракталы: A/B — {ab}, C — {cls} | Вход: бар C + {lag} | Горизонт, баров: {h} (время A-C, минимум {hmin})",
+        "ai_fractals": "Фракталы: A — {a}, B — {b}, C — {c}",
+        "ai_fr_major": "Главный",
+        "ai_fr_minor": "Малый",
+        "ai_fr_pending": "Pending (слишком свежая точка для подтверждения Major)",
+        "ai_setup": "Класс модели: B {ab} / C {cls} | Вход: бар C + {lag} | Горизонт, баров: {h} (время A-C, минимум {hmin})",
         "ai_cls_major": "главный",
         "ai_cls_minor": "малый",
+        "ai_be": "Безубыточная вероятность: {be}% (риск : прибыль = 1 : {rr})",
+        "ai_edge_pos": "Statistical Edge: положительное ({v}%)",
+        "ai_edge_neg": "Statistical Edge: отрицательное ({v}%)",
+        "ai_edge_note": "Ошибка оценки (s.e.): +/-{se}% по {neff} различным волнам. Таймауты считаются неудачей; спред и комиссии не учтены.",
+        "ai_edge_noise": "Преимущество в пределах двух ошибок оценки.",
+        "ai_other": "Цель {target}: вероятность {p}% | безубыточная {be}% | преимущество {edge}%",
         "ai_pooled": "Волн именно этого класса слишком мало: модель обучена на волнах всех классов фракталов (безразмерные дистанции).",
         "ai_live": "Точка C свежая: её класс фрактала ещё не окончателен, поэтому модель обучена в режиме реального времени.",
         "ai_freq_only": "Редких исходов слишком мало для обучения модели ({k} из {n} похожих волн дошли до цели, либо почти все); показана историческая частота.",
@@ -349,6 +376,11 @@ I18N = {
         "history_partial": "Часть истории не загрузилась ({detail}); график может быть короче обычного.",
     },
 }
+
+
+def asset_label(name):
+    """Подпись актива на выбранном языке."""
+    return ASSET_LABELS_EN.get(name, name) if LANG == "en" else name
 
 
 def t(key, **kw):
@@ -647,6 +679,11 @@ ALICE_TARGETS = ("N",)      # цели, для которых считается
 ALICE_HORIZON = 50          # минимальный горизонт (баров); у крупных волн горизонт = время A-C (Тайёсуу A-C)
 ALICE_HORIZON_MAX = 300     # верхняя граница горизонта
 ALICE_LAG = {"minor": 2, "major": 10}   # вход после подтверждения фрактала точки C: малый — 2 бара, главный — 10
+ALICE_MAJOR_RADIUS = 10     # радиус главного фрактала (баров с каждой стороны), как в add_indicators
+ALICE_SNAP_BARS = 2         # клик мог попасть на соседнюю свечу: главный фрактал в пределах +-2 баров считается «этой» точкой
+ALICE_MAJOR_TOL_ATR = 0.35  # допуск на микровыброс/равные экстремумы: точка в пределах 0.35 ATR от экстремума окна +-10 баров — главная
+ALICE_EDGE_POS_COLOR = "#2e7d5b"   # сдержанные цвета строки Statistical Edge
+ALICE_EDGE_NEG_COLOR = "#9a5252"
 ALICE_MIN_LEG_ATR = 2.0     # минимальная длина волны A-B в единицах ATR
 ALICE_MIN_SAMPLES = 80      # минимум исторических волн для обучения
 ALICE_MIN_FREQ = 30         # от скольких волн своего класса уже честна «чистая частота» (если редких исходов < ALICE_MIN_CLASS)
@@ -729,24 +766,25 @@ def _alice_pivots(df, d, cls, strict=False):
     return np.flatnonzero(lows), np.flatnonzero(highs)
 
 
-def alice_build_samples(df, htf, targets, ab_cls, c_cls, strict=True):
+def alice_build_samples(df, htf, targets, ab_cls, c_cls, strict=True, strict_ab=None):
     """Исторические волны A-B-C заданного класса — так, как их выбирает человек по фракталам:
     B — пивот-максимум, A — последний пивот-минимум перед B, C — пивот-минимум после B (самое глубокое дно с момента B,
     пока цена не вышла выше B). Вход через ALICE_LAG[c_cls] баров после C (подтверждение фрактала), горизонт — время A-C.
     Нисходящие волны зеркалятся (цены с обратным знаком), поэтому модель учится на обоих направлениях.
-    strict=True: классы не пересекаются и совпадают с тем, что видно на графике (малый C = не главный)."""
+    Класс волны определяет пик B (главный/малый); класс A на него не влияет. strict (для C) и strict_ab (для B):
+    классы не пересекаются и совпадают с тем, что видно на графике (малый = малый и НЕ главный)."""
+    strict_ab = strict if strict_ab is None else strict_ab
     ar = _alice_arrays(df, htf)
     n, lag = len(df), ALICE_LAG[c_cls]
     rows = []
     for d in (1, -1):
         hi_m, lo_m, cl_m = (ar["hi"], ar["lo"], ar["cl"]) if d > 0 else (-ar["lo"], -ar["hi"], -ar["cl"])
-        lows_ab, highs_ab = _alice_pivots(df, d, ab_cls)
+        if ab_cls == "major":
+            lows_ab, highs_ab = _alice_pivots(df, d, "major")           # B — главный пик, A — последний главный минимум перед ним
+        else:
+            lows_ab = _alice_pivots(df, d, "minor")[0]                   # A — любой малый минимум
+            highs_ab = _alice_pivots(df, d, "minor", strict_ab)[1]       # B — малый максимум (strict: НЕ ставший главным)
         lows_c, _ = _alice_pivots(df, d, c_cls, strict)
-        maj_lows, maj_highs = _alice_pivots(df, d, "major")  # главные пивоты: A — минимумы, B — максимумы
-        is_maj_a = np.zeros(n, dtype=bool)
-        is_maj_a[maj_lows] = True
-        is_maj_b = np.zeros(n, dtype=bool)
-        is_maj_b[maj_highs] = True
         for b in highs_ab:
             j = int(np.searchsorted(lows_ab, b)) - 1
             if j < 0:
@@ -763,10 +801,6 @@ def alice_build_samples(df, htf, targets, ab_cls, c_cls, strict=True):
                 if Cp > deepest:                                  # C — самое глубокое дно с момента B
                     continue
                 e = c + lag
-                if ab_cls == "major" and b + ALICE_LAG["major"] > e:   # к моменту входа B ещё не подтверждён как главный
-                    continue
-                if strict and ab_cls == "minor" and is_maj_a[a] and is_maj_b[b] and b + ALICE_LAG["major"] <= e:
-                    continue                                      # такая волна относится к классу major/major
                 H = _alice_horizon(c, a)
                 if e + H >= n:                                    # исход ещё не известен — в обучение не берём
                     continue
@@ -778,7 +812,7 @@ def alice_build_samples(df, htf, targets, ab_cls, c_cls, strict=True):
                 if base is None or entry <= Cp:
                     continue
                 tg = hosoda_targets(Ap, Bp, Cp)
-                row = {"c": c, "e": e, "h": H, "d": d,
+                row = {"c": c, "b": b, "e": e, "h": H, "d": d,
                        "ab_major": 1.0 if ab_cls == "major" else 0.0, "c_major": 1.0 if c_cls == "major" else 0.0}
                 row.update(zip(ALICE_BASE_FEATURES, base))
                 for name in targets:
@@ -834,16 +868,54 @@ def _alice_matrix(tr, name):
     return np.column_stack([X, tr[["ab_major", "c_major"]].to_numpy(dtype=float)])
 
 
-def _alice_freq_result(pos, m, H, lag, ab_cls, c_cls, pooled, strict):
+def alice_point_class(df, i, high_side, price):
+    """Робастный класс точки пользователя: "major" / "minor" / "pending".
+    Строгий флаг Major_High/Low ломается из-за микровыбросов, равных экстремумов и клика по соседней свече, поэтому точка
+    считается главной, если выполнено любое из условий:
+      1) строгий главный фрактал в самой точке;
+      2) строгий главный фрактал на соседней свече (+-ALICE_SNAP_BARS);
+      3) точка в пределах ALICE_MAJOR_TOL_ATR * ATR от экстремума окна +-ALICE_MAJOR_RADIUS баров.
+    "pending": после точки меньше ALICE_MAJOR_RADIUS баров — главный фрактал подтвердить ещё нельзя."""
+    n, R = len(df), ALICE_MAJOR_RADIUS
+    if i + R >= n:
+        return "pending"
+    flags = df["Major_High" if high_side else "Major_Low"].to_numpy(dtype=bool)
+    if flags[max(0, i - ALICE_SNAP_BARS):i + ALICE_SNAP_BARS + 1].any():
+        return "major"
+    if i < R:
+        return "minor"
+    window = df["High" if high_side else "Low"].to_numpy(dtype=float)[i - R:i + R + 1]
+    atr = float(df["ATR"].iloc[i])
+    if not (np.isfinite(atr) and atr > 0):
+        return "minor"
+    gap = (window.max() - price) if high_side else (price - window.min())
+    return "major" if gap <= ALICE_MAJOR_TOL_ATR * atr else "minor"
+
+
+def _alice_edge(prob, entry, Cp, T, tr):
+    """Безубыточная вероятность и статистическое преимущество (Statistical Edge).
+    Risk = |Entry - C|, Reward = |Target - Entry|, Break-even = Risk / (Risk + Reward), Edge = P(model) - Break-even.
+    se — приблизительная стандартная ошибка оценки: строки обучающей выборки перекрываются по времени, поэтому
+    считаем по числу РАЗЛИЧНЫХ волн (пик B), а не по числу строк."""
+    risk, reward = entry - Cp, T - entry                       # в «зеркальных» ценах оба положительны
+    be = risk / (risk + reward)
+    n_eff = max(1, int(tr[["d", "b"]].drop_duplicates().shape[0]))
+    p = min(max(prob, 0.01), 0.99)
+    return {"be": be, "edge": prob - be, "rr": reward / risk, "se": float(np.sqrt(p * (1 - p) / n_eff)), "n_eff": n_eff}
+
+
+def _alice_freq_result(pos, m, pooled, meta, entry, Cp, T, tr):
     """Исходы почти односторонние: модель не обучаем, показываем историческую частоту (сглаживание Лапласа)."""
-    return {"status": "ok", "prob": (pos + 1) / (m + 2), "n": m, "base": pos / m, "auc": None, "uplift": None,
-            "reliability": "low", "h": H, "lag": lag, "cls": c_cls, "ab": ab_cls, "pooled": pooled,
-            "strict": strict, "freq_only": True, "hits": pos}
+    prob = (pos + 1) / (m + 2)
+    return {**meta, "status": "ok", "prob": prob, "n": m, "base": pos / m, "auc": None, "uplift": None,
+            "reliability": "low", "pooled": pooled, "freq_only": True, "hits": pos,
+            **_alice_edge(prob, entry, Cp, T, tr)}
 
 
 def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
     """Обучает модель на истории df и оценивает вероятность достижения целей для волны A-B-C пользователя.
-    Класс волны (главные/малые фракталы) определяется по точкам пользователя; обучающие волны — того же класса."""
+    Класс волны определяет пик B (главный/малый) и точка C; классификация точек робастная (alice_point_class).
+    Обучающие волны — того же класса, исход которых полностью известен ДО момента входа текущей волны."""
     if not SKLEARN_OK:
         return {"status": "sklearn"}
     n = len(df)
@@ -854,16 +926,16 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
     d = 1 if b_y > a_y else -1
     if not (a < b < c):
         return {"status": "geom"}
-    flag_low = "Major_Low" if d > 0 else "Major_High"      # A и C — «нижние» точки волны, B — «верхняя»
-    flag_high = "Major_High" if d > 0 else "Major_Low"
-    c_cls = "major" if bool(df[flag_low].iloc[c]) else "minor"
+    # A и C — «нижние» точки волны вверх (верхние у волны вниз), B — противоположная
+    a_st = alice_point_class(df, a, d < 0, a_y)
+    b_st = alice_point_class(df, b, d > 0, b_y)
+    c_st = alice_point_class(df, c, d < 0, c_y)
+    ab_cls = "major" if b_st == "major" else "minor"       # волну определяет пик B: малый A не «понижает» главную волну
+    c_cls = "major" if c_st == "major" else "minor"
     lag = ALICE_LAG[c_cls]
     e = c + lag
     if e >= n:
         return {"status": "fresh", "kw": {"lag": lag}}
-    # A/B считаются главными, только если B уже подтверждён к моменту входа (иначе класс зависел бы от будущего)
-    ab_cls = ("major" if (bool(df[flag_low].iloc[a]) and bool(df[flag_high].iloc[b])
-                          and b + ALICE_LAG["major"] <= e) else "minor")
     Ap, Bp, Cp = d * a_y, d * b_y, d * c_y                  # зеркалим вниз-волну в вверх-волну
     if not (Ap < Cp < Bp):
         return {"status": "geom"}
@@ -877,10 +949,11 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
 
     H = _alice_horizon(c, a)
     tg = hosoda_targets(Ap, Bp, Cp)
-    # Флаги «главный/малый» окончательны, только если после C есть 10 баров. Иначе (свежая точка) класс «малый» ещё
-    # может стать главным — обучаем на всех малых пивотах (режим реального времени).
-    strict = c + ALICE_LAG["major"] < n
-    own = alice_build_samples(df, htf, targets, ab_cls, c_cls, strict)
+    # Флаги «главный/малый» окончательны, только если после точки есть 10 баров. Иначе (свежая точка — Pending) её класс
+    # ещё может измениться — обучаем в режиме реального времени (на всех малых пивотах).
+    strict_c, strict_ab = c_st != "pending", b_st != "pending"
+    meta = {"h": H, "lag": lag, "cls": c_cls, "ab": ab_cls, "strict": strict_c, "a_st": a_st, "b_st": b_st, "c_st": c_st}
+    own = alice_build_samples(df, htf, targets, ab_cls, c_cls, strict_c, strict_ab)
     pool = None
     out = {}
     for name in targets:
@@ -892,11 +965,11 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
         if ALICE_MIN_FREQ <= len(tr) < ALICE_MIN_SAMPLES:
             pos_o = int(tr["y_" + name].sum())
             if min(pos_o, len(tr) - pos_o) < ALICE_MIN_CLASS:   # свой класс мал и почти односторонний — чужие классы не подмешиваем
-                out[name] = _alice_freq_result(pos_o, len(tr), H, lag, ab_cls, c_cls, False, strict)
+                out[name] = _alice_freq_result(pos_o, len(tr), False, meta, entry, Cp, T, tr)
                 continue
         if len(tr) < ALICE_MIN_SAMPLES:        # волн именно этого класса мало — берём волны всех классов (безразмерные дистанции)
             if pool is None:
-                parts = [own] + [alice_build_samples(df, htf, targets, ab, cc, strict)
+                parts = [own] + [alice_build_samples(df, htf, targets, ab, cc, strict_c, strict_ab)
                                  for ab, cc in ALICE_CLASSES if (ab, cc) != (ab_cls, c_cls)]
                 parts = [p_ for p_ in parts if len(p_)]
                 pool = pd.concat(parts, ignore_index=True) if parts else own
@@ -910,7 +983,7 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
         if min(pos, m - pos) < ALICE_MIN_CLASS:
             # исходы почти односторонние (напр. цель смешанной волны практически недостижима): модель не обучаем,
             # показываем честную историческую частоту (со сглаживанием Лапласа)
-            out[name] = _alice_freq_result(pos, m, H, lag, ab_cls, c_cls, pooled, strict)
+            out[name] = _alice_freq_result(pos, m, pooled, meta, entry, Cp, T, tr)
             continue
         X = _alice_matrix(tr, name)
         x = np.asarray(base, dtype=float)
@@ -932,9 +1005,9 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
                 uplift = auc - auc_geom
 
         prob = float(_alice_fit(X, y).predict_proba(x.reshape(1, -1))[0, 1])
-        out[name] = {"status": "ok", "prob": prob, "n": m, "base": pos / m, "auc": auc, "uplift": uplift,
-                     "reliability": alice_reliability(m, auc, uplift), "h": H, "lag": lag,
-                     "cls": c_cls, "ab": ab_cls, "pooled": pooled, "strict": strict, "freq_only": False, "hits": pos}
+        out[name] = {**meta, "status": "ok", "prob": prob, "n": m, "base": pos / m, "auc": auc, "uplift": uplift,
+                     "reliability": alice_reliability(m, auc, uplift), "pooled": pooled, "freq_only": False, "hits": pos,
+                     **_alice_edge(prob, entry, Cp, T, tr)}
     return {"status": "ok", "targets": out}
 
 
@@ -1067,8 +1140,8 @@ if app_mode == "radar":
         for tf in tf_list:
             for asset_name, route in ASSET_ROUTER.items():
                 done += 1
-                label = (t("processing", asset=asset_name) if len(tf_list) == 1
-                         else t("processing_tf", asset=asset_name, tf=tf))
+                label = (t("processing", asset=asset_label(asset_name)) if len(tf_list) == 1
+                         else t("processing_tf", asset=asset_label(asset_name), tf=tf))
                 my_bar.progress(done / total, text=label)
                 rec, err = scan_one(asset_name, route, tf)
                 if rec:
@@ -1109,7 +1182,7 @@ if app_mode == "radar":
         if rows:
             records = []
             for r in rows:
-                rec = {t("col_asset"): r["asset"]}
+                rec = {t("col_asset"): asset_label(r["asset"])}
                 if out["all"]:
                     rec[t("col_tf")] = r["tf"]
                 rec[t("col_signal")] = t("sig_" + r["sig"])
@@ -1126,10 +1199,10 @@ if app_mode == "radar":
         if out["skipped"]:
             with st.expander(t("skipped", n=len(out["skipped"]))):
                 if out["all"]:
-                    sk_df = pd.DataFrame([(a_, tf_, fmt_err(e_)) for a_, tf_, e_ in out["skipped"]],
+                    sk_df = pd.DataFrame([(asset_label(a_), tf_, fmt_err(e_)) for a_, tf_, e_ in out["skipped"]],
                                          columns=[t("col_asset"), t("col_tf"), t("col_reason")])
                 else:
-                    sk_df = pd.DataFrame([(a_, fmt_err(e_)) for a_, _tf, e_ in out["skipped"]],
+                    sk_df = pd.DataFrame([(asset_label(a_), fmt_err(e_)) for a_, _tf, e_ in out["skipped"]],
                                          columns=[t("col_asset"), t("col_reason")])
                 st.dataframe(sk_df, hide_index=True, **WIDE)
 
@@ -1141,7 +1214,7 @@ elif app_mode == "terminal":
     with st.sidebar:
         st.markdown("---")
         st.markdown(f"### {t('terminal_settings')}")
-        asset_name = st.selectbox(t("symbol"), list(ASSET_ROUTER.keys()), key="w_symbol")
+        asset_name = st.selectbox(t("symbol"), list(ASSET_ROUTER.keys()), key="w_symbol", format_func=asset_label)
         tf_name = st.selectbox(t("timeframe"), list(TF_MAP.keys()), key="w_tf")
 
         # смена символа/ТФ/настроек времени -> старые точки теряют смысл
@@ -1333,14 +1406,26 @@ elif app_mode == "terminal":
                         st.caption(t("ai_err_" + r["status"], **r.get("kw", {})))
                         continue
                     pct = int(round(r["prob"] * 100))
+                    edge_pct = r["edge"] * 100
+                    edge_txt = "0.0" if abs(edge_pct) < 0.05 else f"{edge_pct:+.1f}"
                     if shown == 0:
                         st.markdown(f"**{t('ai_prob', target=name)}: {pct}%**")
                         st.progress(float(r["prob"]))
+                        st.caption(t("ai_be", be=f"{r['be'] * 100:.1f}", rr=f"{r['rr']:.2f}"))
+                        edge_color = ALICE_EDGE_POS_COLOR if r["edge"] > 0 else ALICE_EDGE_NEG_COLOR
+                        edge_label = t("ai_edge_pos" if r["edge"] > 0 else "ai_edge_neg", v=edge_txt)
+                        st.markdown(f"<span style='color:{edge_color}; font-weight:600'>{edge_label}</span>",
+                                    unsafe_allow_html=True)
+                        st.caption(t("ai_edge_note", se=f"{r['se'] * 100:.1f}", neff=r["n_eff"]))
+                        if abs(r["edge"]) < 2 * r["se"]:
+                            st.caption(t("ai_edge_noise"))
                     else:
-                        st.caption(f"{t('ai_prob', target=name)}: {pct}%")
+                        st.caption(t("ai_other", target=name, p=pct, be=f"{r['be'] * 100:.1f}", edge=edge_txt))
                     shown += 1
                     auc_txt = f"{r['auc']:.2f}" if r["auc"] is not None else t("ai_na")
                     st.caption(t("ai_stats", n=r["n"], base=int(round(r["base"] * 100)), auc=auc_txt))
+                    st.caption(t("ai_fractals", a=t("ai_fr_" + r["a_st"]), b=t("ai_fr_" + r["b_st"]),
+                                 c=t("ai_fr_" + r["c_st"])))
                     st.caption(t("ai_setup", ab=t("ai_cls_" + r["ab"]), cls=t("ai_cls_" + r["cls"]), lag=r["lag"],
                                  h=r["h"], hmin=ALICE_HORIZON))
                     if r["freq_only"]:
