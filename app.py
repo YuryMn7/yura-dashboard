@@ -49,10 +49,14 @@ Quantitative Analysis Terminal — исправленная версия.
  - «Алиса»: робастная классификация точек A/B/C (допуск на микровыбросы, привязка к соседней свече, Pending для
    свежих точек); класс волны определяет пик B; Break-even вероятность и Statistical Edge (модель минус безубыточная);
  - DXY (Yahoo DX-Y.NYB) добавлен как не-Форекс актив.
+ - «Алиса»: 3 исхода (цель +1 / стоп -1 / таймаут 0), честная вероятность цели против стопа и Statistical Edge;
+   светофор (приглушённые цвета) на виду, все метрики — в раскрывающемся блоке; блокировок «цель/стоп уже достигнуты» нет;
+ - Terminal: кнопка отправки отчёта в Telegram (график PNG + текст), секреты TELEGRAM_TOKEN / TELEGRAM_CHAT_ID.
  - переключатель языка English / Русский (первый элемент боковой панели); язык по умолчанию — DEFAULT_LANG;
    все тексты интерфейса лежат в словаре I18N; результаты радара сохраняются при смене языка.
 """
 import gc
+import io
 import re
 from datetime import timedelta, timezone
 
@@ -233,8 +237,28 @@ I18N = {
         "err_nan": "indicators not ready (NaN)",
         "ai_title": "AI Probability Analysis (Alice Model)",
         "ai_hint": "Select points A, B and C on the chart to run the model.",
-        "ai_prob": "Probability of reaching Target {target}",
-        "ai_stats": "Samples: {n} | Historical hit rate: {base}% | Holdout AUC: {auc}",
+        "ai_light_green": "High probability of success",
+        "ai_light_yellow": "Moderate potential",
+        "ai_light_red": "Low probability / High risk",
+        "ai_details_title": "AI analysis details (for experts)",
+        "ai_target_name": "Target {target}",
+        "ai_d_probs": "Outcome probabilities: target {pt}% | stop {ps}% | timeout {p0}%",
+        "ai_d_fair": "Fair target probability (target vs stop): {pf}% | Break-even: {be}% (Risk : Reward = 1 : {rr})",
+        "ai_d_edge": "Statistical Edge: {edge}% (s.e. +/-{se}%, {neff} distinct waves). Timeouts are excluded; spread and commissions are not included.",
+        "ai_det_target": "Target {target} was already crossed during the confirmation lag: the outcome is known (target reached).",
+        "ai_det_stop": "Level C was already broken by the entry bar: the outcome is known (stop).",
+        "tg_button": "Send report to Telegram",
+        "tg_sending": "Sending report...",
+        "tg_sent": "Report sent to Telegram.",
+        "tg_sent_text": "Chart image is unavailable (install kaleido or matplotlib); a text-only report was sent.",
+        "tg_err": "Telegram error: {detail}",
+        "tg_no_secrets": "Add TELEGRAM_TOKEN and TELEGRAM_CHAT_ID to the app secrets.",
+        "tg_report": "Ichimoku Wave Terminal\n{symbol} | {tf} | {bar}\nPrice: {price}\nHTF trend ({htf}): {trend}\nTarget N: {target}\nAI verdict: {verdict}",
+        "tg_up": "Bullish",
+        "tg_down": "Bearish",
+        "tg_flat": "Neutral",
+        "tg_na": "n/a",
+        "ai_stats": "Samples: {n} ({neff} distinct waves) | Historical outcomes: target {ft}% / stop {fs}% / timeout {f0}% | Holdout AUC: {auc}",
         "ai_fractals": "Fractals: A - {a}, B - {b}, C - {c}",
         "ai_fr_major": "Major",
         "ai_fr_minor": "Minor",
@@ -242,12 +266,6 @@ I18N = {
         "ai_setup": "Model class: B {ab} / C {cls} | Entry: bar C + {lag} | Horizon, bars: {h} (A-C time, min {hmin})",
         "ai_cls_major": "major",
         "ai_cls_minor": "minor",
-        "ai_be": "Break-even probability: {be}% (Risk : Reward = 1 : {rr})",
-        "ai_edge_pos": "Statistical Edge: Positive ({v}%)",
-        "ai_edge_neg": "Statistical Edge: Negative ({v}%)",
-        "ai_edge_note": "Estimation error (s.e.): +/-{se}% on {neff} distinct waves. Timeouts count as misses; spread and commissions are not included.",
-        "ai_edge_noise": "The edge is within twice the estimation error.",
-        "ai_other": "Target {target}: probability {p}% | break-even {be}% | edge {edge}%",
         "ai_pooled": "Too few waves of this exact class: the model was trained on waves of all fractal classes (scale-free distances).",
         "ai_live": "Point C is recent: its fractal class is not final yet, so the model was trained in real-time mode.",
         "ai_freq_only": "Too few rare outcomes to train a model ({k} of {n} similar waves reached the target, or nearly all did); showing the historical frequency.",
@@ -262,11 +280,8 @@ I18N = {
         "ai_err_sklearn": "scikit-learn is not installed. Add it to requirements.txt.",
         "ai_err_fresh": "Point C is too recent: at least {lag} bars after C are required.",
         "ai_err_geom": "Invalid wave geometry: point C must lie between A and B.",
-        "ai_err_stop": "Level C was already broken after the point, so the wave is invalid.",
         "ai_err_nan": "Indicators are not ready at point C (not enough history).",
-        "ai_err_target": "Target {target} was already reached by the entry time.",
         "ai_err_samples": "Not enough comparable historical waves ({n} found, at least {min} required).",
-        "ai_err_classes": "Historical outcomes are one-sided, so the model was not trained.",
         "history_partial": "Part of the history could not be loaded ({detail}); the chart may be shorter than usual.",
     },
     "ru": {
@@ -339,8 +354,28 @@ I18N = {
         "err_nan": "индикаторы не готовы (NaN)",
         "ai_title": "ИИ-анализ вероятности (модель Alice)",
         "ai_hint": "Выберите на графике точки A, B и C, чтобы запустить модель.",
-        "ai_prob": "Вероятность достижения цели {target}",
-        "ai_stats": "Выборка: {n} | Историческая частота: {base}% | AUC на отложенной выборке: {auc}",
+        "ai_light_green": "Высокая вероятность успеха",
+        "ai_light_yellow": "Средний потенциал",
+        "ai_light_red": "Низкая вероятность / Опасно",
+        "ai_details_title": "Подробности ИИ-анализа (для экспертов)",
+        "ai_target_name": "Цель {target}",
+        "ai_d_probs": "Вероятности исходов: цель {pt}% | стоп {ps}% | таймаут {p0}%",
+        "ai_d_fair": "Честная вероятность цели (цель против стопа): {pf}% | Безубыточная: {be}% (риск : прибыль = 1 : {rr})",
+        "ai_d_edge": "Statistical Edge: {edge}% (s.e. +/-{se}%, {neff} различных волн). Таймауты исключены; спред и комиссии не учтены.",
+        "ai_det_target": "Цель {target} уже пересечена за лаг подтверждения фрактала: исход известен (цель достигнута).",
+        "ai_det_stop": "Уровень C уже пробит к бару входа: исход известен (стоп).",
+        "tg_button": "Отправить отчет в Telegram",
+        "tg_sending": "Отправка отчета...",
+        "tg_sent": "Отчет отправлен в Telegram.",
+        "tg_sent_text": "Изображение графика недоступно (установите kaleido или matplotlib); отправлен только текстовый отчет.",
+        "tg_err": "Ошибка Telegram: {detail}",
+        "tg_no_secrets": "Добавьте TELEGRAM_TOKEN и TELEGRAM_CHAT_ID в секреты приложения.",
+        "tg_report": "Ichimoku Wave Terminal\n{symbol} | {tf} | {bar}\nЦена: {price}\nТренд HTF ({htf}): {trend}\nЦель N: {target}\nВердикт ИИ: {verdict}",
+        "tg_up": "Бычий",
+        "tg_down": "Медвежий",
+        "tg_flat": "Нейтральный",
+        "tg_na": "н/д",
+        "ai_stats": "Выборка: {n} ({neff} различных волн) | Исторические исходы: цель {ft}% / стоп {fs}% / таймаут {f0}% | AUC на отложенной выборке: {auc}",
         "ai_fractals": "Фракталы: A — {a}, B — {b}, C — {c}",
         "ai_fr_major": "Главный",
         "ai_fr_minor": "Малый",
@@ -348,12 +383,6 @@ I18N = {
         "ai_setup": "Класс модели: B {ab} / C {cls} | Вход: бар C + {lag} | Горизонт, баров: {h} (время A-C, минимум {hmin})",
         "ai_cls_major": "главный",
         "ai_cls_minor": "малый",
-        "ai_be": "Безубыточная вероятность: {be}% (риск : прибыль = 1 : {rr})",
-        "ai_edge_pos": "Statistical Edge: положительное ({v}%)",
-        "ai_edge_neg": "Statistical Edge: отрицательное ({v}%)",
-        "ai_edge_note": "Ошибка оценки (s.e.): +/-{se}% по {neff} различным волнам. Таймауты считаются неудачей; спред и комиссии не учтены.",
-        "ai_edge_noise": "Преимущество в пределах двух ошибок оценки.",
-        "ai_other": "Цель {target}: вероятность {p}% | безубыточная {be}% | преимущество {edge}%",
         "ai_pooled": "Волн именно этого класса слишком мало: модель обучена на волнах всех классов фракталов (безразмерные дистанции).",
         "ai_live": "Точка C свежая: её класс фрактала ещё не окончателен, поэтому модель обучена в режиме реального времени.",
         "ai_freq_only": "Редких исходов слишком мало для обучения модели ({k} из {n} похожих волн дошли до цели, либо почти все); показана историческая частота.",
@@ -368,11 +397,8 @@ I18N = {
         "ai_err_sklearn": "Библиотека scikit-learn не установлена. Добавьте её в requirements.txt.",
         "ai_err_fresh": "Точка C слишком свежая: после C нужно минимум {lag} бара.",
         "ai_err_geom": "Некорректная геометрия волны: точка C должна лежать между A и B.",
-        "ai_err_stop": "Уровень C уже пробит после этой точки, волна недействительна.",
         "ai_err_nan": "На точке C индикаторы ещё не готовы (мало истории).",
-        "ai_err_target": "Цель {target} уже достигнута к моменту входа.",
         "ai_err_samples": "Недостаточно похожих исторических волн (найдено {n}, нужно минимум {min}).",
-        "ai_err_classes": "Исторические исходы односторонние, модель не обучалась.",
         "history_partial": "Часть истории не загрузилась ({detail}); график может быть короче обычного.",
     },
 }
@@ -682,8 +708,13 @@ ALICE_LAG = {"minor": 2, "major": 10}   # вход после подтвержд
 ALICE_MAJOR_RADIUS = 10     # радиус главного фрактала (баров с каждой стороны), как в add_indicators
 ALICE_SNAP_BARS = 2         # клик мог попасть на соседнюю свечу: главный фрактал в пределах +-2 баров считается «этой» точкой
 ALICE_MAJOR_TOL_ATR = 0.35  # допуск на микровыброс/равные экстремумы: точка в пределах 0.35 ATR от экстремума окна +-10 баров — главная
-ALICE_EDGE_POS_COLOR = "#2e7d5b"   # сдержанные цвета строки Statistical Edge
-ALICE_EDGE_NEG_COLOR = "#9a5252"
+ALICE_LIGHT_COLORS = {"green": "#3f7d5c", "yellow": "#a88a45", "red": "#9a5252"}   # приглушённые цвета светофора
+# Пороги светофора подобраны на симуляции (случайное блуждание без сигнала; ряд с заложенным слабым эффектом):
+# зелёный — Edge >= +5 п.п., не меньше 2 ошибок оценки и подтверждение на отложенной выборке (uplift признаков Ишимоку);
+# красный — Edge <= -10 п.п. и не больше -2 ошибок оценки.
+ALICE_GREEN_EDGE, ALICE_GREEN_Z, ALICE_GREEN_UPLIFT = 0.05, 2.0, 0.03
+ALICE_RED_EDGE, ALICE_RED_Z = 0.10, 2.0
+ALICE_MIN_RESOLVED = 0.10                     # если разрешилось (цель или стоп) меньше 10% волн — оценка неустойчива
 ALICE_MIN_LEG_ATR = 2.0     # минимальная длина волны A-B в единицах ATR
 ALICE_MIN_SAMPLES = 80      # минимум исторических волн для обучения
 ALICE_MIN_FREQ = 30         # от скольких волн своего класса уже честна «чистая частота» (если редких исходов < ALICE_MIN_CLASS)
@@ -745,12 +776,15 @@ def _alice_geom(entry, atr, horizon, Ap, Bp, Cp, T):
 
 
 def _alice_label(hi_m, lo_m, e, target, stop, horizon):
-    """1 — цель достигнута раньше стопа за horizon баров после входа; 0 — иначе (ничья в одном баре = стоп)."""
+    """Исход за horizon баров после входа: 1 — цель достигнута раньше стопа; -1 — сбит стоп (ничья в одном баре = стоп);
+    0 — таймаут (не достигнуто ни то, ни другое)."""
     th = hi_m[e + 1:e + horizon + 1] >= target
     sh = lo_m[e + 1:e + horizon + 1] <= stop
     ti = int(np.argmax(th)) if th.any() else horizon + 1
     si = int(np.argmax(sh)) if sh.any() else horizon + 1
-    return 1 if ti < si else 0
+    if ti < si:
+        return 1
+    return -1 if si <= horizon else 0
 
 
 def _alice_pivots(df, d, cls, strict=False):
@@ -809,7 +843,7 @@ def alice_build_samples(df, htf, targets, ab_cls, c_cls, strict=True, strict_ab=
                 if not (np.isfinite(atr) and atr > 0 and leg >= ALICE_MIN_LEG_ATR * atr and Ap < Cp < Bp):
                     continue
                 base, entry = _alice_base(ar, e, d), cl_m[e]
-                if base is None or entry <= Cp:
+                if base is None:
                     continue
                 tg = hosoda_targets(Ap, Bp, Cp)
                 row = {"c": c, "b": b, "e": e, "h": H, "d": d,
@@ -820,11 +854,10 @@ def alice_build_samples(df, htf, targets, ab_cls, c_cls, strict=True, strict_ab=
                     geom = _alice_geom(entry, atr, H, Ap, Bp, Cp, T)
                     if name == targets[0]:
                         row["retr"], row["risk_z"] = geom[0], geom[1]
-                    if T <= entry:                                # цель уже позади — пример не годится
-                        row["reward_z_" + name], row["y_" + name] = np.nan, np.nan
-                    else:
-                        row["reward_z_" + name] = geom[2]
-                        row["y_" + name] = _alice_label(hi_m, lo_m, e, T, Cp, H)
+                    # цель могла быть пересечена уже за лаг подтверждения фрактала — такие волны остаются в выборке
+                    # (исход считается обычным образом: цель/стоп/таймаут)
+                    row["reward_z_" + name] = geom[2]
+                    row["y_" + name] = _alice_label(hi_m, lo_m, e, T, Cp, H)
                 rows.append(row)
     return pd.DataFrame(rows)
 
@@ -892,30 +925,85 @@ def alice_point_class(df, i, high_side, price):
     return "major" if gap <= ALICE_MAJOR_TOL_ATR * atr else "minor"
 
 
-def _alice_edge(prob, entry, Cp, T, tr):
-    """Безубыточная вероятность и статистическое преимущество (Statistical Edge).
-    Risk = |Entry - C|, Reward = |Target - Entry|, Break-even = Risk / (Risk + Reward), Edge = P(model) - Break-even.
-    se — приблизительная стандартная ошибка оценки: строки обучающей выборки перекрываются по времени, поэтому
-    считаем по числу РАЗЛИЧНЫХ волн (пик B), а не по числу строк."""
-    risk, reward = entry - Cp, T - entry                       # в «зеркальных» ценах оба положительны
-    be = risk / (risk + reward)
-    n_eff = max(1, int(tr[["d", "b"]].drop_duplicates().shape[0]))
-    p = min(max(prob, 0.01), 0.99)
-    return {"be": be, "edge": prob - be, "rr": reward / risk, "se": float(np.sqrt(p * (1 - p) / n_eff)), "n_eff": n_eff}
+def _alice_proba3(model, X):
+    """Вероятности исходов в фиксированном порядке (стоп -1, таймаут 0, цель +1); не встретившиеся в обучении классы = 0."""
+    P = np.zeros((len(X), 3))
+    raw = model.predict_proba(X)
+    for j, cls in enumerate(model.classes_):
+        P[:, int(cls) + 1] = raw[:, j]
+    return P
 
 
-def _alice_freq_result(pos, m, pooled, meta, entry, Cp, T, tr):
-    """Исходы почти односторонние: модель не обучаем, показываем историческую частоту (сглаживание Лапласа)."""
-    prob = (pos + 1) / (m + 2)
-    return {**meta, "status": "ok", "prob": prob, "n": m, "base": pos / m, "auc": None, "uplift": None,
-            "reliability": "low", "pooled": pooled, "freq_only": True, "hits": pos,
-            **_alice_edge(prob, entry, Cp, T, tr)}
+def _alice_fair(P):
+    """Честная вероятность цели относительно стопа: P(цель) / (P(цель) + P(стоп)); таймауты не учитываются."""
+    res = P[:, 0] + P[:, 2]
+    return np.where(res > 1e-9, P[:, 2] / np.maximum(res, 1e-9), 0.5)
+
+
+def _alice_counts(y):
+    return {1: int((y == 1).sum()), -1: int((y == -1).sum()), 0: int((y == 0).sum())}
+
+
+def _alice_neff(tr):
+    """Число различных волн (пик B): строки выборки перекрываются по времени, поэтому строк больше, чем независимых волн."""
+    return max(1, int(tr[["d", "b"]].drop_duplicates().shape[0]))
+
+
+def _alice_edge(p_fair, entry, Cp, T, n_eff, res_share):
+    """Безубыточная вероятность и Statistical Edge.
+    Risk = |Entry - C|, Reward = |Target - Entry|, Break-even = Risk / (Risk + Reward).
+    Edge = честная вероятность цели (цель против стопа, без таймаутов) - Break-even.
+    se — приблизительная ошибка оценки: по числу РАЗЛИЧНЫХ волн и доле исходов, не закончившихся таймаутом."""
+    risk, reward = abs(entry - Cp), abs(T - entry)
+    be = risk / (risk + reward) if (risk + reward) > 0 else 0.5
+    n_res = max(1.0, n_eff * max(res_share, 0.05))
+    p = min(max(p_fair, 0.01), 0.99)
+    return {"be": be, "edge": p_fair - be, "rr": (reward / risk) if risk > 0 else None,
+            "se": float(np.sqrt(p * (1 - p) / n_res)), "n_eff": int(n_eff), "res_share": float(res_share)}
+
+
+def _alice_result(meta, P, m, counts, auc, uplift, pooled, freq_only, n_eff, entry, Cp, T):
+    p_s, p_0, p_t = (float(v) for v in P)
+    p_fair = p_t / (p_t + p_s) if (p_t + p_s) > 1e-9 else 0.5
+    res_share = (counts[1] + counts[-1]) / m
+    return {**meta, "status": "ok", "det": None, "p_target": p_t, "p_stop": p_s, "p_timeout": p_0, "p_fair": p_fair,
+            "n": m, "freq": {"target": counts[1] / m, "stop": counts[-1] / m, "timeout": counts[0] / m},
+            "auc": auc, "uplift": uplift, "reliability": alice_reliability(m, auc, uplift),
+            "pooled": pooled, "freq_only": freq_only, **_alice_edge(p_fair, entry, Cp, T, n_eff, res_share)}
+
+
+def _alice_det_result(kind, meta, entry, Cp, T):
+    """Исход уже известен на момент входа: цель пересечена за лаг подтверждения фрактала (target) либо стоп уже
+    пробит (stop). Блокировки нет — результат показывается для любого выбранного исторического паттерна."""
+    pt, ps = (1.0, 0.0) if kind == "target" else (0.0, 1.0)
+    return {**meta, "status": "ok", "det": kind, "p_target": pt, "p_stop": ps, "p_timeout": 0.0, "p_fair": pt, "n": 0,
+            "freq": None, "auc": None, "uplift": None, "reliability": "low", "pooled": False, "freq_only": False,
+            **_alice_edge(pt, entry, Cp, T, 1, 1.0), "se": 0.0}
+
+
+def alice_verdict(r):
+    """Светофор по Statistical Edge (честная вероятность цели против безубыточной): "green" / "yellow" / "red".
+    Пороги учитывают шум оценки (s.e.); зелёный требует подтверждения на отложенной выборке (иначе «зелёные» чаще шум)."""
+    if r["det"] == "target":
+        return "green"                        # цель уже пересечена за лаг подтверждения — исход известен
+    if r["det"] == "stop":
+        return "red"                          # стоп уже пробит — исход известен
+    if r["res_share"] < ALICE_MIN_RESOLVED:
+        return "yellow"                       # почти все исходы — таймауты: оценка преимущества неустойчива
+    edge, se, upl = r["edge"], r["se"], r["uplift"]
+    z = edge / se if se > 0 else 0.0
+    if edge >= ALICE_GREEN_EDGE and z >= ALICE_GREEN_Z and upl is not None and upl >= ALICE_GREEN_UPLIFT:
+        return "green"
+    if edge <= -ALICE_RED_EDGE and z <= -ALICE_RED_Z:
+        return "red"
+    return "yellow"
 
 
 def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
-    """Обучает модель на истории df и оценивает вероятность достижения целей для волны A-B-C пользователя.
+    """Обучает 3-исходную модель (цель +1 / стоп -1 / таймаут 0) на истории df и оценивает вероятности для волны A-B-C.
     Класс волны определяет пик B (главный/малый) и точка C; классификация точек робастная (alice_point_class).
-    Обучающие волны — того же класса, исход которых полностью известен ДО момента входа текущей волны."""
+    Обучающие волны — того же класса, исход которых полностью известен ДО момента входа текущей волны.
+    Блокировок «цель уже достигнута» / «стоп уже пробит» нет: такие паттерны получают детерминированный исход."""
     if not SKLEARN_OK:
         return {"status": "sklearn"}
     n = len(df)
@@ -944,8 +1032,6 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
     base = _alice_base(ar, e, d)
     if base is None:
         return {"status": "nan"}
-    if entry <= Cp:
-        return {"status": "stop"}
 
     H = _alice_horizon(c, a)
     tg = hosoda_targets(Ap, Bp, Cp)
@@ -953,19 +1039,24 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
     # ещё может измениться — обучаем в режиме реального времени (на всех малых пивотах).
     strict_c, strict_ab = c_st != "pending", b_st != "pending"
     meta = {"h": H, "lag": lag, "cls": c_cls, "ab": ab_cls, "strict": strict_c, "a_st": a_st, "b_st": b_st, "c_st": c_st}
-    own = alice_build_samples(df, htf, targets, ab_cls, c_cls, strict_c, strict_ab)
-    pool = None
+    own = pool = None
     out = {}
     for name in targets:
         T = tg[name]
-        if T <= entry:
-            out[name] = {"status": "target", "kw": {"target": name}}
+        if entry <= Cp:                       # стоп уже пробит к моменту входа — исход известен
+            out[name] = _alice_det_result("stop", meta, entry, Cp, T)
             continue
+        if T <= entry:                        # цель пересечена за лаг подтверждения — исход известен
+            out[name] = _alice_det_result("target", meta, entry, Cp, T)
+            continue
+        if own is None:
+            own = alice_build_samples(df, htf, targets, ab_cls, c_cls, strict_c, strict_ab)
         tr, pooled = _alice_train_rows(own, name, e), False
         if ALICE_MIN_FREQ <= len(tr) < ALICE_MIN_SAMPLES:
-            pos_o = int(tr["y_" + name].sum())
-            if min(pos_o, len(tr) - pos_o) < ALICE_MIN_CLASS:   # свой класс мал и почти односторонний — чужие классы не подмешиваем
-                out[name] = _alice_freq_result(pos_o, len(tr), False, meta, entry, Cp, T, tr)
+            cnt = _alice_counts(tr["y_" + name].to_numpy(dtype=int))
+            if min(cnt[1], cnt[-1]) < ALICE_MIN_CLASS:   # свой класс мал, а целей или стопов мало — чужие классы не подмешиваем
+                P = np.array([cnt[-1] + 1, cnt[0] + 1, cnt[1] + 1], dtype=float) / (len(tr) + 3)
+                out[name] = _alice_result(meta, P, len(tr), cnt, None, None, False, True, _alice_neff(tr), entry, Cp, T)
                 continue
         if len(tr) < ALICE_MIN_SAMPLES:        # волн именно этого класса мало — берём волны всех классов (безразмерные дистанции)
             if pool is None:
@@ -979,11 +1070,13 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
             out[name] = {"status": "samples", "kw": {"n": m, "min": ALICE_MIN_SAMPLES}}
             continue
         y = tr["y_" + name].to_numpy(dtype=int)
-        pos = int(y.sum())
-        if min(pos, m - pos) < ALICE_MIN_CLASS:
-            # исходы почти односторонние (напр. цель смешанной волны практически недостижима): модель не обучаем,
-            # показываем честную историческую частоту (со сглаживанием Лапласа)
-            out[name] = _alice_freq_result(pos, m, pooled, meta, entry, Cp, T, tr)
+        cnt = _alice_counts(y)
+        n_eff = _alice_neff(tr)
+        if min(cnt[1], cnt[-1]) < ALICE_MIN_CLASS:
+            # целей или стопов почти нет (напр. цель смешанной волны практически недостижима): модель не обучаем,
+            # показываем честные исторические частоты исходов (сглаживание Лапласа)
+            P = np.array([cnt[-1] + 1, cnt[0] + 1, cnt[1] + 1], dtype=float) / (m + 3)
+            out[name] = _alice_result(meta, P, m, cnt, None, None, pooled, True, n_eff, entry, Cp, T)
             continue
         X = _alice_matrix(tr, name)
         x = np.asarray(base, dtype=float)
@@ -991,23 +1084,25 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
             x = np.append(x, _alice_geom(entry, atr, H, Ap, Bp, Cp, T))
         x = np.append(x, [1.0 if ab_cls == "major" else 0.0, 1.0 if c_cls == "major" else 0.0])
 
-        # отложенная выборка по времени (с «зазором» на длину окна исхода) — честная оценка качества
+        # отложенная выборка по времени (с «зазором» на длину окна исхода): AUC честной вероятности цели на разрешившихся
         e_arr, h_arr = tr["e"].to_numpy(), tr["h"].to_numpy()
         e_cut = e_arr[int(m * 0.75)]
         fit_i, val_i = np.flatnonzero(e_arr + h_arr < e_cut), np.flatnonzero(e_arr >= e_cut)
         auc = uplift = None
-        if len(fit_i) >= 40 and len(val_i) >= 15 and 0 < y[val_i].sum() < len(val_i) and 0 < y[fit_i].sum() < len(fit_i):
-            auc = float(roc_auc_score(y[val_i], _alice_fit(X[fit_i], y[fit_i]).predict_proba(X[val_i])[:, 1]))
-            if ALICE_USE_GEOMETRY:   # модель «только геометрия» (откат, дистанции) — база для сравнения
-                gcols = slice(len(ALICE_BASE_FEATURES), None)
-                auc_geom = float(roc_auc_score(
-                    y[val_i], _alice_fit(X[fit_i][:, gcols], y[fit_i]).predict_proba(X[val_i][:, gcols])[:, 1]))
-                uplift = auc - auc_geom
+        if len(fit_i) >= 40 and len(val_i) >= 15:
+            yf, yv = y[fit_i], y[val_i]
+            res_v = yv != 0
+            if res_v.sum() >= 10 and 0 < (yv[res_v] == 1).sum() < res_v.sum() and (yf == 1).any() and (yf == -1).any():
+                Xv = X[val_i][res_v]
+                auc = float(roc_auc_score(yv[res_v] == 1, _alice_fair(_alice_proba3(_alice_fit(X[fit_i], yf), Xv))))
+                if ALICE_USE_GEOMETRY:   # модель «только геометрия» (откат, дистанции) — база для сравнения
+                    gcols = slice(len(ALICE_BASE_FEATURES), None)
+                    auc_geom = float(roc_auc_score(
+                        yv[res_v] == 1, _alice_fair(_alice_proba3(_alice_fit(X[fit_i][:, gcols], yf), Xv[:, gcols]))))
+                    uplift = auc - auc_geom
 
-        prob = float(_alice_fit(X, y).predict_proba(x.reshape(1, -1))[0, 1])
-        out[name] = {**meta, "status": "ok", "prob": prob, "n": m, "base": pos / m, "auc": auc, "uplift": uplift,
-                     "reliability": alice_reliability(m, auc, uplift), "pooled": pooled, "freq_only": False, "hits": pos,
-                     **_alice_edge(prob, entry, Cp, T, tr)}
+        P = _alice_proba3(_alice_fit(X, y), x.reshape(1, -1))[0]
+        out[name] = _alice_result(meta, P, m, cnt, auc, uplift, pooled, False, n_eff, entry, Cp, T)
     return {"status": "ok", "targets": out}
 
 
@@ -1015,6 +1110,89 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
 def alice_run(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets):
     """Кэшируем результат: ML не пересчитывается при каждой перерисовке страницы."""
     return alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets)
+
+
+# ==========================================
+# TELEGRAM: отчёт по текущему графику
+# ==========================================
+def _tg_credentials():
+    """(token, chat_id) из st.secrets; None, если секреты не заданы."""
+    try:
+        return str(st.secrets["TELEGRAM_TOKEN"]), str(st.secrets["TELEGRAM_CHAT_ID"])
+    except Exception:
+        return None, None
+
+
+def _render_chart_matplotlib(df_plot, pts, targets, title):
+    """Запасной рендер графика без браузера: свечи, Tenkan/Kijun/Chikou, Облако Кумо, волна A-B-C и цели -> BytesIO (PNG)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    x = np.arange(len(df_plot))
+    o, h, l, c = (df_plot[k].to_numpy(dtype=float) for k in ("Open", "High", "Low", "Close"))
+    fig_, ax = plt.subplots(figsize=(14, 7.5), dpi=130)
+    ax.vlines(x, l, h, color="#2c3e50", linewidth=0.8, zorder=3)
+    ax.bar(x, np.abs(c - o), bottom=np.minimum(o, c), width=0.6, color=np.where(c >= o, "white", "#2c3e50"),
+           edgecolor="#2c3e50", linewidth=0.8, zorder=4)
+    ax.plot(x, df_plot["tenkan"].to_numpy(dtype=float), color="#2980b9", linewidth=1.2, zorder=5)
+    ax.plot(x, df_plot["kijun"].to_numpy(dtype=float), color="#e74c3c", linewidth=1.6, zorder=5)
+    ax.plot(x, df_plot["chikou"].to_numpy(dtype=float), color="#1e8449", linewidth=1.0, zorder=5)
+    sa, sb = df_plot["raw_senkou_a"].to_numpy(dtype=float), df_plot["raw_senkou_b"].to_numpy(dtype=float)
+    ax.fill_between(x + 26, sa, sb, where=sa >= sb, color="#2ecc71", alpha=0.25, linewidth=0, zorder=1)
+    ax.fill_between(x + 26, sa, sb, where=sa < sb, color="#e74c3c", alpha=0.20, linewidth=0, zorder=1)
+    if pts:
+        ax.plot([p_["x"] for p_ in pts], [p_["y"] for p_ in pts], color="#f39c12", marker="o", markersize=5, linewidth=1.6, zorder=6)
+        for letter, p_ in zip("ABC", pts):
+            ax.annotate(letter, (p_["x"], p_["y"]), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=10, color="#b9770e")
+    colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
+    for name, val in (targets or {}).items():
+        ax.axhline(val, color=colors.get(name, "gray"), linestyle="--", linewidth=1.0, zorder=2)
+        ax.text(1.0, val, f" {name} {fmt_price(val)}", transform=ax.get_yaxis_transform(), va="center", fontsize=9, color=colors.get(name, "gray"))
+    step = max(1, len(df_plot) // 10)
+    ax.set_xticks(x[::step])
+    ax.set_xticklabels(df_plot.index.strftime("%Y-%m-%d %H:%M")[::step], rotation=45, ha="right", fontsize=8)
+    ax.yaxis.tick_right()
+    ax.set_title(title, loc="left", fontsize=11, color="#2c3e50")
+    ax.grid(True, color="#f0f0f0")
+    for side in ("top", "left"):
+        ax.spines[side].set_visible(False)
+    buf = io.BytesIO()
+    fig_.savefig(buf, format="png", bbox_inches="tight", facecolor="white")
+    plt.close(fig_)
+    buf.seek(0)
+    return buf
+
+
+def render_chart_png(fig, df_plot, pts, targets, title):
+    """PNG текущего графика в io.BytesIO. Сначала сам график Plotly (нужен kaleido) — точно то, что на экране;
+    если не получилось — запасной рендер matplotlib. Возвращает (BytesIO | None, движок | None)."""
+    try:
+        return io.BytesIO(fig.to_image(format="png", width=1400, height=800, scale=2)), "plotly"
+    except Exception:
+        pass
+    try:
+        return _render_chart_matplotlib(df_plot, pts, targets, title), "matplotlib"
+    except Exception:
+        return None, None
+
+
+def send_telegram(token, chat_id, text, png):
+    """sendPhoto (график + подпись) либо sendMessage (если график получить не удалось). Возвращает (ok, ошибка)."""
+    base = f"https://api.telegram.org/bot{token}"
+    try:
+        if png is not None:
+            png.seek(0)
+            r = requests.post(base + "/sendPhoto", data={"chat_id": chat_id, "caption": text[:1000]},
+                              files={"photo": ("chart.png", png, "image/png")}, timeout=30)
+        else:
+            r = requests.post(base + "/sendMessage", data={"chat_id": chat_id, "text": text}, timeout=30)
+        res = r.json()
+        if not res.get("ok"):
+            return False, str(res.get("description", "unknown error")).replace(token, "***")
+        return True, None
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}".replace(token, "***")
 
 
 # ==========================================
@@ -1375,69 +1553,114 @@ elif app_mode == "terminal":
             st.info(t("points_outside"))
 
         # ---- Проект «Алиса»: ML-оценка вероятности достижения целей Хосоды ----
+        _htf_memo = {}
+
+        def htf_info():
+            """(тренд старшего ТФ на барах df, старший ТФ, данные недоступны?) — считается один раз за прогон."""
+            if "v" not in _htf_memo:
+                htf_tf = TERMINAL_HTF_MAP.get(tf_name, tf_name)
+                if htf_tf == tf_name:
+                    df_h = df_raw
+                else:
+                    df_h_raw, _htf_err = fetch_smart_data(asset_name, htf_tf)
+                    df_h = prepare_ohlc(
+                        df_h_raw, htf_tf, is_fx_asset(ASSET_ROUTER[asset_name]), count_weekend, drop_clearing, offset_choice
+                    )
+                missing = df_h.empty
+                _htf_memo["v"] = (np.zeros(len(df)) if missing else htf_trend_series(df_h, df.index), htf_tf, missing)
+            return _htf_memo["v"]
+
         st.markdown(f"#### {t('ai_title')}")
         abc = st.session_state.abc_points
+        ai_light = None                                      # вердикт для отчёта в Telegram
         if len(abc) < 3:
             st.caption(t("ai_hint"))
         elif not SKLEARN_OK:
             st.warning(t("ai_err_sklearn"))
         else:
-            htf_tf = TERMINAL_HTF_MAP.get(tf_name, tf_name)
-            if htf_tf == tf_name:
-                df_h = df_raw
-            else:
-                df_h_raw, _htf_err = fetch_smart_data(asset_name, htf_tf)
-                df_h = prepare_ohlc(
-                    df_h_raw, htf_tf, is_fx_asset(ASSET_ROUTER[asset_name]), count_weekend, drop_clearing, offset_choice
-                )
-            htf_missing = df_h.empty
-            htf_arr = np.zeros(len(df)) if htf_missing else htf_trend_series(df_h, df.index)
+            htf_arr, _htf_tf, htf_missing = htf_info()
             A_, B_, C_ = abc
             res = alice_run(df, htf_arr, A_["t"], A_["y"], B_["t"], B_["y"], C_["t"], C_["y"], ALICE_TARGETS)
             if res["status"] != "ok":
                 st.info(t("ai_err_" + res["status"], **res.get("kw", {})))
             else:
-                if htf_missing:
-                    st.caption(t("ai_htf_missing"))
-                shown = 0
+                ok_targets = []
                 for name in ALICE_TARGETS:
                     r = res["targets"][name]
                     if r["status"] != "ok":
-                        st.caption(t("ai_err_" + r["status"], **r.get("kw", {})))
+                        st.info(t("ai_err_" + r["status"], **r.get("kw", {})))
                         continue
-                    pct = int(round(r["prob"] * 100))
-                    edge_pct = r["edge"] * 100
-                    edge_txt = "0.0" if abs(edge_pct) < 0.05 else f"{edge_pct:+.1f}"
-                    if shown == 0:
-                        st.markdown(f"**{t('ai_prob', target=name)}: {pct}%**")
-                        st.progress(float(r["prob"]))
-                        st.caption(t("ai_be", be=f"{r['be'] * 100:.1f}", rr=f"{r['rr']:.2f}"))
-                        edge_color = ALICE_EDGE_POS_COLOR if r["edge"] > 0 else ALICE_EDGE_NEG_COLOR
-                        edge_label = t("ai_edge_pos" if r["edge"] > 0 else "ai_edge_neg", v=edge_txt)
-                        st.markdown(f"<span style='color:{edge_color}; font-weight:600'>{edge_label}</span>",
-                                    unsafe_allow_html=True)
-                        st.caption(t("ai_edge_note", se=f"{r['se'] * 100:.1f}", neff=r["n_eff"]))
-                        if abs(r["edge"]) < 2 * r["se"]:
-                            st.caption(t("ai_edge_noise"))
-                    else:
-                        st.caption(t("ai_other", target=name, p=pct, be=f"{r['be'] * 100:.1f}", edge=edge_txt))
-                    shown += 1
-                    auc_txt = f"{r['auc']:.2f}" if r["auc"] is not None else t("ai_na")
-                    st.caption(t("ai_stats", n=r["n"], base=int(round(r["base"] * 100)), auc=auc_txt))
-                    st.caption(t("ai_fractals", a=t("ai_fr_" + r["a_st"]), b=t("ai_fr_" + r["b_st"]),
-                                 c=t("ai_fr_" + r["c_st"])))
-                    st.caption(t("ai_setup", ab=t("ai_cls_" + r["ab"]), cls=t("ai_cls_" + r["cls"]), lag=r["lag"],
-                                 h=r["h"], hmin=ALICE_HORIZON))
-                    if r["freq_only"]:
-                        st.caption(t("ai_freq_only", k=r["hits"], n=r["n"]))
-                    if r["pooled"]:
-                        st.caption(t("ai_pooled"))
-                    if not r["strict"] and r["cls"] == "minor":
-                        st.caption(t("ai_live"))
-                    if r["uplift"] is not None:
-                        st.caption(t("ai_uplift", v=f"{r['uplift']:+.2f}"))
-                    st.caption(t("ai_rel_" + r["reliability"]))
-                st.caption(t("ai_disclaimer"))
+                    light = alice_verdict(r)
+                    ok_targets.append((name, r))
+                    prefix = f"{name}: " if len(ALICE_TARGETS) > 1 else ""
+                    # на виду только светофор: приглушённый цветной маркер и короткая формулировка
+                    st.markdown(
+                        f"{prefix}<span style='color:{ALICE_LIGHT_COLORS[light]}; font-size:1.15rem'>&#9679;</span>"
+                        f"&nbsp; {t('ai_light_' + light)}", unsafe_allow_html=True)
+                    if ai_light is None:
+                        ai_light = light
+                if ok_targets:
+                    # все технические метрики — внутри раскрывающегося блока
+                    with st.expander(t("ai_details_title")):
+                        if htf_missing:
+                            st.caption(t("ai_htf_missing"))
+                        pc = lambda v: f"{v * 100:.1f}"
+                        for name, r in ok_targets:
+                            if len(ok_targets) > 1:
+                                st.markdown(f"**{t('ai_target_name', target=name)}**")
+                            if r["det"]:
+                                st.caption(t("ai_det_" + r["det"], target=name))
+                            else:
+                                st.caption(t("ai_d_probs", pt=pc(r["p_target"]), ps=pc(r["p_stop"]), p0=pc(r["p_timeout"])))
+                            rr_txt = f"{r['rr']:.2f}" if r["rr"] is not None else t("ai_na")
+                            st.caption(t("ai_d_fair", pf=pc(r["p_fair"]), be=pc(r["be"]), rr=rr_txt))
+                            edge_pct = r["edge"] * 100
+                            st.caption(t("ai_d_edge", edge="0.0" if abs(edge_pct) < 0.05 else f"{edge_pct:+.1f}",
+                                         se=pc(r["se"]), neff=r["n_eff"]))
+                            if not r["det"]:
+                                auc_txt = f"{r['auc']:.2f}" if r["auc"] is not None else t("ai_na")
+                                st.caption(t("ai_stats", n=r["n"], neff=r["n_eff"], ft=pc(r["freq"]["target"]),
+                                             fs=pc(r["freq"]["stop"]), f0=pc(r["freq"]["timeout"]), auc=auc_txt))
+                            st.caption(t("ai_fractals", a=t("ai_fr_" + r["a_st"]), b=t("ai_fr_" + r["b_st"]),
+                                         c=t("ai_fr_" + r["c_st"])))
+                            st.caption(t("ai_setup", ab=t("ai_cls_" + r["ab"]), cls=t("ai_cls_" + r["cls"]), lag=r["lag"],
+                                         h=r["h"], hmin=ALICE_HORIZON))
+                            if r["freq_only"]:
+                                st.caption(t("ai_freq_only", k=int(round(r["freq"]["target"] * r["n"])), n=r["n"]))
+                            if r["pooled"]:
+                                st.caption(t("ai_pooled"))
+                            if not r["strict"] and r["cls"] == "minor":
+                                st.caption(t("ai_live"))
+                            if r["uplift"] is not None:
+                                st.caption(t("ai_uplift", v=f"{r['uplift']:+.2f}"))
+                            st.caption(t("ai_rel_" + r["reliability"]))
+                        st.caption(t("ai_disclaimer"))
+
+        # ---- Telegram: отчёт по текущему графику ----
+        if st.button(t("tg_button"), key="tg_send", **WIDE):
+            token, chat_id = _tg_credentials()
+            if not token or not chat_id:
+                st.error(t("tg_no_secrets"))
+            else:
+                with st.spinner(t("tg_sending")):
+                    tg_pts = [{"x": p_["x"], "y": p_["y"]} for p_ in pts] if len(pts) == 3 else []
+                    tg_abc = st.session_state.abc_points
+                    tg_targets = hosoda_targets(*(p_["y"] for p_ in tg_abc)) if len(tg_abc) == 3 else {}
+                    htf_arr_t, htf_tf_t, htf_missing_t = htf_info()
+                    trend_key = {1.0: "tg_up", -1.0: "tg_down", 0.0: "tg_flat"}[float(htf_arr_t[-1])] if not htf_missing_t else "tg_na"
+                    report = t(
+                        "tg_report", symbol=asset_label(asset_name), tf=tf_name, bar=f"{df_plot.index[-1]:%Y-%m-%d %H:%M}",
+                        price=fmt_price(last_close), htf=htf_tf_t, trend=t(trend_key),
+                        target=fmt_price(tg_targets["N"]) if tg_targets else t("tg_na"),
+                        verdict=t("ai_light_" + ai_light) if ai_light else t("tg_na"))
+                    png, _engine = render_chart_png(fig, df_plot, tg_pts, tg_targets, f"{asset_label(asset_name)} | {tf_name}")
+                    ok, err = send_telegram(token, chat_id, report, png)
+                if not ok:
+                    st.error(t("tg_err", detail=err))
+                elif png is None:
+                    st.warning(t("tg_sent_text"))
+                else:
+                    st.success(t("tg_sent"))
 
         if event and event.selection and event.selection.get("points") and len(st.session_state.abc_points) < 3:
             clicked = event.selection["points"][0]
