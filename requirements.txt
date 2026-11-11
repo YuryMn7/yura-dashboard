@@ -5,6 +5,5 @@ plotly
 requests
 yfinance
 scikit-learn>=1.3
-scikit-learn
 matplotlib
 kaleido
