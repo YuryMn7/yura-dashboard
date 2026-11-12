@@ -20,48 +20,52 @@ Quantitative Analysis Terminal — исправленная версия.
  - формат цен радара и оси Y зависит от величины цены.
  - выходные режутся по времени Нью-Йорка (пт 17:00 -> вс 17:00 NY): суббота убрана, воскресный вечер остаётся;
    D1: суббота убрана, воскресенье приклеено к понедельнику; галочка "raw" отключает всю фильтрацию;
- - новая опция сервера "NY close (UTC+2/+3)": переход на летнее время по правилам США (как у многих брокеров);
+ - опция сервера "NY close (UTC+2/+3)": переход на летнее время по правилам США (как у многих брокеров);
  - подсказки маркеров High/Low показывают High/Low свечи, а не позицию маркера.
  - Chikou Span: сплошная линия, без выхода за левый край графика.
  - "Drop 23:00 Clearing" по умолчанию выключено (в MT5 час 23:00 есть);
- - подписи Kihon/Taiyosuu компактные: серые числа — Kihon suu, "AB n"/"AC n" — Taiyosuu, подписи целей короче.
- - радар использует тот же конвейер prepare_ohlc, что и терминал (выходные по NY, серверное время, клиринг,
-   ресемплинг H2/H4/H8 в серверном времени); настройки данных вынесены в общий блок сайдбара.
- - D1 собирается из ЧАСОВЫХ свечей тем же конвейером, что H4 (выходные по NY -> серверное время -> день по серверной
-   полуночи): нет лишней «понедельничной» свечи в воскресенье, границы дня как в MT5. Терминал грузит до 3 страниц
+ - радар использует тот же конвейер prepare_ohlc, что и терминал; настройки данных — в общем блоке сайдбара.
+ - D1 собирается из ЧАСОВЫХ свечей тем же конвейером, что H4 (границы дня как в MT5). Терминал грузит до 3 страниц
    по 5000 часовых свечей (старые страницы кэшируются на 6 часов). W1/MN1 по-прежнему берутся у провайдера.
- - радар: сигналы и тренд — строгие геометрические символы (▲ ▼ ◆) вместо цветных эмодзи; пояснительная строка под
-   выбором таймфрейма убрана.
- - MN3 (квартал): добавлен в словари и в Радар/Терминал; старший ТФ: W1 -> MN3, MN1 -> MN3, MN3 -> MN3;
-   в Радаре убраны MN6 и MN24 (остались в Терминале); список таймфреймов Радара — radar_tfs;
- - Радар: Smart Filter (скрыть "Ждем") и кнопка "Сканировать все таймфреймы"; активы без сигнала теперь
-   попадают в таблицу как "Ждем" и скрываются фильтром (включён по умолчанию).
- - Проект «Алиса» (ML на лету): оценка вероятности достижения цели Хосоды (по умолчанию N) для волны A-B-C.
-   scikit-learn (RandomForest), обучение на исторических волнах самого инструмента (минорные фракталы),
-   только на волнах с известным до точки C исходом (без утечки), отложенная выборка по времени (AUC),
+ - радар: сигналы и тренд — строгие геометрические символы (▲ ▼ ◆); список таймфреймов Радара — radar_tfs;
+ - MN3 (квартал) добавлен в словари и в Радар/Терминал; MN6 и MN24 остались только в Терминале;
+ - Радар: Smart Filter (скрыть "Ждем") и кнопка "Сканировать все таймфреймы"; активы без сигнала — "Ждем".
+ - Проект «Алиса» (ML на лету): 3 исхода (цель +1 / стоп -1 / таймаут 0), честная вероятность цели против стопа,
+   Break-even и Statistical Edge, светофор на виду, метрики — в раскрывающемся блоке; робастная классификация
+   точек A/B/C (Major/Minor/Pending), обучение только на волнах с известным до входа исходом, holdout AUC,
    кэш st.cache_data. Требуется строка в requirements.txt: scikit-learn
-   Класс волны (главные/малые фракталы A, B, C) определяется по точкам пользователя; вход через 2 бара после малого C
-   и через 10 после главного (когда фрактал подтверждён); горизонт = время A-C (мин. 50); дистанции безразмерные.
- - «Алиса» учитывает класс точек: A/B главные или малые, C главный или малый (в т.ч. смешанный случай). Обучение — на
-   волнах того же класса из истории инструмента; горизонт — время A-C (мин. 50, макс. 300 баров), дистанции в
-   единицах ATR*sqrt(горизонт). Для очень редких исходов вместо модели показывается историческая частота.
-   Для свежей точки C (флаг «главный/малый» ещё не окончателен) — режим реального времени.
- - «Алиса»: робастная классификация точек A/B/C (допуск на микровыбросы, привязка к соседней свече, Pending для
-   свежих точек); класс волны определяет пик B; Break-even вероятность и Statistical Edge (модель минус безубыточная);
  - DXY (Yahoo DX-Y.NYB) добавлен как не-Форекс актив.
- - «Алиса»: 3 исхода (цель +1 / стоп -1 / таймаут 0), честная вероятность цели против стопа и Statistical Edge;
-   светофор (приглушённые цвета) на виду, все метрики — в раскрывающемся блоке; блокировок «цель/стоп уже достигнуты» нет;
  - Terminal: кнопка отправки отчёта в Telegram (график PNG + текст), секреты TELEGRAM_TOKEN / TELEGRAM_CHAT_ID.
- - Mobile-first: CSS без боковых отступов, все элементы управления (в т.ч. радара) — в боковой панели, кнопка Telegram — в
-   expander «Инструменты и отчеты», Plotly: margin(l=5, r=50, t=30, b=5), height=600; линии времени (Kihon suu / Taiyosuu)
-   только до 129 баров от C (TIME_LINES_MAX_SHIFT); matplotlib-рендер для Telegram рисует те же линии времени.
- - переключатель языка English / Русский (первый элемент боковой панели); язык по умолчанию — DEFAULT_LANG;
-   все тексты интерфейса лежат в словаре I18N; результаты радара сохраняются при смене языка.
+ - переключатель языка English / Русский (первый элемент боковой панели); все тексты — в словаре I18N;
+   результаты радара сохраняются при смене языка.
+
+ТЕКУЩИЙ СПРИНТ (откат неудачного mobile-first + аккуратный адаптив + новые задачи):
+ A. Откат: кнопки сканера и Smart Filter снова на ГЛАВНОМ экране Радара; кнопка Telegram снова видна
+    на главном экране Терминала (expander «Инструменты и отчеты» удалён); глобальное обнуление padding удалено;
+    десктопный график возвращён к прежним параметрам (height=750, margin 20/110/40/120, легенда снизу,
+    tickangle=45, tick_step=len//10, подписи "%Y-%m-%d %H:%M").
+ B. Панель управления графиком возвращена: displayModeBar=True (видна всегда, в т.ч. на тач-экране),
+    selection_mode=("points","box","lasso") — иначе Streamlit вырезает рамку и лассо; добавлено перекрестье
+    (toggleSpikelines); Fullscreen добавляет сам Streamlit внутрь modebar. Рамка/лассо НЕ ставят точки A-B-C
+    (обработчик принимает только одиночный клик) и распознаёт трек ПО ИМЕНИ, а не по номеру.
+ C. Адаптив без деградации десктопа: режим экрана Авто (User-Agent из st.context.headers) / Мобильный / Десктоп
+    в сайдбаре; адаптивный CSS с media-query (padding НЕ нулевой, заголовок переносится и масштабируется);
+    мобильная ветка оформления графика (height=580, margin 8/58/48/76, компактные подписи, шрифты меньше).
+    Режим влияет только на оформление, никогда — на данные и расчёты.
+ D. Индивидуальный HTF-routing для крипты: is_crypto_asset + htf_for; BTC: W1 -> MN1, MN1 -> MN1, MN3 -> MN1;
+    BTC на MN3 в Радаре пропускается с внятной причиной (истории мало), в Терминале — предупреждение.
+ E. Точные даты на временных целях: общий хелпер bar_time_at (внутри графика — реальное время свечи,
+    за правым краем — прогноз с шагом-медианой, для MN* — календарные месяцы, для Форекса — перепрыгивание
+    закрытого окна). Прогноз помечается «≈». Метки: десктоп «AB 42 (2026-11-20 15:00)», мобильный в две строки.
+    Невидимые маркеры у верха линий дают полную дату по тапу. Matplotlib-PNG показывает те же даты.
+ F. Smart Refresh: компактная кнопка «🔄 Обновить котировки» над графиком (и в Радаре перед сканированием):
+    очищает fetch_smart_data/fetch_yahoo (глубокие страницы _td_old_page не трогает), НЕ сбрасывает точки,
+    волну, цели, настройки и результаты сканера.
 """
 import gc
 import io
 import re
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
@@ -79,29 +83,6 @@ except ImportError:  # приложение работает и без ML-бло
 
 # set_page_config должен быть первым вызовом Streamlit
 st.set_page_config(page_title="Quantitative Analysis Terminal", layout="wide")
-
-# Mobile-first: основной контейнер без боковых отступов — график занимает 100% ширины экрана.
-# Текст, подписи, таблицы и сообщения получают небольшой отступ, чтобы не прилипать к краю экрана.
-st.markdown("""
-<style>
-.block-container {
-    padding-top: 1rem;
-    padding-bottom: 0rem;
-    padding-left: 0rem;
-    padding-right: 0rem;
-    max-width: 100%;
-}
-.block-container [data-testid="stMarkdownContainer"],
-.block-container [data-testid="stCaptionContainer"],
-.block-container [data-testid="stAlert"],
-.block-container [data-testid="stExpander"],
-.block-container [data-testid="stDataFrame"],
-.block-container [data-testid="stSpinner"] {
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
-}
-</style>
-""", unsafe_allow_html=True)
 
 API_KEY = st.secrets["TWELVEDATA_KEY"]
 
@@ -178,16 +159,17 @@ RADAR_HTF_MAP = {
 # Старший таймфрейм для всех таймфреймов Терминала (используется ML-блоком «Алиса»)
 TERMINAL_HTF_MAP = {**RADAR_HTF_MAP, "M1": "M15", "M5": "H1", "MN6": "MN24", "MN24": "MN24"}
 
+# Крипта: история молода, старший ТФ ограничиваем месяцем (см. htf_for). Список расширяемый.
+CRYPTO_PREFIXES = ("BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "LTC", "BCH")
+CRYPTO_HTF_OVERRIDE = {"W1": "MN1", "MN1": "MN1", "MN3": "MN1"}
+
 # Минимум баров: Senkou B = 52 + сдвиг 26 -> первое валидное значение на индексе 77.
 # LTF смотрим на iloc[-28] -> нужно >= 105; HTF на iloc[-2] -> нужно >= 79.
 MIN_LTF_BARS = 110
 MIN_HTF_BARS = 80
 
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
-# Линии времени (Kihon suu, Taiyosuu) дальше этого числа баров от точки C не рисуем: иначе ось X растягивается вправо,
-# и свечи «сжимаются» (дальние цели по времени почти никогда не отрабатываются).
-TIME_LINES_MAX_SHIFT = 129
-KIHON_DRAW = [k for k in KIHON_SUU if k <= TIME_LINES_MAX_SHIFT]
+MN_MONTHS = {"MN1": 1, "MN3": 3, "MN6": 6, "MN24": 24}  # календарный шаг месячных ТФ
 
 # ==========================================
 # ПЕРЕВОДЫ (English / Русский)
@@ -202,6 +184,10 @@ I18N = {
         "module": "Select Module:",
         "mode_radar": "Market Scanner (Radar)",
         "mode_terminal": "Analytical Terminal",
+        "screen_mode": "Screen:",
+        "screen_auto": "Auto",
+        "screen_mobile": "Mobile",
+        "screen_desktop": "Desktop",
         "data_settings": "Data Settings (Radar + Terminal)",
         "server_time": "Server Time (MT5):",
         "raw": "Include Saturday & closing night (raw)",
@@ -218,9 +204,11 @@ I18N = {
         "pt_c": "C (Retracement)",
         "awaiting": "Awaiting {label}...",
         "clear_points": "Clear Points",
+        "points_progress": "Points: {n}/3 - tap a candle or a fractal marker on the chart.",
+        "refresh": "🔄 Refresh quotes",
+        "refresh_hint": "Clears the quote cache before scanning; scan results are kept.",
+        "data_asof": "Data as of {bar} · checked {clock}",
         "scanner_title": "Global Market Scanner",
-        "radar_settings": "Radar Settings",
-        "tools_title": "Tools and reports",
         "filter_active": "Show active signals only (hide 'Waiting')",
         "run_scan_all": "Scan all timeframes",
         "processing_tf": "Processing {asset} / {tf}...",
@@ -256,8 +244,12 @@ I18N = {
         "chart_minor_low": "Minor Low",
         "chart_major_high": "Major High",
         "chart_major_low": "Major Low",
+        "chart_time_targets": "Time targets",
         "hover_high": "High",
         "hover_low": "Low",
+        "hover_kihon": "Kihon suu {k}",
+        "hover_taiyosuu": "Taiyosuu {name} ({n} bars)",
+        "hover_forecast": "forecast",
         "chart_wave": "Wave A-B-C",
         "err_nodata": "no data",
         "err_yahoo_nodata": "Yahoo: no data for {detail}",
@@ -267,6 +259,8 @@ I18N = {
         "err_no_processed": "no data after processing",
         "err_few_bars": "not enough bars (LTF {ltf}/{min_ltf}, HTF {htf}/{min_htf})",
         "err_nan": "indicators not ready (NaN)",
+        "err_crypto_hist": "Crypto: not enough {tf} history",
+        "crypto_hist_note": "Crypto: only {n} bars available for {tf} - indicators and the AI model may be unavailable.",
         "ai_title": "AI Probability Analysis (Alice Model)",
         "ai_hint": "Select points A, B and C on the chart to run the model.",
         "ai_light_green": "High probability of success",
@@ -321,6 +315,10 @@ I18N = {
         "module": "Выберите модуль:",
         "mode_radar": "Сканер рынка (Радар)",
         "mode_terminal": "Аналитический терминал",
+        "screen_mode": "Экран:",
+        "screen_auto": "Авто",
+        "screen_mobile": "Мобильный",
+        "screen_desktop": "Десктоп",
         "data_settings": "Настройки данных (Радар + Терминал)",
         "server_time": "Серверное время (MT5):",
         "raw": "Считать субботу и ночь закрытия (сырые данные)",
@@ -337,9 +335,11 @@ I18N = {
         "pt_c": "C (откат)",
         "awaiting": "Ожидается {label}...",
         "clear_points": "Сбросить точки",
+        "points_progress": "Точки: {n}/3 — нажмите на свечу или маркер фрактала на графике.",
+        "refresh": "🔄 Обновить котировки",
+        "refresh_hint": "Очищает кэш котировок перед сканированием; результаты сканера сохраняются.",
+        "data_asof": "Данные на {bar} · проверено {clock}",
         "scanner_title": "Глобальный сканер рынка",
-        "radar_settings": "Настройки радара",
-        "tools_title": "Инструменты и отчеты",
         "filter_active": "Показывать только активные сигналы (Скрыть 'Ждем')",
         "run_scan_all": "Сканировать все таймфреймы",
         "processing_tf": "Обработка: {asset} / {tf}...",
@@ -375,8 +375,12 @@ I18N = {
         "chart_minor_low": "Малый минимум",
         "chart_major_high": "Главный максимум",
         "chart_major_low": "Главный минимум",
+        "chart_time_targets": "Временные цели",
         "hover_high": "Хай",
         "hover_low": "Лоу",
+        "hover_kihon": "Kihon suu {k}",
+        "hover_taiyosuu": "Taiyosuu {name} ({n} баров)",
+        "hover_forecast": "прогноз",
         "chart_wave": "Волна A-B-C",
         "err_nodata": "нет данных",
         "err_yahoo_nodata": "Yahoo: нет данных для {detail}",
@@ -386,6 +390,8 @@ I18N = {
         "err_no_processed": "нет данных после обработки",
         "err_few_bars": "мало баров (LTF {ltf}/{min_ltf}, HTF {htf}/{min_htf})",
         "err_nan": "индикаторы не готовы (NaN)",
+        "err_crypto_hist": "Крипта: истории для {tf} недостаточно",
+        "crypto_hist_note": "Крипта: для {tf} доступно только {n} свечей — индикаторы и ИИ-модель могут быть недоступны.",
         "ai_title": "ИИ-анализ вероятности (модель Alice)",
         "ai_hint": "Выберите на графике точки A, B и C, чтобы запустить модель.",
         "ai_light_green": "Высокая вероятность успеха",
@@ -459,6 +465,60 @@ def fmt_err(err):
         return t("err_" + err[0], **err[1])
     return str(err)
 
+
+# ==========================================
+# 1b. РЕЖИМ ЭКРАНА И ОФОРМЛЕНИЕ (только внешний вид, на данные не влияет)
+# ==========================================
+def detect_mobile_ua():
+    """Телефон по User-Agent (st.context.headers, Streamlit >= 1.37). Планшеты — не мобильный режим."""
+    try:
+        ua = st.context.headers.get("User-Agent", "") or ""
+    except Exception:
+        return False
+    if re.search(r"iPad|Tablet|PlayBook|Silk|Kindle", ua, re.I):
+        return False
+    return bool(re.search(r"Android|iPhone|iPod|Windows Phone|IEMobile|Mobile Safari", ua, re.I))
+
+
+def chart_ui(mobile):
+    """Параметры оформления графика. Десктоп — прежние (до mobile-first спринта), мобильный — компактный."""
+    if mobile:
+        return dict(height=580, margin=dict(l=8, r=58, t=48, b=76), tick_div=5, tick_angle=0,
+                    tick_font=dict(size=9), y_font=dict(size=9),
+                    legend=dict(orientation="h", yanchor="top", y=-0.20, xanchor="center", x=0.5, font=dict(size=8)),
+                    ann_font=8, vlabel_font=8, mark_minor=4, mark_major=8, wave_mark=7)
+    return dict(height=750, margin=dict(l=20, r=110, t=40, b=120), tick_div=10, tick_angle=45,
+                tick_font=None, y_font=None,
+                legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5),
+                ann_font=10, vlabel_font=9, mark_minor=5, mark_major=10, wave_mark=8)
+
+
+def inject_css(mobile):
+    """Адаптивные стили: десктоп сохраняет прежние отступы, узкий экран получает компактные (НЕ нулевые).
+    При ручном режиме «Мобильный» те же правила дублируются без media-query."""
+    mobile_rules = (
+        ".block-container { padding-top: 3.2rem !important; padding-left: 0.6rem !important; "
+        "padding-right: 0.6rem !important; padding-bottom: 1rem !important; }\n"
+        "h1, h2, h3 { margin-top: 0.2rem !important; line-height: 1.25 !important; overflow-wrap: anywhere; }\n"
+        "h2 { font-size: clamp(1.05rem, 4.5vw, 1.75rem) !important; }\n"
+        ".modebar-btn { padding: 3px 5px !important; }\n"
+        '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
+    )
+    css = (
+        "<style>\n"
+        ".block-container { padding-top: 4rem; padding-bottom: 2rem; max-width: 100%; }\n"
+        ".app-title { color: #2c3e50; font-size: clamp(1.05rem, 4.5vw, 1.75rem); line-height: 1.25; "
+        "margin-top: 0.2rem; overflow-wrap: anywhere; white-space: normal; }\n"
+        ".stPlotlyChart .modebar { opacity: 1; }\n"
+        "@media (max-width: 768px) {\n" + mobile_rules + "}\n"
+        "@media (hover: none) {\n"
+        ".stPlotlyChart .modebar { opacity: 1 !important; }\n"
+        '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
+        "}\n"
+        + (mobile_rules if mobile else "")
+        + "</style>"
+    )
+    st.markdown(css, unsafe_allow_html=True)
 
 
 # ==========================================
@@ -555,6 +615,21 @@ def is_fx_asset(route):
     """Форекс и золото (символы с "/", кроме BTC): к ним применяется фильтр выходных."""
     sym = route["sym"]
     return ("/" in sym) and ("BTC" not in sym)
+
+
+def is_crypto_asset(route):
+    """Крипта по префиксу тикера (список CRYPTO_PREFIXES расширяемый)."""
+    sym = route["sym"].upper()
+    return any(sym.startswith(p) for p in CRYPTO_PREFIXES)
+
+
+def htf_for(asset_key, tf):
+    """Единая маршрутизация старшего ТФ для Радара и Терминала.
+    У крипты история молода: W1/MN1/MN3 смотрят на MN1, остальные ТФ — как у всех."""
+    base = TERMINAL_HTF_MAP.get(tf, tf)
+    if is_crypto_asset(ASSET_ROUTER[asset_key]):
+        return CRYPTO_HTF_OVERRIDE.get(tf, base)
+    return base
 
 
 def prepare_ohlc(df_utc, tf, is_fx, raw, drop_clearing, server_choice):
@@ -723,6 +798,85 @@ def tick_fmt(price):
     if price >= 10:
         return ".3f"
     return ".5f"
+
+
+def axis_time_fmt(tf):
+    """Компактный формат подписей оси X для мобильного режима."""
+    if tf in MN_MONTHS:
+        return "%m.%Y"
+    if tf in ("D1", "W1"):
+        return "%d.%m.%y"
+    return "%d.%m %H:%M"
+
+
+# ==========================================
+# 2b. ВРЕМЯ ВРЕМЕННЫХ ЦЕЛЕЙ (общее для Plotly и matplotlib)
+# ==========================================
+def _forecast_clock(df_plot, tf, is_fx):
+    """(шаг, якорь закрытого окна, сдвиг через него) для прогноза времени за правым краем графика.
+    Всё выводится из самих данных: медиана шага и самый частый «большой» разрыв (выходные),
+    поэтому серверное время, клиринг и режим raw учитываются автоматически."""
+    idx = df_plot.index
+    if tf in MN_MONTHS or len(idx) < 3:
+        return None
+    diffs = pd.Series(np.diff(idx.values))
+    step = diffs.median()
+    if pd.isna(step) or step <= pd.Timedelta(0):
+        return None
+    anchor = jump = None
+    if is_fx and tf != "W1":
+        big = diffs[diffs > step * 1.5]
+        if len(big):
+            gap = big.mode().iloc[0]
+            pos = int(diffs[diffs == gap].index[0])
+            cand = idx[pos] + step          # «наивный» бар, который попал бы в закрытое окно
+            anchor = (cand.dayofweek, cand.hour, cand.minute)
+            jump = gap - step
+    return step, anchor, jump
+
+
+def bar_time_at(df_plot, x, tf, is_fx, clock=None):
+    """Время для x-координаты графика: (timestamp, is_forecast).
+    Внутри df_plot — точное время свечи; за правым краем — прогноз (шаг-медиана, для MN* — календарные месяцы,
+    для Форекса — перепрыгивание закрытого окна пт 17:00 NY -> вс 17:00 NY, для D1 — пропуск выходных)."""
+    idx = df_plot.index
+    n = len(idx)
+    x = int(x)
+    if n == 0:
+        return pd.Timestamp.now(), True
+    if 0 <= x < n:
+        return idx[x], False
+    if x < 0:
+        return idx[0], True
+    k = x - (n - 1)
+    if tf in MN_MONTHS:
+        return idx[-1] + pd.DateOffset(months=MN_MONTHS[tf] * k), True
+    clock = _forecast_clock(df_plot, tf, is_fx) if clock is None else clock
+    if clock is None:
+        return idx[-1] + pd.Timedelta(hours=k), True
+    step, anchor, jump = clock
+    ts = idx[-1]
+    for _ in range(k):
+        ts = ts + step
+        if anchor is not None and (ts.dayofweek, ts.hour, ts.minute) == anchor:
+            ts = ts + jump
+    return ts, True
+
+
+def fmt_bar_time(ts, tf, compact):
+    """Дата для метки: компактная (мобильный/PNG) или полная (десктоп)."""
+    if tf in MN_MONTHS:
+        return ts.strftime("%m.%Y" if compact else "%Y-%m")
+    if tf in ("D1", "W1"):
+        return ts.strftime("%d.%m.%y" if compact else "%Y-%m-%d")
+    return ts.strftime("%d.%m %H:%M" if compact else "%Y-%m-%d %H:%M")
+
+
+def time_target_label(base, ts, forecast, tf, mobile):
+    """Метка временной цели: «AB 42 (2026-11-20 15:00)» / «AB 42<br>20.11 15:00»; прогноз помечен «≈»."""
+    mark = "≈" if forecast else ""
+    d = fmt_bar_time(ts, tf, mobile)
+    return f"{mark}{base}<br>{d}" if mobile else f"{mark}{base} ({d})"
 
 
 # ==========================================
@@ -1157,8 +1311,9 @@ def _tg_credentials():
         return None, None
 
 
-def _render_chart_matplotlib(df_plot, pts, targets, title):
-    """Запасной рендер графика без браузера: свечи, Tenkan/Kijun/Chikou, Облако Кумо, волна A-B-C и цели -> BytesIO (PNG)."""
+def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
+    """Запасной рендер графика без браузера: свечи, Tenkan/Kijun/Chikou, Облако Кумо, волна A-B-C, цели Хосоды
+    и временные вертикали Kihon/Taiyosuu С ДАТАМИ (тот же bar_time_at и те же подписи, что и в Plotly) -> BytesIO (PNG)."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -1182,29 +1337,38 @@ def _render_chart_matplotlib(df_plot, pts, targets, title):
     colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
     for name, val in (targets or {}).items():
         ax.axhline(val, color=colors.get(name, "gray"), linestyle="--", linewidth=1.0, zorder=2)
-        ax.text(0.995, val, f"{name} {fmt_price(val)}", transform=ax.get_yaxis_transform(), ha="right", va="bottom", fontsize=9,
-                color=colors.get(name, "gray"), bbox=dict(facecolor="white", edgecolor="none", alpha=0.7, pad=0.6), zorder=7)
-    x_hi = len(df_plot) + 26                                   # справа место под облако Кумо
+        ax.text(1.0, val, f" {name} {fmt_price(val)}", transform=ax.get_yaxis_transform(), va="center", fontsize=9, color=colors.get(name, "gray"))
+
+    # --- Временные вертикали: Taiyosuu (AB/AC) и Kihon Suu, с реальными/прогнозными датами ---
+    x_right = float(len(df_plot) - 1)
     if len(pts) == 3:
-        # линии времени, как в Plotly: Taiyosuu (синяя A-B, бирюзовая A-C) и Kihon suu (серые пунктирные) от точки C
         A_, B_, C_ = pts
+        cx = float(C_["x"])
         time_ab, time_ac = abs(B_["x"] - A_["x"]), abs(C_["x"] - A_["x"])
-        xform = ax.get_xaxis_transform()                       # x — данные, y — доля высоты графика
+        clock = _forecast_clock(df_plot, tf, is_fx)
 
-        def vmark(xv, text, color, yfrac):
-            ax.text(xv, yfrac, text, transform=xform, rotation=90, ha="center", va="center", fontsize=7, color=color,
-                    bbox=dict(facecolor="white", edgecolor="none", alpha=0.75, pad=0.8), zorder=7)
+        def vlabel(x_pos, text_, color, y_frac, size=7):
+            """Компактная вертикальная метка: x — в барах, y — в долях высоты осей (аналог yref='paper')."""
+            ax.text(x_pos, y_frac, text_.replace("<br>", "\n"), transform=ax.get_xaxis_transform(), rotation=90,
+                    ha="center", va="center", fontsize=size, color=color, zorder=7,
+                    bbox=dict(boxstyle="round,pad=0.12", facecolor="white", edgecolor="none", alpha=0.75))
 
-        for shift, color, name in ((time_ab, "blue", "AB"), (time_ac, "teal", "AC")):
-            if shift <= TIME_LINES_MAX_SHIFT:
-                ax.axvline(C_["x"] + shift, color=color, linestyle=":", linewidth=1.1, zorder=2)
-                vmark(C_["x"] + shift, f"{name} {int(shift)}", color, 0.84)
-                x_hi = max(x_hi, C_["x"] + shift + 3)
-        for k in KIHON_DRAW:
-            ax.axvline(C_["x"] + k - 1, color="gray", linestyle="--", linewidth=0.8, alpha=0.35, zorder=2)
-            vmark(C_["x"] + k - 1, str(k), "#7f8c8d", 0.95)
-            x_hi = max(x_hi, C_["x"] + k + 2)
-    ax.set_xlim(-1.5, x_hi)
+        for x_pos, base, col, y_frac in ((cx + time_ab, f"AB {int(time_ab)}", "blue", 0.30),
+                                         (cx + time_ac, f"AC {int(time_ac)}", "teal", 0.30)):
+            ts_, fc_ = bar_time_at(df_plot, x_pos, tf, is_fx, clock)
+            ax.axvline(x_pos, color=col, linestyle=":", linewidth=1.1, zorder=2)
+            vlabel(x_pos, time_target_label(base, ts_, fc_, tf, mobile), col, y_frac, 8)
+            x_right = max(x_right, x_pos)
+        for k in KIHON_SUU:
+            xk = cx + k - 1
+            ts_, fc_ = bar_time_at(df_plot, xk, tf, is_fx, clock)
+            ax.axvline(xk, color="gray", linestyle="--", linewidth=0.8, alpha=0.35, zorder=2)
+            vlabel(xk, time_target_label(str(k), ts_, fc_, tf, mobile), "#7f8c8d", 0.78, 7)
+            x_right = max(x_right, xk)
+
+    # axvline, в отличие от Plotly, сам не расширяет диапазон оси: без set_xlim дальние Kihon не попали бы в кадр
+    ax.set_xlim(-1.5, x_right + max(2.0, 0.01 * (x_right + 1.0)))
+
     step = max(1, len(df_plot) // 10)
     ax.set_xticks(x[::step])
     ax.set_xticklabels(df_plot.index.strftime("%Y-%m-%d %H:%M")[::step], rotation=45, ha="right", fontsize=8)
@@ -1220,7 +1384,7 @@ def _render_chart_matplotlib(df_plot, pts, targets, title):
     return buf
 
 
-def render_chart_png(fig, df_plot, pts, targets, title):
+def render_chart_png(fig, df_plot, pts, targets, title, tf, is_fx, mobile):
     """PNG текущего графика в io.BytesIO. Сначала сам график Plotly (нужен kaleido) — точно то, что на экране;
     если не получилось — запасной рендер matplotlib. Возвращает (BytesIO | None, движок | None)."""
     try:
@@ -1228,7 +1392,7 @@ def render_chart_png(fig, df_plot, pts, targets, title):
     except Exception:
         pass
     try:
-        return _render_chart_matplotlib(df_plot, pts, targets, title), "matplotlib"
+        return _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile), "matplotlib"
     except Exception:
         return None, None
 
@@ -1251,12 +1415,30 @@ def send_telegram(token, chat_id, text, png):
         return False, f"{type(e).__name__}: {e}".replace(token, "***")
 
 
+def refresh_row(key, caption):
+    """Компактная кнопка «Обновить котировки» + подпись. Чистит только кэш загрузчиков:
+    точки A-B-C, chart_ver, ctx, настройки и результаты Радара НЕ трогаются."""
+    if MOBILE:
+        pressed = st.button(t("refresh"), key=key)
+        st.caption(caption)
+    else:
+        c1, c2 = st.columns([1, 3])
+        with c1:
+            pressed = st.button(t("refresh"), key=key)
+        with c2:
+            st.caption(caption)
+    if pressed:
+        fetch_smart_data.clear()
+        fetch_yahoo.clear()   # _td_old_page НЕ очищаем: глубокие страницы истории не меняются (экономия квоты API)
+        st.rerun()
+
+
 # ==========================================
 # 3. НАВИГАЦИЯ И ИНТЕРФЕЙС
 # ==========================================
 # Ключи виджетов, значения которых сохраняем при смене языка
 # (в старых версиях Streamlit смена подписи виджета сбрасывает его состояние).
-PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active"]
+PERSIST_KEYS = ["w_mode", "w_screen", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active"]
 
 
 def _on_lang_change():
@@ -1269,6 +1451,7 @@ if _keep:
         st.session_state[_k] = _v
 
 st.session_state.setdefault("lang", DEFAULT_LANG)
+st.session_state.setdefault("w_screen", "auto")
 st.session_state.setdefault("w_tf", "H1")
 st.session_state.setdefault("w_radar_tf", "D1")
 st.session_state.setdefault("w_radar_active", True)  # Smart Filter включён по умолчанию
@@ -1276,6 +1459,9 @@ st.session_state.setdefault("w_radar_active", True)  # Smart Filter включё
 with st.sidebar:
     lang_label = st.radio("Language / Язык", list(LANGS.keys()), horizontal=True, key="lang", on_change=_on_lang_change)
     LANG = LANGS[lang_label]
+
+    screen_mode = st.radio(t("screen_mode"), ["auto", "mobile", "desktop"],
+                           format_func=lambda k: t("screen_" + k), horizontal=True, key="w_screen")
 
     st.markdown("---")
     st.markdown(f"### {t('nav')}")
@@ -1287,20 +1473,18 @@ with st.sidebar:
     count_weekend = st.checkbox(t("raw"), help=t("raw_help"), key="w_raw")
     drop_clearing = st.checkbox(t("clearing"), disabled=count_weekend, help=t("clearing_help"), key="w_clear")
 
+# Режим экрана влияет ТОЛЬКО на оформление (данные и расчёты от него не зависят)
+MOBILE = screen_mode == "mobile" or (screen_mode == "auto" and detect_mobile_ua())
+inject_css(MOBILE)
+
 # ==========================================
-# Вкладка 1: РАДАР
+# Вкладка 1: РАДАР (управление — на главном экране, как и было)
 # ==========================================
 if app_mode == "radar":
-    st.markdown(f"<h2 style='color: #2c3e50;'>{t('scanner_title')}</h2>", unsafe_allow_html=True)
+    st.markdown(f"<h2 class='app-title'>{t('scanner_title')}</h2>", unsafe_allow_html=True)
     if st.session_state.get("w_radar_tf") not in radar_tfs:  # напр. раньше был выбран MN6/MN24
         st.session_state["w_radar_tf"] = "D1"
-    with st.sidebar:                                       # управление радаром — в боковой панели, на экране только аналитика
-        st.markdown("---")
-        st.markdown(f"### {t('radar_settings')}")
-        radar_tf = st.selectbox(t("select_tf"), radar_tfs, key="w_radar_tf")
-        only_active = st.checkbox(t("filter_active"), key="w_radar_active")  # Smart Filter
-        scan_clicked = st.button(t("run_scan"), **WIDE)
-        scan_all_clicked = st.button(t("run_scan_all"), **WIDE)
+    radar_tf = st.selectbox(t("select_tf"), radar_tfs, key="w_radar_tf")
 
     def fetch_radar(route, tf):
         """Yahoo (UTC) -> тот же конвейер prepare_ohlc, что и в терминале."""
@@ -1314,8 +1498,11 @@ if app_mode == "radar":
 
     def scan_one(asset_name, route, tf):
         """Один актив на одном таймфрейме. Возвращает (запись, ошибка); сигнал "wait" = активного сигнала нет."""
-        htf_radar = RADAR_HTF_MAP.get(tf, "MN3")
         try:
+            # крипта: квартальная история ещё слишком коротка — понятная причина вместо сухого few_bars
+            if is_crypto_asset(route) and tf == "MN3":
+                return None, E("crypto_hist", tf=tf)
+            htf_radar = htf_for(asset_name, tf)
             df_ltf, err_l = fetch_radar(route, tf)
             df_htf, err_h = fetch_radar(route, htf_radar)
             if err_l or err_h:
@@ -1391,19 +1578,22 @@ if app_mode == "radar":
         my_bar.empty()
         return results, skipped
 
-    if scan_clicked:
+    if st.button(t("run_scan"), **WIDE):
         res, sk = run_scan([radar_tf])
         # результаты хранятся в session_state — не пропадают при смене языка и при переключении фильтра
         st.session_state["radar_out2"] = {
             "ctx": (radar_tf, offset_choice, count_weekend, drop_clearing),
             "all": False, "results": res, "skipped": sk,
         }
-    if scan_all_clicked:
+    if st.button(t("run_scan_all"), **WIDE):
         res, sk = run_scan(radar_tfs)
         st.session_state["radar_out2"] = {
             "ctx": ("ALL", offset_choice, count_weekend, drop_clearing),
             "all": True, "results": res, "skipped": sk,
         }
+
+    only_active = st.checkbox(t("filter_active"), key="w_radar_active")  # Smart Filter
+    refresh_row("refresh_radar", t("refresh_hint"))
 
     out = st.session_state.get("radar_out2")
     if out:
@@ -1475,10 +1665,18 @@ elif app_mode == "terminal":
             reset_points()
             st.rerun()
 
+    is_fx = is_fx_asset(ASSET_ROUTER[asset_name])
     df_raw, fetch_err = fetch_smart_data(asset_name, tf_name)
-    df_raw = prepare_ohlc(
-        df_raw, tf_name, is_fx_asset(ASSET_ROUTER[asset_name]), count_weekend, drop_clearing, offset_choice
-    )
+    df_raw = prepare_ohlc(df_raw, tf_name, is_fx, count_weekend, drop_clearing, offset_choice)
+    st.session_state["data_clock"] = datetime.now().strftime("%H:%M:%S")
+
+    # Smart Refresh: компактная кнопка над графиком; точки и волна переживают обновление
+    refresh_row("refresh_term", t("data_asof",
+                                  bar=f"{df_raw.index[-1]:%Y-%m-%d %H:%M}" if not df_raw.empty else "—",
+                                  clock=st.session_state["data_clock"]))
+
+    if is_crypto_asset(ASSET_ROUTER[asset_name]) and tf_name in ("MN3", "MN6", "MN24") and 0 < len(df_raw) < MIN_LTF_BARS:
+        st.info(t("crypto_hist_note", tf=tf_name, n=len(df_raw)))
 
     if df_raw.empty:
         st.warning(t("no_data"))
@@ -1490,6 +1688,7 @@ elif app_mode == "terminal":
         df = add_indicators(df_raw)
         df_plot = df.tail(250).copy()
         df_plot["x_idx"] = np.arange(len(df_plot))
+        UIP = chart_ui(MOBILE)
 
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
@@ -1517,10 +1716,10 @@ elif app_mode == "terminal":
         minor_low = df_plot["Minor_Low"] & ~df_plot["Major_Low"]
         major_high = df_plot["Major_High"]
         major_low = df_plot["Major_Low"]
-        fig.add_trace(marker_trace(minor_high, "High", "High", 0.2, 5, "#95a5a6", t("chart_minor_high")))   # 1
-        fig.add_trace(marker_trace(minor_low, "Low", "Low", 0.2, 5, "#95a5a6", t("chart_minor_low")))       # 2
-        fig.add_trace(marker_trace(major_high, "High", "High", 0.5, 10, "#2c3e50", t("chart_major_high")))  # 3
-        fig.add_trace(marker_trace(major_low, "Low", "Low", 0.5, 10, "#2c3e50", t("chart_major_low")))      # 4
+        fig.add_trace(marker_trace(minor_high, "High", "High", 0.2, UIP["mark_minor"], "#95a5a6", t("chart_minor_high")))   # 1
+        fig.add_trace(marker_trace(minor_low, "Low", "Low", 0.2, UIP["mark_minor"], "#95a5a6", t("chart_minor_low")))       # 2
+        fig.add_trace(marker_trace(major_high, "High", "High", 0.5, UIP["mark_major"], "#2c3e50", t("chart_major_high")))   # 3
+        fig.add_trace(marker_trace(major_low, "Low", "Low", 0.5, UIP["mark_major"], "#2c3e50", t("chart_major_low")))       # 4
 
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["tenkan"], line=dict(color="#2980b9", width=1.5), name="Tenkan-sen"))  # 5
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["kijun"], line=dict(color="#e74c3c", width=2), name="Kijun-sen"))  # 6
@@ -1557,6 +1756,7 @@ elif app_mode == "terminal":
             if p["t"] in df_plot.index:
                 pts.append({"x": int(df_plot.index.get_loc(p["t"])), "y": p["y"]})
 
+        tt_x, tt_text = [], []   # невидимые маркеры у верха временных линий (тап -> полная дата)
         if len(pts) == 3:
             A, B, C = pts
             tg = hosoda_targets(A["y"], B["y"], C["y"])
@@ -1564,60 +1764,84 @@ elif app_mode == "terminal":
 
             colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
             for name, val in {"V": V, "N": N, "E": E, "NT": NT}.items():
-                fig.add_hline(y=val, line_dash="dash", line_color=colors[name])
-                # подпись внутри графика у правого края: справа остаётся место только под цены оси
-                fig.add_annotation(
-                    x=1.0, xref="paper", y=val, yref="y", text=f"{name} {fmt_price(val)}", showarrow=False,
-                    xanchor="right", yanchor="bottom", font=dict(size=10, color=colors[name]),
-                    bgcolor="rgba(255,255,255,0.7)", borderpad=1,
-                )
+                fig.add_hline(y=val, line_dash="dash", line_color=colors[name], annotation_text=f"{name} {fmt_price(val)}", annotation_position="right", annotation_font_size=UIP["ann_font"], annotation_font_color=colors[name])
 
             time_ab, time_ac = abs(B["x"] - A["x"]), abs(C["x"] - A["x"])
+            clock = _forecast_clock(df_plot, tf_name, is_fx)
+
             def vlabel(x, text, color, y):
-                """Компактная вертикальная подпись у верхнего края (y — доля высоты графика)."""
+                """Компактная вертикальная подпись (y — доля высоты графика)."""
                 fig.add_annotation(
                     x=x, y=y, xref="x", yref="paper", text=text, textangle=-90, showarrow=False,
-                    xanchor="center", yanchor="middle", font=dict(size=9, color=color),
+                    xanchor="center", yanchor="middle", font=dict(size=UIP["vlabel_font"], color=color),
                     bgcolor="rgba(255,255,255,0.75)", borderpad=1,
                 )
 
-            # Taiyosuu: синяя = A-B, бирюзовая = A-C (подпись ниже, чтобы не налезала на Kihon);
-            # линии дальше TIME_LINES_MAX_SHIFT баров от C не рисуем — иначе график «сжимается»
-            for shift, color, name in ((time_ab, "blue", "AB"), (time_ac, "teal", "AC")):
-                if shift <= TIME_LINES_MAX_SHIFT:
-                    fig.add_vline(x=C["x"] + shift, line_dash="dot", line_color=color)
-                    vlabel(C["x"] + shift, f"{name} {int(shift)}", color, 0.84)
+            def time_line(x_pos, base, color, dash, y_zone, hover_head, opacity=1.0):
+                """Вертикаль времени + метка с датой + невидимый маркер с полной датой для тапа."""
+                ts_, fc_ = bar_time_at(df_plot, x_pos, tf_name, is_fx, clock)
+                fig.add_vline(x=x_pos, line_dash=dash, line_color=color, opacity=opacity)
+                vlabel(x_pos, time_target_label(base, ts_, fc_, tf_name, MOBILE), color, y_zone)
+                tt_x.append(x_pos)
+                tt_text.append(hover_head + f"<br>{ts_:%Y-%m-%d %H:%M}" + (f" ({t('hover_forecast')})" if fc_ else ""))
 
-            for k in KIHON_DRAW:
-                fig.add_vline(x=C["x"] + k - 1, line_dash="dash", line_color="gray", opacity=0.35)
-                vlabel(C["x"] + k - 1, str(k), "#7f8c8d", 0.95)  # серые числа — Kihon suu
+            # Taiyosuu: синяя = A-B, бирюзовая = A-C (нижняя зона подписей, чтобы не налезали на Kihon)
+            for x_pos, nm, n_bars, col in ((C["x"] + time_ab, "AB", time_ab, "blue"),
+                                           (C["x"] + time_ac, "AC", time_ac, "teal")):
+                time_line(x_pos, f"{nm} {int(n_bars)}", col, "dot", 0.30,
+                          t("hover_taiyosuu", name=nm, n=int(n_bars)))
 
-            fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]], mode="lines+markers", line=dict(color="#f39c12", width=2), marker=dict(size=8), name=t("chart_wave"), hovertemplate=f"%{{y:{pfmt}}}<extra>{t('chart_wave')}</extra>"))
+            for k in KIHON_SUU:   # серые числа — Kihon suu (верхняя зона подписей)
+                time_line(C["x"] + k - 1, str(k), "#7f8c8d", "dash", 0.78, t("hover_kihon", k=k), opacity=0.35)
 
-        # Mobile-first: компактные поля (справа — только место под цены), фиксированная высота — под графиком
-        # остаётся место, чтобы прокручивать страницу. automargin расширяет поля ровно настолько, чтобы влезли подписи осей.
-        tick_step = max(1, len(df_plot) // 6)
+            fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]], mode="lines+markers", line=dict(color="#f39c12", width=2), marker=dict(size=UIP["wave_mark"]), name=t("chart_wave"), hovertemplate=f"%{{y:{pfmt}}}<extra>{t('chart_wave')}</extra>"))
+
+        # Невидимые маркеры добавляются ПОСЛЕДНИМ треком: индексы 0-4 (свеча и фракталы) не меняются
+        if tt_x:
+            y_top = float(df_plot["High"].max())
+            fig.add_trace(go.Scatter(
+                x=tt_x, y=[y_top] * len(tt_x), mode="markers", marker=dict(size=16, color="rgba(0,0,0,0)"),
+                name=t("chart_time_targets"), showlegend=False, text=tt_text, hovertemplate="%{text}<extra></extra>",
+            ))
+
+        tick_step = max(1, len(df_plot) // UIP["tick_div"])
+        time_fmt = axis_time_fmt(tf_name) if MOBILE else "%Y-%m-%d %H:%M"
+        yaxis = dict(side="right", tickformat=tick_fmt(last_close), showgrid=True, gridcolor="#f0f0f0", fixedrange=False)
+        xaxis = dict(tickmode="array", tickvals=df_plot["x_idx"].to_numpy()[::tick_step],
+                     ticktext=df_plot.index.strftime(time_fmt)[::tick_step], showgrid=True, gridcolor="#f0f0f0",
+                     tickangle=UIP["tick_angle"], fixedrange=False)
+        if UIP["y_font"]:
+            yaxis["tickfont"] = UIP["y_font"]
+        if UIP["tick_font"]:
+            xaxis["tickfont"] = UIP["tick_font"]
+
         fig.update_layout(
-            xaxis_rangeslider_visible=False, height=600, template="plotly_white",
+            xaxis_rangeslider_visible=False, height=UIP["height"], template="plotly_white",
             plot_bgcolor="#ffffff", paper_bgcolor="#ffffff",
-            margin=dict(l=5, r=50, t=30, b=5),
-            yaxis=dict(side="right", tickformat=tick_fmt(last_close), showgrid=True, gridcolor="#f0f0f0", fixedrange=False, automargin=True),
-            xaxis=dict(tickmode="array", tickvals=df_plot["x_idx"].to_numpy()[::tick_step], ticktext=df_plot.index.strftime("%Y-%m-%d %H:%M")[::tick_step], showgrid=True, gridcolor="#f0f0f0", tickangle=45, fixedrange=False, automargin=True),
+            margin=UIP["margin"],
+            yaxis=yaxis, xaxis=xaxis,
             hovermode="closest", clickmode="event+select", dragmode="pan",
-            font=dict(color="#2c3e50", size=11),
-            legend=dict(orientation="h", yanchor="top", y=-0.16, xanchor="center", x=0.5, font=dict(size=9)),
+            font=dict(color="#2c3e50"),
+            legend=UIP["legend"],
+            modebar=dict(bgcolor="rgba(255,255,255,0.9)", color="#2c3e50", activecolor="#e74c3c"),
         )
 
+        # displayModeBar=True — панель видна всегда (на тач-экране наведения нет).
+        # selection_mode с box/lasso обязателен: иначе Streamlit вырезает эти кнопки из modebar.
+        # Fullscreen Streamlit добавляет в ту же панель сам.
         event = st.plotly_chart(
             fig,
             key=f"chart_{st.session_state.chart_ver}",
             on_select="rerun",
-            selection_mode="points",
-            config={"scrollZoom": False, "displayModeBar": True},
+            selection_mode=("points", "box", "lasso"),
+            config={"scrollZoom": False, "displayModeBar": True, "displaylogo": False,
+                    "modeBarButtonsToAdd": ["toggleSpikelines"], "modeBarButtonsToRemove": []},
             theme=None,
             **WIDE,
         )
 
+        if MOBILE and len(st.session_state.abc_points) < 3:
+            st.caption(t("points_progress", n=len(st.session_state.abc_points)))
         if len(st.session_state.abc_points) == 3 and len(pts) < 3:
             st.info(t("points_outside"))
 
@@ -1627,14 +1851,12 @@ elif app_mode == "terminal":
         def htf_info():
             """(тренд старшего ТФ на барах df, старший ТФ, данные недоступны?) — считается один раз за прогон."""
             if "v" not in _htf_memo:
-                htf_tf = TERMINAL_HTF_MAP.get(tf_name, tf_name)
+                htf_tf = htf_for(asset_name, tf_name)
                 if htf_tf == tf_name:
                     df_h = df_raw
                 else:
                     df_h_raw, _htf_err = fetch_smart_data(asset_name, htf_tf)
-                    df_h = prepare_ohlc(
-                        df_h_raw, htf_tf, is_fx_asset(ASSET_ROUTER[asset_name]), count_weekend, drop_clearing, offset_choice
-                    )
+                    df_h = prepare_ohlc(df_h_raw, htf_tf, is_fx, count_weekend, drop_clearing, offset_choice)
                 missing = df_h.empty
                 _htf_memo["v"] = (np.zeros(len(df)) if missing else htf_trend_series(df_h, df.index), htf_tf, missing)
             return _htf_memo["v"]
@@ -1705,56 +1927,23 @@ elif app_mode == "terminal":
                             st.caption(t("ai_rel_" + r["reliability"]))
                         st.caption(t("ai_disclaimer"))
 
-        # ---- Инструменты и отчеты: второстепенные кнопки спрятаны под графиком ----
-        with st.expander(t("tools_title")):
-            if st.button(t("tg_button"), key="tg_send", **WIDE):
-                token, chat_id = _tg_credentials()
-                if not token or not chat_id:
-                    st.error(t("tg_no_secrets"))
-                else:
-                    with st.spinner(t("tg_sending")):
-                        tg_pts = [{"x": p_["x"], "y": p_["y"]} for p_ in pts] if len(pts) == 3 else []
-                        tg_abc = st.session_state.abc_points
-                        tg_targets = hosoda_targets(*(p_["y"] for p_ in tg_abc)) if len(tg_abc) == 3 else {}
-                        htf_arr_t, htf_tf_t, htf_missing_t = htf_info()
-                        trend_key = {1.0: "tg_up", -1.0: "tg_down", 0.0: "tg_flat"}[float(htf_arr_t[-1])] if not htf_missing_t else "tg_na"
-                        report = t(
-                            "tg_report", symbol=asset_label(asset_name), tf=tf_name, bar=f"{df_plot.index[-1]:%Y-%m-%d %H:%M}",
-                            price=fmt_price(last_close), htf=htf_tf_t, trend=t(trend_key),
-                            target=fmt_price(tg_targets["N"]) if tg_targets else t("tg_na"),
-                            verdict=t("ai_light_" + ai_light) if ai_light else t("tg_na"))
-                        png, _engine = render_chart_png(fig, df_plot, tg_pts, tg_targets, f"{asset_label(asset_name)} | {tf_name}")
-                        ok, err = send_telegram(token, chat_id, report, png)
-                    if not ok:
-                        st.error(t("tg_err", detail=err))
-                    elif png is None:
-                        st.warning(t("tg_sent_text"))
-                    else:
-                        st.success(t("tg_sent"))
-
-        if event and event.selection and event.selection.get("points") and len(st.session_state.abc_points) < 3:
-            clicked = event.selection["points"][0]
-            x_val = clicked.get("x")
-
-            if x_val is not None:
-                rows = df_plot.loc[df_plot["x_idx"] == x_val]
-                if not rows.empty:
-                    row = rows.iloc[0]
-                    curve = clicked.get("curve_number", clicked.get("curveNumber"))
-                    price = None  # по умолчанию — клик по линии Ишимоку/Чикоу игнорируется
-
-                    if curve in (1, 3):      # Minor/Major High
-                        price = float(row["High"])
-                    elif curve in (2, 4):    # Minor/Major Low
-                        price = float(row["Low"])
-                    elif curve == 0:         # свеча: ближайший экстремум к точке клика
-                        y_val = clicked.get("y")
-                        if y_val is None or abs(float(y_val) - row["High"]) <= abs(float(y_val) - row["Low"]):
-                            price = float(row["High"])
-                        else:
-                            price = float(row["Low"])
-
-                    if price is not None and not any(p["t"] == row.name for p in st.session_state.abc_points):
-                        st.session_state.abc_points.append({"t": row.name, "y": price})
-                        st.rerun()
-        gc.collect()
+        # ---- Telegram: отчёт по текущему графику (кнопка на главном экране, как и была) ----
+        if st.button(t("tg_button"), key="tg_send", **WIDE):
+            token, chat_id = _tg_credentials()
+            if not token or not chat_id:
+                st.error(t("tg_no_secrets"))
+            else:
+                with st.spinner(t("tg_sending")):
+                    tg_pts = [{"x": p_["x"], "y": p_["y"]} for p_ in pts] if len(pts) == 3 else []
+                    tg_abc = st.session_state.abc_points
+                    tg_targets = hosoda_targets(*(p_["y"] for p_ in tg_abc)) if len(tg_abc) == 3 else {}
+                    htf_arr_t, htf_tf_t, htf_missing_t = htf_info()
+                    trend_key = {1.0: "tg_up", -1.0: "tg_down", 0.0: "tg_flat"}[float(htf_arr_t[-1])] if not htf_missing_t else "tg_na"
+                    report = t(
+                        "tg_report", symbol=asset_label(asset_name), tf=tf_name, bar=f"{df_plot.index[-1]:%Y-%m-%d %H:%M}",
+                        price=fmt_price(last_close), htf=htf_tf_t, trend=t(trend_key),
+                        target=fmt_price(tg_targets["N"]) if tg_targets else t("tg_na"),
+                        verdict=t("ai_light_" + ai_light) if ai_light else t("tg_na"))
+                    png, _engine = render_chart_png(fig, df_plot, tg_pts, tg_targets,
+                                                    f"{asset_label(asset_name)} | {tf_name}", tf_name, is_fx, MOBILE)
+                    ok, err = send_telegram(token, chat_id, report, pn
