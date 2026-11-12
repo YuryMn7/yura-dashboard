@@ -3,8 +3,8 @@
 как раньше: height=750, margin 20/110/40/120, легенда снизу, tickangle=45); возврат панели Plotly
 (displayModeBar=True, selection_mode points/box/lasso, перекрестье, fullscreen); адаптив Авто/Мобильный/Десктоп
 (CSS media-query + User-Agent, режим влияет только на оформление); крипто-HTF (BTC: W1/MN1/MN3 -> MN1,
-на MN3 — понятная причина пропуска); даты на линиях Kihon/Taiyosuu (прогноз помечен «≈», те же даты в PNG
-для Telegram); кнопка «🔄 Обновить котировки» без сброса точек A-B-C.
+на MN3 — понятная причина пропуска); даты на линиях Kihon/Taiyosuu в одну строку (прогноз «≈»,
+те же даты в PNG для Telegram); кнопка «🔄 Обновить котировки» только в Терминале, без сброса точек A-B-C.
 Конвейер данных, «Алиса», сигналы Радара, KIHON_SUU и цели Хосоды — без изменений.
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опционально).
 Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID.
@@ -110,7 +110,6 @@ I18N = {
         "awaiting": "Awaiting {label}...", "clear_points": "Clear Points",
         "points_progress": "Points: {n}/3 - tap a candle or a fractal marker on the chart.",
         "refresh": "🔄 Refresh quotes",
-        "refresh_hint": "Clears the quote cache before scanning; scan results are kept.",
         "data_asof": "Data as of {bar} · checked {clock}",
         "scanner_title": "Global Market Scanner",
         "filter_active": "Show active signals only (hide 'Waiting')",
@@ -191,7 +190,6 @@ I18N = {
         "awaiting": "Ожидается {label}...", "clear_points": "Сбросить точки",
         "points_progress": "Точки: {n}/3 — нажмите на свечу или маркер фрактала на графике.",
         "refresh": "🔄 Обновить котировки",
-        "refresh_hint": "Очищает кэш котировок перед сканированием; результаты сканера сохраняются.",
         "data_asof": "Данные на {bar} · проверено {clock}",
         "scanner_title": "Глобальный сканер рынка",
         "filter_active": "Показывать только активные сигналы (Скрыть 'Ждем')",
@@ -281,7 +279,6 @@ def fmt_err(err):
 
 
 def detect_mobile_ua():
-    """Телефон по User-Agent (st.context.headers). Планшеты — не мобильный режим."""
     try:
         ua = st.context.headers.get("User-Agent", "") or ""
     except Exception:
@@ -292,7 +289,6 @@ def detect_mobile_ua():
 
 
 def chart_ui(mobile):
-    """Оформление графика: десктоп — прежние параметры, мобильный — компактный."""
     if mobile:
         return dict(height=580, margin=dict(l=8, r=58, t=48, b=76), tick_div=5, tick_angle=0,
                     tick_font=dict(size=9), y_font=dict(size=9),
@@ -305,7 +301,6 @@ def chart_ui(mobile):
 
 
 def inject_css(mobile):
-    """Адаптивные стили: ненулевые отступы, переносимый заголовок, видимая панель на тач-экранах."""
     mobile_rules = (
         ".block-container { padding-top: 3.2rem !important; padding-left: 0.6rem !important; "
         "padding-right: 0.6rem !important; padding-bottom: 1rem !important; }\n"
@@ -336,7 +331,6 @@ def safe_err(e):
 
 
 def align_start(df, rule):
-    """3-, 6- и 24-месячные свечи — с календарной границы."""
     if df.empty:
         return df
     if rule == "3MS":
@@ -365,7 +359,6 @@ def resample_ohlc(df, rule):
 
 
 def drop_weekend_ny(df_utc):
-    """Межбанк закрыт: пт 17:00 NY -> вс 17:00 NY. Воскресный вечер остаётся."""
     if df_utc.empty:
         return df_utc
     ny = df_utc.index.tz_convert("America/New_York")
@@ -376,7 +369,6 @@ def drop_weekend_ny(df_utc):
 
 
 def glue_sunday(df):
-    """D1: воскресная свеча приклеивается к понедельнику (как в MT5)."""
     if df.empty:
         return df
     df = df.sort_index()
@@ -421,7 +413,6 @@ def is_crypto_asset(route):
 
 
 def htf_for(asset_key, tf):
-    """Единый старший ТФ для Радара и Терминала; у крипты W1/MN1/MN3 -> MN1."""
     base = TERMINAL_HTF_MAP.get(tf, tf)
     if is_crypto_asset(ASSET_ROUTER[asset_key]):
         return CRYPTO_HTF_OVERRIDE.get(tf, base)
@@ -429,7 +420,6 @@ def htf_for(asset_key, tf):
 
 
 def prepare_ohlc(df_utc, tf, is_fx, raw, drop_clearing, server_choice):
-    """Единый конвейер: UTC-данные провайдера -> свечи как в MT5. raw=True — без фильтрации."""
     if df_utc.empty:
         return df_utc
     filter_on = is_fx and not raw
@@ -514,7 +504,6 @@ def _next_monday(ts):
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_smart_data(asset_key, interval):
-    """(df_utc, error). Данные базового ТФ; error при непустом df = часть истории не загрузилась."""
     route = ASSET_ROUTER[asset_key]
     if route["prov"] == "yahoo":
         return fetch_yahoo(route["yf"], interval)
@@ -591,7 +580,6 @@ def axis_time_fmt(tf):
 
 
 def _forecast_clock(df_plot, tf, is_fx):
-    """(шаг, якорь закрытого окна, сдвиг) — из фактических разрывов данных (серверное время, клиринг, raw)."""
     idx = df_plot.index
     if tf in MN_MONTHS or len(idx) < 3:
         return None
@@ -612,7 +600,6 @@ def _forecast_clock(df_plot, tf, is_fx):
 
 
 def bar_time_at(df_plot, x, tf, is_fx, clock=None):
-    """(timestamp, is_forecast) для x-координаты: внутри графика — время свечи, дальше — прогноз."""
     idx = df_plot.index
     n = len(idx)
     x = int(x)
@@ -648,7 +635,7 @@ def fmt_bar_time(ts, tf, compact):
 def time_target_label(base, ts, forecast, tf, mobile):
     mark = "≈" if forecast else ""
     d = fmt_bar_time(ts, tf, mobile)
-    return f"{mark}{base}<br>{d}" if mobile else f"{mark}{base} ({d})"
+    return f"{mark}{base} ({d})"
 
 
 def hosoda_targets(a, b, c):
@@ -680,7 +667,6 @@ ALICE_CLASSES = [("minor", "minor"), ("major", "major"), ("major", "minor"), ("m
 
 
 def htf_trend_series(df_htf, ltf_index):
-    """Тренд старшего ТФ на барах младшего; только закрытый старший бар (shift(1))."""
     h = add_indicators(df_htf)
     cl = h["Close"].to_numpy(dtype=float)
     tk, kj = h["tenkan"].to_numpy(dtype=float), h["kijun"].to_numpy(dtype=float)
@@ -743,7 +729,6 @@ def _alice_pivots(df, d, cls, strict=False):
 
 
 def alice_build_samples(df, htf, targets, ab_cls, c_cls, strict=True, strict_ab=None):
-    """Исторические волны A-B-C заданного класса; вход C+lag, горизонт = время A-C, вниз-волны зеркалятся."""
     strict_ab = strict if strict_ab is None else strict_ab
     ar = _alice_arrays(df, htf)
     n, lag = len(df), ALICE_LAG[c_cls]
@@ -816,7 +801,6 @@ def alice_reliability(n, auc, uplift):
 
 
 def _alice_train_rows(samples, name, e):
-    """Только волны, исход которых известен ДО входа текущей волны (без утечки)."""
     if not len(samples) or ("y_" + name) not in samples:
         return samples.iloc[0:0] if len(samples) else samples
     tr = samples[(samples["e"] + samples["h"] <= e) & samples["y_" + name].notna()]
@@ -831,7 +815,6 @@ def _alice_matrix(tr, name):
 
 
 def alice_point_class(df, i, high_side, price):
-    """Робастный класс точки: major / minor / pending (с допуском на микровыбросы и клик по соседней свече)."""
     n, R = len(df), ALICE_MAJOR_RADIUS
     if i + R >= n:
         return "pending"
@@ -912,7 +895,6 @@ def alice_verdict(r):
 
 
 def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
-    """3-исходная модель (цель/стоп/таймаут) по истории инструмента для волны A-B-C пользователя."""
     if not SKLEARN_OK:
         return {"status": "sklearn"}
     n = len(df)
@@ -1019,7 +1001,6 @@ def _tg_credentials():
 
 
 def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
-    """Запасной PNG: свечи, Ишимоку, Облако, волна, цели и вертикали Kihon/Taiyosuu с датами."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -1053,7 +1034,7 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
         clock = _forecast_clock(df_plot, tf, is_fx)
 
         def vlabel(x_pos, text_, color, y_frac, size=7):
-            ax.text(x_pos, y_frac, text_.replace("<br>", "\n"), transform=ax.get_xaxis_transform(), rotation=90,
+            ax.text(x_pos, y_frac, text_, transform=ax.get_xaxis_transform(), rotation=90,
                     ha="center", va="center", fontsize=size, color=color, zorder=7,
                     bbox=dict(boxstyle="round,pad=0.12", facecolor="white", edgecolor="none", alpha=0.75))
 
@@ -1087,7 +1068,6 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
 
 
 def render_chart_png(fig, df_plot, pts, targets, title, tf, is_fx, mobile):
-    """(BytesIO | None, движок | None): сначала Plotly (нужен kaleido), иначе matplotlib."""
     try:
         return io.BytesIO(fig.to_image(format="png", width=1400, height=800, scale=2)), "plotly"
     except Exception:
@@ -1116,7 +1096,6 @@ def send_telegram(token, chat_id, text, png):
 
 
 def refresh_row(key, caption):
-    """Кнопка обновления котировок: чистит только кэш загрузчиков, точки и настройки не трогает."""
     if MOBILE:
         pressed = st.button(t("refresh"), key=key)
         st.caption(caption)
@@ -1263,7 +1242,6 @@ if app_mode == "radar":
         }
 
     only_active = st.checkbox(t("filter_active"), key="w_radar_active")
-    refresh_row("refresh_radar", t("refresh_hint"))
 
     out = st.session_state.get("radar_out2")
     if out:
@@ -1434,8 +1412,7 @@ elif app_mode == "terminal":
                 tt_x.append(x_pos)
                 tt_text.append(hover_head + f"<br>{ts_:%Y-%m-%d %H:%M}" + (f" ({t('hover_forecast')})" if fc_ else ""))
 
-            for x_pos, nm, n_bars, col in ((C["x"] + time_ab, "AB", time_ab, "blue"),
-                                           (C["x"] + time_ac, "AC", time_ac, "teal")):
+            for x_pos, nm, n_bars, col in ((C["x"] + time_ab, "AB", time_ac, "teal")):
                 time_line(x_pos, f"{nm} {int(n_bars)}", col, "dot", 0.30,
                           t("hover_taiyosuu", name=nm, n=int(n_bars)))
             for k in KIHON_SUU:
