@@ -4,10 +4,11 @@
 (displayModeBar=True, selection_mode points/box/lasso, перекрестье, fullscreen).
 Режим экрана определяется АВТОМАТИЧЕСКИ по User-Agent, переключателя в интерфейсе нет.
 Крипта: BTC W1/MN1/MN3 -> старший MN1, на MN3 — понятная причина пропуска.
-Временные цели Kihon/Taiyosuu: подписи в одну строку с датой (прогноз «≈»), те же даты в PNG для Telegram.
-Масштаб графика ограничен: видимая область расширяется максимум до Kihon 129 от точки C,
-дальние линии (172/226/257) остаются на графике и доступны кнопкой zoom out, но шкалу не уводят.
-Кнопка «🔄 Обновить котировки» только в Терминале, точки A-B-C и цели не сбрасываются.
+Временные цели Kihon/Taiyosuu: у КАЖДОЙ линии есть подпись с датой и временем в одну строку
+(прогноз «≈»), включая дальние 172/226/257 — они проявляются при zoom out; те же даты в PNG для Telegram.
+Масштаб по умолчанию ограничен Kihon 129 от точки C, чтобы свечи не сжимались.
+Кнопка обновления котировок — компактная иконка 🔄 над графиком, без строки с датами;
+точки A-B-C, волна и цели при обновлении не сбрасываются.
 Конвейер данных, «Алиса», сигналы Радара, KIHON_SUU и цели Хосоды — без изменений.
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опционально).
 Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID.
@@ -15,7 +16,7 @@
 import gc
 import io
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, timezone
 
 import numpy as np
 import pandas as pd
@@ -92,7 +93,7 @@ CRYPTO_HTF_OVERRIDE = {"W1": "MN1", "MN1": "MN1", "MN3": "MN1"}
 MIN_LTF_BARS = 110
 MIN_HTF_BARS = 80
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
-TIME_AXIS_KIHON_CAP = 129   # видимая шкала расширяется максимум до этого Kihon от точки C
+TIME_AXIS_KIHON_CAP = 129   # видимая шкала по умолчанию расширяется максимум до этого Kihon от точки C
 MN_MONTHS = {"MN1": 1, "MN3": 3, "MN6": 6, "MN24": 24}
 
 LANGS = {"English": "en", "Русский": "ru"}
@@ -112,8 +113,8 @@ I18N = {
         "wave_points": "Wave Points (A-B-C)", "pt_a": "A (Start)", "pt_b": "B (Peak/Trough)", "pt_c": "C (Retracement)",
         "awaiting": "Awaiting {label}...", "clear_points": "Clear Points",
         "points_progress": "Points: {n}/3 - tap a candle or a fractal marker on the chart.",
-        "refresh": "🔄 Refresh quotes",
-        "data_asof": "Data as of {bar} · checked {clock}",
+        "refresh": "🔄",
+        "refresh_help": "Refresh quotes. Wave A-B-C, price and time targets are kept.",
         "scanner_title": "Global Market Scanner",
         "filter_active": "Show active signals only (hide 'Waiting')",
         "run_scan_all": "Scan all timeframes", "processing_tf": "Processing {asset} / {tf}...",
@@ -191,8 +192,8 @@ I18N = {
         "wave_points": "Точки волны (A-B-C)", "pt_a": "A (начало)", "pt_b": "B (пик/впадина)", "pt_c": "C (откат)",
         "awaiting": "Ожидается {label}...", "clear_points": "Сбросить точки",
         "points_progress": "Точки: {n}/3 — нажмите на свечу или маркер фрактала на графике.",
-        "refresh": "🔄 Обновить котировки",
-        "data_asof": "Данные на {bar} · проверено {clock}",
+        "refresh": "🔄",
+        "refresh_help": "Обновить котировки. Волна A-B-C, цели по цене и по времени сохраняются.",
         "scanner_title": "Глобальный сканер рынка",
         "filter_active": "Показывать только активные сигналы (Скрыть 'Ждем')",
         "run_scan_all": "Сканировать все таймфреймы", "processing_tf": "Обработка: {asset} / {tf}...",
@@ -311,6 +312,7 @@ def inject_css(mobile):
         "h2 { font-size: clamp(1.05rem, 4.5vw, 1.75rem) !important; }\n"
         ".modebar-btn { padding: 3px 5px !important; }\n"
         '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
+        'button[kind="secondary"] { min-height: 2rem; }\n'
     )
     css = (
         "<style>\n"
@@ -1046,14 +1048,12 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
                                          (cx + time_ac, f"AC {int(time_ac)}", "teal", 0.30)):
             ts_, fc_ = bar_time_at(df_plot, x_pos, tf, is_fx, clock)
             ax.axvline(x_pos, color=col, linestyle=":", linewidth=1.1, zorder=2)
-            if x_pos <= x_right:
-                vlabel(x_pos, time_target_label(base, ts_, fc_, tf, mobile), col, y_frac, 8)
+            vlabel(x_pos, time_target_label(base, ts_, fc_, tf, mobile), col, y_frac, 8)
         for k in KIHON_SUU:
             xk = cx + k - 1
             ts_, fc_ = bar_time_at(df_plot, xk, tf, is_fx, clock)
             ax.axvline(xk, color="gray", linestyle="--", linewidth=0.8, alpha=0.35, zorder=2)
-            if xk <= x_right:
-                vlabel(xk, time_target_label(str(k), ts_, fc_, tf, mobile), "#7f8c8d", 0.78, 7)
+            vlabel(xk, time_target_label(str(k), ts_, fc_, tf, mobile), "#7f8c8d", 0.78, 7)
 
     ax.set_xlim(-1.5, x_right + max(2.0, 0.01 * (x_right + 1.0)))
     step = max(1, len(df_plot) // 10)
@@ -1099,17 +1099,9 @@ def send_telegram(token, chat_id, text, png):
         return False, f"{type(e).__name__}: {e}".replace(token, "***")
 
 
-def refresh_row(key, caption):
-    if MOBILE:
-        pressed = st.button(t("refresh"), key=key)
-        st.caption(caption)
-    else:
-        c1, c2 = st.columns([1, 3])
-        with c1:
-            pressed = st.button(t("refresh"), key=key)
-        with c2:
-            st.caption(caption)
-    if pressed:
+def refresh_button(key):
+    """Компактная иконка обновления: чистит только кэш котировок, точки и цели сохраняет."""
+    if st.button(t("refresh"), key=key, help=t("refresh_help")):
         fetch_smart_data.clear()
         fetch_yahoo.clear()
         st.rerun()
@@ -1308,11 +1300,8 @@ elif app_mode == "terminal":
     is_fx = is_fx_asset(ASSET_ROUTER[asset_name])
     df_raw, fetch_err = fetch_smart_data(asset_name, tf_name)
     df_raw = prepare_ohlc(df_raw, tf_name, is_fx, count_weekend, drop_clearing, offset_choice)
-    st.session_state["data_clock"] = datetime.now().strftime("%H:%M:%S")
 
-    refresh_row("refresh_term", t("data_asof",
-                                  bar=f"{df_raw.index[-1]:%Y-%m-%d %H:%M}" if not df_raw.empty else "—",
-                                  clock=st.session_state["data_clock"]))
+    refresh_button("refresh_term")
 
     if is_crypto_asset(ASSET_ROUTER[asset_name]) and tf_name in ("MN3", "MN6", "MN24") and 0 < len(df_raw) < MIN_LTF_BARS:
         st.info(t("crypto_hist_note", tf=tf_name, n=len(df_raw)))
@@ -1411,8 +1400,7 @@ elif app_mode == "terminal":
             def time_line(x_pos, base, color, dash, y_zone, hover_head, opacity=1.0):
                 ts_, fc_ = bar_time_at(df_plot, x_pos, tf_name, is_fx, clock)
                 fig.add_vline(x=x_pos, line_dash=dash, line_color=color, opacity=opacity)
-                if x_pos <= x_view_right:
-                    vlabel(x_pos, time_target_label(base, ts_, fc_, tf_name, MOBILE), color, y_zone)
+                vlabel(x_pos, time_target_label(base, ts_, fc_, tf_name, MOBILE), color, y_zone)
                 tt_x.append(x_pos)
                 tt_text.append(hover_head + f"<br>{ts_:%Y-%m-%d %H:%M}" + (f" ({t('hover_forecast')})" if fc_ else ""))
 
