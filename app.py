@@ -464,9 +464,7 @@ def fmt_err(err):
     if isinstance(err, tuple):
         return t("err_" + err[0], **err[1])
     return str(err)
-
-
-# ==========================================
+ # ==========================================
 # 1b. РЕЖИМ ЭКРАНА И ОФОРМЛЕНИЕ (только внешний вид, на данные не влияет)
 # ==========================================
 def detect_mobile_ua():
@@ -877,9 +875,7 @@ def time_target_label(base, ts, forecast, tf, mobile):
     mark = "≈" if forecast else ""
     d = fmt_bar_time(ts, tf, mobile)
     return f"{mark}{base}<br>{d}" if mobile else f"{mark}{base} ({d})"
-
-
-# ==========================================
+ # ==========================================
 # ЦЕЛИ ХОСОДЫ И ПРОЕКТ «АЛИСА» (ML на лету)
 # ==========================================
 def hosoda_targets(a, b, c):
@@ -1298,9 +1294,7 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
 def alice_run(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets):
     """Кэшируем результат: ML не пересчитывается при каждой перерисовке страницы."""
     return alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets)
-
-
-# ==========================================
+ # ==========================================
 # TELEGRAM: отчёт по текущему графику
 # ==========================================
 def _tg_credentials():
@@ -1476,7 +1470,6 @@ with st.sidebar:
 # Режим экрана влияет ТОЛЬКО на оформление (данные и расчёты от него не зависят)
 MOBILE = screen_mode == "mobile" or (screen_mode == "auto" and detect_mobile_ua())
 inject_css(MOBILE)
-
 # ==========================================
 # Вкладка 1: РАДАР (управление — на главном экране, как и было)
 # ==========================================
@@ -1940,10 +1933,3 @@ elif app_mode == "terminal":
                     htf_arr_t, htf_tf_t, htf_missing_t = htf_info()
                     trend_key = {1.0: "tg_up", -1.0: "tg_down", 0.0: "tg_flat"}[float(htf_arr_t[-1])] if not htf_missing_t else "tg_na"
                     report = t(
-                        "tg_report", symbol=asset_label(asset_name), tf=tf_name, bar=f"{df_plot.index[-1]:%Y-%m-%d %H:%M}",
-                        price=fmt_price(last_close), htf=htf_tf_t, trend=t(trend_key),
-                        target=fmt_price(tg_targets["N"]) if tg_targets else t("tg_na"),
-                        verdict=t("ai_light_" + ai_light) if ai_light else t("tg_na"))
-                    png, _engine = render_chart_png(fig, df_plot, tg_pts, tg_targets,
-                                                    f"{asset_label(asset_name)} | {tf_name}", tf_name, is_fx, MOBILE)
-                    ok, err = send_telegram(token, chat_id, report, pn
