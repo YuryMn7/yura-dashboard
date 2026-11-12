@@ -52,6 +52,9 @@ Quantitative Analysis Terminal — исправленная версия.
  - «Алиса»: 3 исхода (цель +1 / стоп -1 / таймаут 0), честная вероятность цели против стопа и Statistical Edge;
    светофор (приглушённые цвета) на виду, все метрики — в раскрывающемся блоке; блокировок «цель/стоп уже достигнуты» нет;
  - Terminal: кнопка отправки отчёта в Telegram (график PNG + текст), секреты TELEGRAM_TOKEN / TELEGRAM_CHAT_ID.
+ - Mobile-first: CSS без боковых отступов, все элементы управления (в т.ч. радара) — в боковой панели, кнопка Telegram — в
+   expander «Инструменты и отчеты», Plotly: margin(l=5, r=50, t=30, b=5), height=600; линии времени (Kihon suu / Taiyosuu)
+   только до 129 баров от C (TIME_LINES_MAX_SHIFT); matplotlib-рендер для Telegram рисует те же линии времени.
  - переключатель языка English / Русский (первый элемент боковой панели); язык по умолчанию — DEFAULT_LANG;
    все тексты интерфейса лежат в словаре I18N; результаты радара сохраняются при смене языка.
 """
@@ -76,6 +79,29 @@ except ImportError:  # приложение работает и без ML-бло
 
 # set_page_config должен быть первым вызовом Streamlit
 st.set_page_config(page_title="Quantitative Analysis Terminal", layout="wide")
+
+# Mobile-first: основной контейнер без боковых отступов — график занимает 100% ширины экрана.
+# Текст, подписи, таблицы и сообщения получают небольшой отступ, чтобы не прилипать к краю экрана.
+st.markdown("""
+<style>
+.block-container {
+    padding-top: 1rem;
+    padding-bottom: 0rem;
+    padding-left: 0rem;
+    padding-right: 0rem;
+    max-width: 100%;
+}
+.block-container [data-testid="stMarkdownContainer"],
+.block-container [data-testid="stCaptionContainer"],
+.block-container [data-testid="stAlert"],
+.block-container [data-testid="stExpander"],
+.block-container [data-testid="stDataFrame"],
+.block-container [data-testid="stSpinner"] {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+}
+</style>
+""", unsafe_allow_html=True)
 
 API_KEY = st.secrets["TWELVEDATA_KEY"]
 
@@ -158,6 +184,10 @@ MIN_LTF_BARS = 110
 MIN_HTF_BARS = 80
 
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
+# Линии времени (Kihon suu, Taiyosuu) дальше этого числа баров от точки C не рисуем: иначе ось X растягивается вправо,
+# и свечи «сжимаются» (дальние цели по времени почти никогда не отрабатываются).
+TIME_LINES_MAX_SHIFT = 129
+KIHON_DRAW = [k for k in KIHON_SUU if k <= TIME_LINES_MAX_SHIFT]
 
 # ==========================================
 # ПЕРЕВОДЫ (English / Русский)
@@ -189,6 +219,8 @@ I18N = {
         "awaiting": "Awaiting {label}...",
         "clear_points": "Clear Points",
         "scanner_title": "Global Market Scanner",
+        "radar_settings": "Radar Settings",
+        "tools_title": "Tools and reports",
         "filter_active": "Show active signals only (hide 'Waiting')",
         "run_scan_all": "Scan all timeframes",
         "processing_tf": "Processing {asset} / {tf}...",
@@ -306,6 +338,8 @@ I18N = {
         "awaiting": "Ожидается {label}...",
         "clear_points": "Сбросить точки",
         "scanner_title": "Глобальный сканер рынка",
+        "radar_settings": "Настройки радара",
+        "tools_title": "Инструменты и отчеты",
         "filter_active": "Показывать только активные сигналы (Скрыть 'Ждем')",
         "run_scan_all": "Сканировать все таймфреймы",
         "processing_tf": "Обработка: {asset} / {tf}...",
@@ -1148,7 +1182,29 @@ def _render_chart_matplotlib(df_plot, pts, targets, title):
     colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
     for name, val in (targets or {}).items():
         ax.axhline(val, color=colors.get(name, "gray"), linestyle="--", linewidth=1.0, zorder=2)
-        ax.text(1.0, val, f" {name} {fmt_price(val)}", transform=ax.get_yaxis_transform(), va="center", fontsize=9, color=colors.get(name, "gray"))
+        ax.text(0.995, val, f"{name} {fmt_price(val)}", transform=ax.get_yaxis_transform(), ha="right", va="bottom", fontsize=9,
+                color=colors.get(name, "gray"), bbox=dict(facecolor="white", edgecolor="none", alpha=0.7, pad=0.6), zorder=7)
+    x_hi = len(df_plot) + 26                                   # справа место под облако Кумо
+    if len(pts) == 3:
+        # линии времени, как в Plotly: Taiyosuu (синяя A-B, бирюзовая A-C) и Kihon suu (серые пунктирные) от точки C
+        A_, B_, C_ = pts
+        time_ab, time_ac = abs(B_["x"] - A_["x"]), abs(C_["x"] - A_["x"])
+        xform = ax.get_xaxis_transform()                       # x — данные, y — доля высоты графика
+
+        def vmark(xv, text, color, yfrac):
+            ax.text(xv, yfrac, text, transform=xform, rotation=90, ha="center", va="center", fontsize=7, color=color,
+                    bbox=dict(facecolor="white", edgecolor="none", alpha=0.75, pad=0.8), zorder=7)
+
+        for shift, color, name in ((time_ab, "blue", "AB"), (time_ac, "teal", "AC")):
+            if shift <= TIME_LINES_MAX_SHIFT:
+                ax.axvline(C_["x"] + shift, color=color, linestyle=":", linewidth=1.1, zorder=2)
+                vmark(C_["x"] + shift, f"{name} {int(shift)}", color, 0.84)
+                x_hi = max(x_hi, C_["x"] + shift + 3)
+        for k in KIHON_DRAW:
+            ax.axvline(C_["x"] + k - 1, color="gray", linestyle="--", linewidth=0.8, alpha=0.35, zorder=2)
+            vmark(C_["x"] + k - 1, str(k), "#7f8c8d", 0.95)
+            x_hi = max(x_hi, C_["x"] + k + 2)
+    ax.set_xlim(-1.5, x_hi)
     step = max(1, len(df_plot) // 10)
     ax.set_xticks(x[::step])
     ax.set_xticklabels(df_plot.index.strftime("%Y-%m-%d %H:%M")[::step], rotation=45, ha="right", fontsize=8)
@@ -1238,7 +1294,13 @@ if app_mode == "radar":
     st.markdown(f"<h2 style='color: #2c3e50;'>{t('scanner_title')}</h2>", unsafe_allow_html=True)
     if st.session_state.get("w_radar_tf") not in radar_tfs:  # напр. раньше был выбран MN6/MN24
         st.session_state["w_radar_tf"] = "D1"
-    radar_tf = st.selectbox(t("select_tf"), radar_tfs, key="w_radar_tf")
+    with st.sidebar:                                       # управление радаром — в боковой панели, на экране только аналитика
+        st.markdown("---")
+        st.markdown(f"### {t('radar_settings')}")
+        radar_tf = st.selectbox(t("select_tf"), radar_tfs, key="w_radar_tf")
+        only_active = st.checkbox(t("filter_active"), key="w_radar_active")  # Smart Filter
+        scan_clicked = st.button(t("run_scan"), **WIDE)
+        scan_all_clicked = st.button(t("run_scan_all"), **WIDE)
 
     def fetch_radar(route, tf):
         """Yahoo (UTC) -> тот же конвейер prepare_ohlc, что и в терминале."""
@@ -1329,21 +1391,19 @@ if app_mode == "radar":
         my_bar.empty()
         return results, skipped
 
-    if st.button(t("run_scan"), **WIDE):
+    if scan_clicked:
         res, sk = run_scan([radar_tf])
         # результаты хранятся в session_state — не пропадают при смене языка и при переключении фильтра
         st.session_state["radar_out2"] = {
             "ctx": (radar_tf, offset_choice, count_weekend, drop_clearing),
             "all": False, "results": res, "skipped": sk,
         }
-    if st.button(t("run_scan_all"), **WIDE):
+    if scan_all_clicked:
         res, sk = run_scan(radar_tfs)
         st.session_state["radar_out2"] = {
             "ctx": ("ALL", offset_choice, count_weekend, drop_clearing),
             "all": True, "results": res, "skipped": sk,
         }
-
-    only_active = st.checkbox(t("filter_active"), key="w_radar_active")  # Smart Filter
 
     out = st.session_state.get("radar_out2")
     if out:
@@ -1504,7 +1564,13 @@ elif app_mode == "terminal":
 
             colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
             for name, val in {"V": V, "N": N, "E": E, "NT": NT}.items():
-                fig.add_hline(y=val, line_dash="dash", line_color=colors[name], annotation_text=f"{name} {fmt_price(val)}", annotation_position="right", annotation_font_size=10, annotation_font_color=colors[name])
+                fig.add_hline(y=val, line_dash="dash", line_color=colors[name])
+                # подпись внутри графика у правого края: справа остаётся место только под цены оси
+                fig.add_annotation(
+                    x=1.0, xref="paper", y=val, yref="y", text=f"{name} {fmt_price(val)}", showarrow=False,
+                    xanchor="right", yanchor="bottom", font=dict(size=10, color=colors[name]),
+                    bgcolor="rgba(255,255,255,0.7)", borderpad=1,
+                )
 
             time_ab, time_ac = abs(B["x"] - A["x"]), abs(C["x"] - A["x"])
             def vlabel(x, text, color, y):
@@ -1515,28 +1581,31 @@ elif app_mode == "terminal":
                     bgcolor="rgba(255,255,255,0.75)", borderpad=1,
                 )
 
-            # Taiyosuu: синяя = A-B, бирюзовая = A-C (подпись ниже, чтобы не налезала на Kihon)
-            fig.add_vline(x=C["x"] + time_ab, line_dash="dot", line_color="blue")
-            vlabel(C["x"] + time_ab, f"AB {int(time_ab)}", "blue", 0.84)
-            fig.add_vline(x=C["x"] + time_ac, line_dash="dot", line_color="teal")
-            vlabel(C["x"] + time_ac, f"AC {int(time_ac)}", "teal", 0.84)
+            # Taiyosuu: синяя = A-B, бирюзовая = A-C (подпись ниже, чтобы не налезала на Kihon);
+            # линии дальше TIME_LINES_MAX_SHIFT баров от C не рисуем — иначе график «сжимается»
+            for shift, color, name in ((time_ab, "blue", "AB"), (time_ac, "teal", "AC")):
+                if shift <= TIME_LINES_MAX_SHIFT:
+                    fig.add_vline(x=C["x"] + shift, line_dash="dot", line_color=color)
+                    vlabel(C["x"] + shift, f"{name} {int(shift)}", color, 0.84)
 
-            for k in KIHON_SUU:
+            for k in KIHON_DRAW:
                 fig.add_vline(x=C["x"] + k - 1, line_dash="dash", line_color="gray", opacity=0.35)
                 vlabel(C["x"] + k - 1, str(k), "#7f8c8d", 0.95)  # серые числа — Kihon suu
 
             fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]], mode="lines+markers", line=dict(color="#f39c12", width=2), marker=dict(size=8), name=t("chart_wave"), hovertemplate=f"%{{y:{pfmt}}}<extra>{t('chart_wave')}</extra>"))
 
-        tick_step = max(1, len(df_plot) // 10)
+        # Mobile-first: компактные поля (справа — только место под цены), фиксированная высота — под графиком
+        # остаётся место, чтобы прокручивать страницу. automargin расширяет поля ровно настолько, чтобы влезли подписи осей.
+        tick_step = max(1, len(df_plot) // 6)
         fig.update_layout(
-            xaxis_rangeslider_visible=False, height=750, template="plotly_white",
+            xaxis_rangeslider_visible=False, height=600, template="plotly_white",
             plot_bgcolor="#ffffff", paper_bgcolor="#ffffff",
-            margin=dict(l=20, r=110, t=40, b=120),
-            yaxis=dict(side="right", tickformat=tick_fmt(last_close), showgrid=True, gridcolor="#f0f0f0", fixedrange=False),
-            xaxis=dict(tickmode="array", tickvals=df_plot["x_idx"].to_numpy()[::tick_step], ticktext=df_plot.index.strftime("%Y-%m-%d %H:%M")[::tick_step], showgrid=True, gridcolor="#f0f0f0", tickangle=45, fixedrange=False),
+            margin=dict(l=5, r=50, t=30, b=5),
+            yaxis=dict(side="right", tickformat=tick_fmt(last_close), showgrid=True, gridcolor="#f0f0f0", fixedrange=False, automargin=True),
+            xaxis=dict(tickmode="array", tickvals=df_plot["x_idx"].to_numpy()[::tick_step], ticktext=df_plot.index.strftime("%Y-%m-%d %H:%M")[::tick_step], showgrid=True, gridcolor="#f0f0f0", tickangle=45, fixedrange=False, automargin=True),
             hovermode="closest", clickmode="event+select", dragmode="pan",
-            font=dict(color="#2c3e50"),
-            legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5),
+            font=dict(color="#2c3e50", size=11),
+            legend=dict(orientation="h", yanchor="top", y=-0.16, xanchor="center", x=0.5, font=dict(size=9)),
         )
 
         event = st.plotly_chart(
@@ -1636,31 +1705,32 @@ elif app_mode == "terminal":
                             st.caption(t("ai_rel_" + r["reliability"]))
                         st.caption(t("ai_disclaimer"))
 
-        # ---- Telegram: отчёт по текущему графику ----
-        if st.button(t("tg_button"), key="tg_send", **WIDE):
-            token, chat_id = _tg_credentials()
-            if not token or not chat_id:
-                st.error(t("tg_no_secrets"))
-            else:
-                with st.spinner(t("tg_sending")):
-                    tg_pts = [{"x": p_["x"], "y": p_["y"]} for p_ in pts] if len(pts) == 3 else []
-                    tg_abc = st.session_state.abc_points
-                    tg_targets = hosoda_targets(*(p_["y"] for p_ in tg_abc)) if len(tg_abc) == 3 else {}
-                    htf_arr_t, htf_tf_t, htf_missing_t = htf_info()
-                    trend_key = {1.0: "tg_up", -1.0: "tg_down", 0.0: "tg_flat"}[float(htf_arr_t[-1])] if not htf_missing_t else "tg_na"
-                    report = t(
-                        "tg_report", symbol=asset_label(asset_name), tf=tf_name, bar=f"{df_plot.index[-1]:%Y-%m-%d %H:%M}",
-                        price=fmt_price(last_close), htf=htf_tf_t, trend=t(trend_key),
-                        target=fmt_price(tg_targets["N"]) if tg_targets else t("tg_na"),
-                        verdict=t("ai_light_" + ai_light) if ai_light else t("tg_na"))
-                    png, _engine = render_chart_png(fig, df_plot, tg_pts, tg_targets, f"{asset_label(asset_name)} | {tf_name}")
-                    ok, err = send_telegram(token, chat_id, report, png)
-                if not ok:
-                    st.error(t("tg_err", detail=err))
-                elif png is None:
-                    st.warning(t("tg_sent_text"))
+        # ---- Инструменты и отчеты: второстепенные кнопки спрятаны под графиком ----
+        with st.expander(t("tools_title")):
+            if st.button(t("tg_button"), key="tg_send", **WIDE):
+                token, chat_id = _tg_credentials()
+                if not token or not chat_id:
+                    st.error(t("tg_no_secrets"))
                 else:
-                    st.success(t("tg_sent"))
+                    with st.spinner(t("tg_sending")):
+                        tg_pts = [{"x": p_["x"], "y": p_["y"]} for p_ in pts] if len(pts) == 3 else []
+                        tg_abc = st.session_state.abc_points
+                        tg_targets = hosoda_targets(*(p_["y"] for p_ in tg_abc)) if len(tg_abc) == 3 else {}
+                        htf_arr_t, htf_tf_t, htf_missing_t = htf_info()
+                        trend_key = {1.0: "tg_up", -1.0: "tg_down", 0.0: "tg_flat"}[float(htf_arr_t[-1])] if not htf_missing_t else "tg_na"
+                        report = t(
+                            "tg_report", symbol=asset_label(asset_name), tf=tf_name, bar=f"{df_plot.index[-1]:%Y-%m-%d %H:%M}",
+                            price=fmt_price(last_close), htf=htf_tf_t, trend=t(trend_key),
+                            target=fmt_price(tg_targets["N"]) if tg_targets else t("tg_na"),
+                            verdict=t("ai_light_" + ai_light) if ai_light else t("tg_na"))
+                        png, _engine = render_chart_png(fig, df_plot, tg_pts, tg_targets, f"{asset_label(asset_name)} | {tf_name}")
+                        ok, err = send_telegram(token, chat_id, report, png)
+                    if not ok:
+                        st.error(t("tg_err", detail=err))
+                    elif png is None:
+                        st.warning(t("tg_sent_text"))
+                    else:
+                        st.success(t("tg_sent"))
 
         if event and event.selection and event.selection.get("points") and len(st.session_state.abc_points) < 3:
             clicked = event.selection["points"][0]
