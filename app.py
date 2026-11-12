@@ -4,10 +4,11 @@
 (displayModeBar=True, selection_mode points/box/lasso, перекрестье, fullscreen).
 Режим экрана определяется АВТОМАТИЧЕСКИ по User-Agent, переключателя в интерфейсе нет.
 Крипта: BTC W1/MN1/MN3 -> старший MN1, на MN3 — понятная причина пропуска.
-Временные цели Kihon/Taiyosuu: у КАЖДОЙ линии есть подпись с датой и временем в одну строку
-(прогноз «≈»), включая дальние 172/226/257 — они проявляются при zoom out; те же даты в PNG для Telegram.
+Временные цели Kihon/Taiyosuu: у каждой линии подпись с датой и временем в одну строку (прогноз «≈»),
+дальние 172/226/257 проявляются при zoom out; те же даты в PNG для Telegram.
 Масштаб по умолчанию ограничен Kihon 129 от точки C, чтобы свечи не сжимались.
-Кнопка обновления котировок — компактная иконка 🔄 над графиком, без строки с датами;
+Обновление котировок — монохромная иконка ↻ в стиле панели инструментов графика (правый верхний угол
+над графиком, размер и цвета как у кнопок Plotly, без эмодзи и без строки с датами);
 точки A-B-C, волна и цели при обновлении не сбрасываются.
 Конвейер данных, «Алиса», сигналы Радара, KIHON_SUU и цели Хосоды — без изменений.
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опционально).
@@ -93,7 +94,7 @@ CRYPTO_HTF_OVERRIDE = {"W1": "MN1", "MN1": "MN1", "MN3": "MN1"}
 MIN_LTF_BARS = 110
 MIN_HTF_BARS = 80
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
-TIME_AXIS_KIHON_CAP = 129   # видимая шкала по умолчанию расширяется максимум до этого Kihon от точки C
+TIME_AXIS_KIHON_CAP = 129
 MN_MONTHS = {"MN1": 1, "MN3": 3, "MN6": 6, "MN24": 24}
 
 LANGS = {"English": "en", "Русский": "ru"}
@@ -113,8 +114,8 @@ I18N = {
         "wave_points": "Wave Points (A-B-C)", "pt_a": "A (Start)", "pt_b": "B (Peak/Trough)", "pt_c": "C (Retracement)",
         "awaiting": "Awaiting {label}...", "clear_points": "Clear Points",
         "points_progress": "Points: {n}/3 - tap a candle or a fractal marker on the chart.",
-        "refresh": "🔄",
-        "refresh_help": "Refresh quotes. Wave A-B-C, price and time targets are kept.",
+        "refresh": "↻",
+        "refresh_help": "Refresh quotes. Wave A-B-C, price and time targets are preserved.",
         "scanner_title": "Global Market Scanner",
         "filter_active": "Show active signals only (hide 'Waiting')",
         "run_scan_all": "Scan all timeframes", "processing_tf": "Processing {asset} / {tf}...",
@@ -192,7 +193,7 @@ I18N = {
         "wave_points": "Точки волны (A-B-C)", "pt_a": "A (начало)", "pt_b": "B (пик/впадина)", "pt_c": "C (откат)",
         "awaiting": "Ожидается {label}...", "clear_points": "Сбросить точки",
         "points_progress": "Точки: {n}/3 — нажмите на свечу или маркер фрактала на графике.",
-        "refresh": "🔄",
+        "refresh": "↻",
         "refresh_help": "Обновить котировки. Волна A-B-C, цели по цене и по времени сохраняются.",
         "scanner_title": "Глобальный сканер рынка",
         "filter_active": "Показывать только активные сигналы (Скрыть 'Ждем')",
@@ -312,7 +313,23 @@ def inject_css(mobile):
         "h2 { font-size: clamp(1.05rem, 4.5vw, 1.75rem) !important; }\n"
         ".modebar-btn { padding: 3px 5px !important; }\n"
         '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
-        'button[kind="secondary"] { min-height: 2rem; }\n'
+    )
+    # Кнопка обновления — часть инструментальной панели графика: тот же размер, что у кнопок Plotly,
+    # монохромный глиф вместо цветного эмодзи, тонкая рамка, спокойный hover. Правый край над графиком.
+    tool_css = (
+        ".st-key-refresh_term { display: flex; justify-content: flex-end; align-items: center; "
+        "margin: 0 0 -0.55rem 0; padding-right: 2px; }\n"
+        ".st-key-refresh_term button { height: 28px; width: 30px; min-height: 0 !important; "
+        "display: inline-flex; align-items: center; justify-content: center; "
+        "padding: 0 !important; margin: 0; border: 1px solid #dfe4ea; border-radius: 2px; "
+        "background: rgba(255,255,255,0.92); color: #2c3e50; box-shadow: none; "
+        "transition: background-color .15s ease, border-color .15s ease; }\n"
+        ".st-key-refresh_term button p, .st-key-refresh_term button span { "
+        "font-size: 15px !important; line-height: 1 !important; margin: 0 !important; color: #2c3e50; "
+        'font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif; }\n'
+        ".st-key-refresh_term button:hover { background: #eef2f5; border-color: #2c3e50; color: #2c3e50; }\n"
+        ".st-key-refresh_term button:active { background: #e3e9ee; border-color: #2c3e50; }\n"
+        ".st-key-refresh_term button:focus-visible { outline: 1px solid #2c3e50; outline-offset: 1px; }\n"
     )
     css = (
         "<style>\n"
@@ -320,6 +337,7 @@ def inject_css(mobile):
         ".app-title { color: #2c3e50; font-size: clamp(1.05rem, 4.5vw, 1.75rem); line-height: 1.25; "
         "margin-top: 0.2rem; overflow-wrap: anywhere; white-space: normal; }\n"
         ".stPlotlyChart .modebar { opacity: 1; }\n"
+        + tool_css +
         "@media (max-width: 768px) {\n" + mobile_rules + "}\n"
         "@media (hover: none) {\n"
         ".stPlotlyChart .modebar { opacity: 1 !important; }\n"
@@ -1100,7 +1118,7 @@ def send_telegram(token, chat_id, text, png):
 
 
 def refresh_button(key):
-    """Компактная иконка обновления: чистит только кэш котировок, точки и цели сохраняет."""
+    """Монохромная иконка ↻ в стиле панели графика: чистит только кэш котировок, точки и цели сохраняет."""
     if st.button(t("refresh"), key=key, help=t("refresh_help")):
         fetch_smart_data.clear()
         fetch_yahoo.clear()
