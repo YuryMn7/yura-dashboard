@@ -1,10 +1,13 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-Текущий спринт: откат mobile-first (кнопки сканера и Telegram снова на главном экране, десктопный график
-как раньше: height=750, margin 20/110/40/120, легенда снизу, tickangle=45); возврат панели Plotly
-(displayModeBar=True, selection_mode points/box/lasso, перекрестье, fullscreen); адаптив Авто/Мобильный/Десктоп
-(CSS media-query + User-Agent, режим влияет только на оформление); крипто-HTF (BTC: W1/MN1/MN3 -> MN1,
-на MN3 — понятная причина пропуска); даты на линиях Kihon/Taiyosuu в одну строку (прогноз «≈»,
-те же даты в PNG для Telegram); кнопка «🔄 Обновить котировки» только в Терминале, без сброса точек A-B-C.
+Текущее состояние: кнопки сканера и Telegram на главном экране; десктопный график как раньше
+(height=750, margin 20/110/40/120, легенда снизу, tickangle=45); панель Plotly всегда видна
+(displayModeBar=True, selection_mode points/box/lasso, перекрестье, fullscreen).
+Режим экрана определяется АВТОМАТИЧЕСКИ по User-Agent, переключателя в интерфейсе нет.
+Крипта: BTC W1/MN1/MN3 -> старший MN1, на MN3 — понятная причина пропуска.
+Временные цели Kihon/Taiyosuu: подписи в одну строку с датой (прогноз «≈»), те же даты в PNG для Telegram.
+Масштаб графика ограничен: видимая область расширяется максимум до Kihon 129 от точки C,
+дальние линии (172/226/257) остаются на графике и доступны кнопкой zoom out, но шкалу не уводят.
+Кнопка «🔄 Обновить котировки» только в Терминале, точки A-B-C и цели не сбрасываются.
 Конвейер данных, «Алиса», сигналы Радара, KIHON_SUU и цели Хосоды — без изменений.
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опционально).
 Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID.
@@ -89,6 +92,7 @@ CRYPTO_HTF_OVERRIDE = {"W1": "MN1", "MN1": "MN1", "MN3": "MN1"}
 MIN_LTF_BARS = 110
 MIN_HTF_BARS = 80
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
+TIME_AXIS_KIHON_CAP = 129   # видимая шкала расширяется максимум до этого Kihon от точки C
 MN_MONTHS = {"MN1": 1, "MN3": 3, "MN6": 6, "MN24": 24}
 
 LANGS = {"English": "en", "Русский": "ru"}
@@ -99,7 +103,6 @@ I18N = {
     "en": {
         "nav": "Navigation", "module": "Select Module:",
         "mode_radar": "Market Scanner (Radar)", "mode_terminal": "Analytical Terminal",
-        "screen_mode": "Screen:", "screen_auto": "Auto", "screen_mobile": "Mobile", "screen_desktop": "Desktop",
         "data_settings": "Data Settings (Radar + Terminal)", "server_time": "Server Time (MT5):",
         "raw": "Include Saturday & closing night (raw)",
         "raw_help": "Off: Saturday and closed hours (Fri 17:00 NY - Sun 17:00 NY) are removed, Sunday evening is kept. On: raw provider data with no filtering at all.",
@@ -179,7 +182,6 @@ I18N = {
     "ru": {
         "nav": "Навигация", "module": "Выберите модуль:",
         "mode_radar": "Сканер рынка (Радар)", "mode_terminal": "Аналитический терминал",
-        "screen_mode": "Экран:", "screen_auto": "Авто", "screen_mobile": "Мобильный", "screen_desktop": "Десктоп",
         "data_settings": "Настройки данных (Радар + Терминал)", "server_time": "Серверное время (MT5):",
         "raw": "Считать субботу и ночь закрытия (сырые данные)",
         "raw_help": "Выкл: суббота и закрытые часы (пт 17:00 NY — вс 17:00 NY) убраны, воскресный вечер остаётся. Вкл: сырые данные провайдера без какой-либо фильтрации.",
@@ -279,6 +281,7 @@ def fmt_err(err):
 
 
 def detect_mobile_ua():
+    """Автоматическое определение телефона по User-Agent; планшеты считаются десктопом."""
     try:
         ua = st.context.headers.get("User-Agent", "") or ""
     except Exception:
@@ -1030,6 +1033,7 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     if len(pts) == 3:
         A_, B_, C_ = pts
         cx = float(C_["x"])
+        x_right = max(x_right, cx + TIME_AXIS_KIHON_CAP - 1)
         time_ab, time_ac = abs(B_["x"] - A_["x"]), abs(C_["x"] - A_["x"])
         clock = _forecast_clock(df_plot, tf, is_fx)
 
@@ -1042,14 +1046,14 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
                                          (cx + time_ac, f"AC {int(time_ac)}", "teal", 0.30)):
             ts_, fc_ = bar_time_at(df_plot, x_pos, tf, is_fx, clock)
             ax.axvline(x_pos, color=col, linestyle=":", linewidth=1.1, zorder=2)
-            vlabel(x_pos, time_target_label(base, ts_, fc_, tf, mobile), col, y_frac, 8)
-            x_right = max(x_right, x_pos)
+            if x_pos <= x_right:
+                vlabel(x_pos, time_target_label(base, ts_, fc_, tf, mobile), col, y_frac, 8)
         for k in KIHON_SUU:
             xk = cx + k - 1
             ts_, fc_ = bar_time_at(df_plot, xk, tf, is_fx, clock)
             ax.axvline(xk, color="gray", linestyle="--", linewidth=0.8, alpha=0.35, zorder=2)
-            vlabel(xk, time_target_label(str(k), ts_, fc_, tf, mobile), "#7f8c8d", 0.78, 7)
-            x_right = max(x_right, xk)
+            if xk <= x_right:
+                vlabel(xk, time_target_label(str(k), ts_, fc_, tf, mobile), "#7f8c8d", 0.78, 7)
 
     ax.set_xlim(-1.5, x_right + max(2.0, 0.01 * (x_right + 1.0)))
     step = max(1, len(df_plot) // 10)
@@ -1111,7 +1115,7 @@ def refresh_row(key, caption):
         st.rerun()
 
 
-PERSIST_KEYS = ["w_mode", "w_screen", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active"]
+PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active"]
 
 
 def _on_lang_change():
@@ -1124,7 +1128,6 @@ if _keep:
         st.session_state[_k] = _v
 
 st.session_state.setdefault("lang", DEFAULT_LANG)
-st.session_state.setdefault("w_screen", "auto")
 st.session_state.setdefault("w_tf", "H1")
 st.session_state.setdefault("w_radar_tf", "D1")
 st.session_state.setdefault("w_radar_active", True)
@@ -1132,8 +1135,6 @@ st.session_state.setdefault("w_radar_active", True)
 with st.sidebar:
     lang_label = st.radio("Language / Язык", list(LANGS.keys()), horizontal=True, key="lang", on_change=_on_lang_change)
     LANG = LANGS[lang_label]
-    screen_mode = st.radio(t("screen_mode"), ["auto", "mobile", "desktop"],
-                           format_func=lambda k: t("screen_" + k), horizontal=True, key="w_screen")
     st.markdown("---")
     st.markdown(f"### {t('nav')}")
     app_mode = st.radio(t("module"), ["radar", "terminal"], format_func=lambda k: t("mode_" + k), key="w_mode")
@@ -1143,7 +1144,7 @@ with st.sidebar:
     count_weekend = st.checkbox(t("raw"), help=t("raw_help"), key="w_raw")
     drop_clearing = st.checkbox(t("clearing"), disabled=count_weekend, help=t("clearing_help"), key="w_clear")
 
-MOBILE = screen_mode == "mobile" or (screen_mode == "auto" and detect_mobile_ua())
+MOBILE = detect_mobile_ua()
 inject_css(MOBILE)
 
 if app_mode == "radar":
@@ -1388,6 +1389,7 @@ elif app_mode == "terminal":
                 pts.append({"x": int(df_plot.index.get_loc(p["t"])), "y": p["y"]})
 
         tt_x, tt_text = [], []
+        x_view_right = float(len(df_plot) - 1)
         if len(pts) == 3:
             A, B, C = pts
             tg = hosoda_targets(A["y"], B["y"], C["y"])
@@ -1397,6 +1399,7 @@ elif app_mode == "terminal":
                 fig.add_hline(y=val, line_dash="dash", line_color=colors[name], annotation_text=f"{name} {fmt_price(val)}", annotation_position="right", annotation_font_size=UIP["ann_font"], annotation_font_color=colors[name])
             time_ab, time_ac = abs(B["x"] - A["x"]), abs(C["x"] - A["x"])
             clock = _forecast_clock(df_plot, tf_name, is_fx)
+            x_view_right = float(max(len(df_plot) - 1, C["x"] + TIME_AXIS_KIHON_CAP - 1))
 
             def vlabel(x, text, color, y):
                 fig.add_annotation(
@@ -1408,11 +1411,13 @@ elif app_mode == "terminal":
             def time_line(x_pos, base, color, dash, y_zone, hover_head, opacity=1.0):
                 ts_, fc_ = bar_time_at(df_plot, x_pos, tf_name, is_fx, clock)
                 fig.add_vline(x=x_pos, line_dash=dash, line_color=color, opacity=opacity)
-                vlabel(x_pos, time_target_label(base, ts_, fc_, tf_name, MOBILE), color, y_zone)
+                if x_pos <= x_view_right:
+                    vlabel(x_pos, time_target_label(base, ts_, fc_, tf_name, MOBILE), color, y_zone)
                 tt_x.append(x_pos)
                 tt_text.append(hover_head + f"<br>{ts_:%Y-%m-%d %H:%M}" + (f" ({t('hover_forecast')})" if fc_ else ""))
 
-            for x_pos, nm, n_bars, col in ((C["x"] + time_ab, "AB", time_ac, "teal")):
+            for x_pos, nm, n_bars, col in ((C["x"] + time_ab, "AB", time_ab, "blue"),
+                                           (C["x"] + time_ac, "AC", time_ac, "teal")):
                 time_line(x_pos, f"{nm} {int(n_bars)}", col, "dot", 0.30,
                           t("hover_taiyosuu", name=nm, n=int(n_bars)))
             for k in KIHON_SUU:
@@ -1433,6 +1438,8 @@ elif app_mode == "terminal":
         xaxis = dict(tickmode="array", tickvals=df_plot["x_idx"].to_numpy()[::tick_step],
                      ticktext=df_plot.index.strftime(time_fmt)[::tick_step], showgrid=True, gridcolor="#f0f0f0",
                      tickangle=UIP["tick_angle"], fixedrange=False)
+        if len(pts) == 3:
+            xaxis["range"] = [-0.5, x_view_right + 1.5]
         if UIP["y_font"]:
             yaxis["tickfont"] = UIP["y_font"]
         if UIP["tick_font"]:
