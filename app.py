@@ -7,10 +7,20 @@
 Временные цели Kihon/Taiyosuu: у каждой линии подпись с датой и временем в одну строку (прогноз «≈»),
 дальние 172/226/257 проявляются при zoom out; те же даты в PNG для Telegram.
 Масштаб по умолчанию ограничен Kihon 129 от точки C, чтобы свечи не сжимались.
-Обновление котировок — монохромная иконка ↻ в стиле панели инструментов графика (правый верхний угол
-над графиком, размер и цвета как у кнопок Plotly, без эмодзи и без строки с датами);
-точки A-B-C, волна и цели при обновлении не сбрасываются.
-Конвейер данных, «Алиса», сигналы Радара, KIHON_SUU и цели Хосоды — без изменений.
+Обновление котировок — монохромная иконка ↻ в стиле панели графика; точки и цели не сбрасываются.
+
+РАДАР (Real-Time засада у Киджун): тренд HTF, Облако, Тенкан/Киджун и Чикоу подтверждаются
+по последней ЗАКРЫТОЙ свече (iloc[-2]); триггер зоны проверяется по АКТИВНОЙ свече (iloc[-1]) —
+цена и тени против Киджун закрытого бара с порогом 0.3*ATR. Для SELL достаточно касания тенью сверху,
+для BUY — снизу. Колонка «Причина» показывает расстояние до Киджун и недостающие подтверждения.
+Источник данных Радара — Yahoo (золото = GC=F, индексы), терминал — TwelveData там, где настроен.
+
+BY DESIGN (штатная защита, не дефект): точки A-B-C сбрасываются при смене инструмента, таймфрейма,
+серверного времени, режимов raw и клиринга, а также кнопкой «Сбросить точки» — эти настройки меняют
+метки времени свечей, к которым привязаны точки. Обновление котировок, смена языка, зум/панорама
+и отправка отчётов точки НЕ сбрасывают.
+
+Конвейер данных, «Алиса», KIHON_SUU и цели Хосоды — без изменений.
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опционально).
 Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID.
 """
@@ -96,6 +106,7 @@ MIN_HTF_BARS = 80
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
 TIME_AXIS_KIHON_CAP = 129
 MN_MONTHS = {"MN1": 1, "MN3": 3, "MN6": 6, "MN24": 24}
+KIJUN_ZONE_ATR = 0.3   # порог засады у Киджун (неизменен)
 
 LANGS = {"English": "en", "Русский": "ru"}
 DEFAULT_LANG = "Русский"
@@ -123,6 +134,10 @@ I18N = {
         "run_scan": "Execute Market Scan", "scanning": "Scanning market data...", "processing": "Processing {asset}...",
         "col_asset": "Asset", "col_signal": "Signal", "col_htf": "HTF Trend", "col_price": "Price",
         "col_kijun": "Kijun", "col_reason": "Reason",
+        "diag_distance": "Kijun distance {dist} (threshold {zone}) - {gap} to go",
+        "diag_zone": "Zone reached, missing: {fails}",
+        "diag_f_kumo": "Kumo", "diag_f_chikou": "Chikou",
+        "diag_flat": "Tenkan = Kijun - no direction",
         "trend_up": "▲ UP", "trend_down": "▼ DOWN", "trend_flat": "◆ FLAT",
         "sig_strong_buy": "▲▲ STRONG BUY (HTF Confirmed)", "sig_local_buy": "▲ Local BUY",
         "sig_strong_sell": "▼▼ STRONG SELL (HTF Confirmed)", "sig_local_sell": "▼ Local SELL",
@@ -202,6 +217,10 @@ I18N = {
         "run_scan": "Запустить сканирование", "scanning": "Сканирование рынка...", "processing": "Обработка: {asset}...",
         "col_asset": "Актив", "col_signal": "Сигнал", "col_htf": "Старший тренд", "col_price": "Цена",
         "col_kijun": "Киджун", "col_reason": "Причина",
+        "diag_distance": "До Киджун {dist} (порог {zone}) — ждём ещё {gap}",
+        "diag_zone": "Зона есть, нет подтверждения: {fails}",
+        "diag_f_kumo": "Облако", "diag_f_chikou": "Чикоу",
+        "diag_flat": "Тенкан = Киджун — направление не определено",
         "trend_up": "▲ ВВЕРХ", "trend_down": "▼ ВНИЗ", "trend_flat": "◆ ФЛЭТ",
         "sig_strong_buy": "▲▲ СИЛЬНАЯ ПОКУПКА (старший ТФ подтверждает)", "sig_local_buy": "▲ Локальная ПОКУПКА",
         "sig_strong_sell": "▼▼ СИЛЬНАЯ ПРОДАЖА (старший ТФ подтверждает)", "sig_local_sell": "▼ Локальная ПРОДАЖА",
@@ -282,6 +301,27 @@ def fmt_err(err):
     return str(err)
 
 
+def fmt_dist(v):
+    """Дистанция до Киджун: крупный масштаб — 1 знак, средний — 2, форекс — 5."""
+    if v >= 100:
+        return f"{v:.1f}"
+    if v >= 1:
+        return f"{v:.2f}"
+    return f"{v:.5f}"
+
+
+def fmt_diag(d):
+    """Диагностика засады: код + параметры -> текст на текущем языке."""
+    if not d:
+        return ""
+    kind, kw = d
+    if kind == "distance":
+        return t("diag_distance", dist=fmt_dist(kw["dist"]), zone=fmt_dist(kw["zone"]), gap=fmt_dist(kw["gap"]))
+    if kind == "zone":
+        return t("diag_zone", fails=", ".join(t("diag_f_" + f) for f in kw["fails"]))
+    return t("diag_" + kind)
+
+
 def detect_mobile_ua():
     """Автоматическое определение телефона по User-Agent; планшеты считаются десктопом."""
     try:
@@ -314,8 +354,6 @@ def inject_css(mobile):
         ".modebar-btn { padding: 3px 5px !important; }\n"
         '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
     )
-    # Кнопка обновления — часть инструментальной панели графика: тот же размер, что у кнопок Plotly,
-    # монохромный глиф вместо цветного эмодзи, тонкая рамка, спокойный hover. Правый край над графиком.
     tool_css = (
         ".st-key-refresh_term { display: flex; justify-content: flex-end; align-items: center; "
         "margin: 0 0 -0.55rem 0; padding-right: 2px; }\n"
@@ -1173,6 +1211,7 @@ if app_mode == "radar":
         return df, None
 
     def scan_one(asset_name, route, tf):
+        """Тренд/Облако/линии/Чикоу — по закрытому бару (iloc[-2]); зона засады — по активному (iloc[-1])."""
         try:
             if is_crypto_asset(route) and tf == "MN3":
                 return None, E("crypto_hist", tf=tf)
@@ -1187,18 +1226,25 @@ if app_mode == "radar":
             df_htf = add_indicators(df_htf)
             h_c = df_htf.iloc[-2]
             l_c = df_ltf.iloc[-2]
+            cur = df_ltf.iloc[-1]
             p_b = df_ltf.iloc[-28]
             h_v = h_c[["Close", "tenkan", "kijun", "senkou_a", "senkou_b"]].astype(float)
             l_v = l_c[["Close", "tenkan", "kijun", "senkou_a", "senkou_b", "ATR"]].astype(float)
             p_v = p_b[["High", "Low", "senkou_a", "senkou_b"]].astype(float)
-            if h_v.isna().any() or l_v.isna().any() or p_v.isna().any():
+            c_v = cur[["Close", "High", "Low"]].astype(float)
+            if h_v.isna().any() or l_v.isna().any() or p_v.isna().any() or c_v.isna().any():
                 return None, E("nan")
+
+            # --- СТАРШИЙ ТРЕНД (закрытый бар) ---
             h_kumo_top = max(h_v["senkou_a"], h_v["senkou_b"])
             h_kumo_bot = min(h_v["senkou_a"], h_v["senkou_b"])
             htf_bullish = h_v["Close"] > h_kumo_top and h_v["tenkan"] >= h_v["kijun"]
             htf_bearish = h_v["Close"] < h_kumo_bot and h_v["tenkan"] <= h_v["kijun"]
             trend_code = "up" if htf_bullish else ("down" if htf_bearish else "flat")
+
+            # --- ПОДТВЕРЖДЕНИЯ (закрытый бар младшего ТФ) ---
             pr, kijun = l_v["Close"], l_v["kijun"]
+            zone = l_v["ATR"] * KIJUN_ZONE_ATR
             l_kumo_top = max(l_v["senkou_a"], l_v["senkou_b"])
             l_kumo_bot = min(l_v["senkou_a"], l_v["senkou_b"])
             p_kumo_top = max(p_v["senkou_a"], p_v["senkou_b"])
@@ -1207,16 +1253,40 @@ if app_mode == "radar":
             chikou_sell = pr < p_v["Low"] and pr < p_kumo_bot
             bullish = l_v["tenkan"] > kijun and pr > l_kumo_top and chikou_buy
             bearish = l_v["tenkan"] < kijun and pr < l_kumo_bot and chikou_sell
-            near_kijun = abs(pr - kijun) <= l_v["ATR"] * 0.3
+
+            # --- ТРИГГЕР ЗАСАДЫ (активная свеча): цена или тень в зоне Киджун ---
+            pr_live, high_live, low_live = float(c_v["Close"]), float(c_v["High"]), float(c_v["Low"])
+            in_zone = abs(pr_live - kijun) <= zone
+            near_buy = in_zone or (low_live <= kijun + zone and pr_live >= kijun - zone)
+            near_sell = in_zone or (high_live >= kijun - zone and pr_live <= kijun + zone)
+
             sig = "wait"
-            if near_kijun:
-                if bullish:
-                    sig = "strong_buy" if htf_bullish else "local_buy"
-                elif bearish:
-                    sig = "strong_sell" if htf_bearish else "local_sell"
+            if bullish and near_buy:
+                sig = "strong_buy" if htf_bullish else "local_buy"
+            elif bearish and near_sell:
+                sig = "strong_sell" if htf_bearish else "local_sell"
+
+            # --- ДИАГНОСТИКА для строк «Ждем» ---
+            diag = None
+            if sig == "wait":
+                dist = abs(pr_live - kijun)
+                if l_v["tenkan"] == kijun:
+                    diag = ("flat", {})
+                else:
+                    buy_side = l_v["tenkan"] > kijun
+                    hit = near_buy if buy_side else near_sell
+                    if not hit:
+                        diag = ("distance", {"dist": dist, "zone": zone, "gap": max(0.0, dist - zone)})
+                    else:
+                        ok_kumo = pr > l_kumo_top if buy_side else pr < l_kumo_bot
+                        ok_chikou = chikou_buy if buy_side else chikou_sell
+                        fails = [f for f, ok in (("kumo", ok_kumo), ("chikou", ok_chikou)) if not ok]
+                        if fails:
+                            diag = ("zone", {"fails": fails})
+
             return {
                 "asset": asset_name, "tf": tf, "sig": sig, "trend": trend_code,
-                "price": fmt_price(pr), "kijun": fmt_price(kijun),
+                "price": fmt_price(pr_live), "kijun": fmt_price(kijun), "diag": diag,
             }, None
         except Exception as e:
             return None, E("exception", detail=safe_err(e))
@@ -1265,6 +1335,7 @@ if app_mode == "radar":
             rows = [r for r in rows if r["sig"] != "wait"]
         rows = sorted(rows, key=lambda r: (r["sig"] == "wait", asset_order[r["asset"]], radar_tfs.index(r["tf"])))
         if rows:
+            show_reason = any(r["sig"] == "wait" for r in rows)
             records = []
             for r in rows:
                 rec = {t("col_asset"): asset_label(r["asset"])}
@@ -1274,6 +1345,8 @@ if app_mode == "radar":
                 rec[t("col_htf")] = t("trend_" + r["trend"])
                 rec[t("col_price")] = r["price"]
                 rec[t("col_kijun")] = r["kijun"]
+                if show_reason:
+                    rec[t("col_reason")] = fmt_diag(r.get("diag"))
                 records.append(rec)
             st.dataframe(pd.DataFrame(records), hide_index=True, **WIDE)
         elif out["results"]:
