@@ -15,10 +15,17 @@
 для BUY — снизу. Колонка «Причина» показывает расстояние до Киджун и недостающие подтверждения.
 Источник данных Радара — Yahoo (золото = GC=F, индексы), терминал — TwelveData там, где настроен.
 
+ONE-CLICK TELEPORT: таблица Радара поддерживает выбор одной строки (on_select="rerun",
+selection_mode="single-row"); системный тулбар таблицы (CSV/поиск/fullscreen) остаётся активным.
+Под таблицей появляется кнопка «➔ Открыть <актив> (<ТФ>) в Аналитическом терминале»; по нажатию
+выбранные значения переносятся в w_mode/w_symbol/w_tf, разметка волны сбрасывается (reset_points)
+и происходит st.rerun(). Значения применяются в начале следующего прогона ДО создания виджетов —
+это требование Streamlit (запись в ключ уже созданного виджета запрещена).
+
 BY DESIGN (штатная защита, не дефект): точки A-B-C сбрасываются при смене инструмента, таймфрейма,
-серверного времени, режимов raw и клиринга, а также кнопкой «Сбросить точки» — эти настройки меняют
-метки времени свечей, к которым привязаны точки. Обновление котировок, смена языка, зум/панорама
-и отправка отчётов точки НЕ сбрасывают.
+серверного времени, режимов raw и клиринга, кнопкой «Сбросить точки» и при телепорте из Радара —
+эти действия меняют метки времени свечей, к которым привязаны точки. Обновление котировок,
+смена языка, зум/панорама и отправка отчётов точки НЕ сбрасывают.
 
 Конвейер данных, «Алиса», KIHON_SUU и цели Хосоды — без изменений.
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опционально).
@@ -132,6 +139,7 @@ I18N = {
         "run_scan_all": "Scan all timeframes", "processing_tf": "Processing {asset} / {tf}...",
         "col_tf": "TF", "sig_wait": "◇ Waiting", "select_tf": "Select Timeframe:",
         "run_scan": "Execute Market Scan", "scanning": "Scanning market data...", "processing": "Processing {asset}...",
+        "teleport": "➔ Open {asset} ({tf}) in Analytical Terminal",
         "col_asset": "Asset", "col_signal": "Signal", "col_htf": "HTF Trend", "col_price": "Price",
         "col_kijun": "Kijun", "col_reason": "Reason",
         "diag_distance": "Kijun distance {dist} (threshold {zone}) - {gap} to go",
@@ -215,6 +223,7 @@ I18N = {
         "run_scan_all": "Сканировать все таймфреймы", "processing_tf": "Обработка: {asset} / {tf}...",
         "col_tf": "ТФ", "sig_wait": "◇ Ждем", "select_tf": "Выберите таймфрейм:",
         "run_scan": "Запустить сканирование", "scanning": "Сканирование рынка...", "processing": "Обработка: {asset}...",
+        "teleport": "➔ Открыть {asset} ({tf}) в Аналитическом терминале",
         "col_asset": "Актив", "col_signal": "Сигнал", "col_htf": "Старший тренд", "col_price": "Цена",
         "col_kijun": "Киджун", "col_reason": "Причина",
         "diag_distance": "До Киджун {dist} (порог {zone}) — ждём ещё {gap}",
@@ -369,13 +378,27 @@ def inject_css(mobile):
         ".st-key-refresh_term button:active { background: #e3e9ee; border-color: #2c3e50; }\n"
         ".st-key-refresh_term button:focus-visible { outline: 1px solid #2c3e50; outline-offset: 1px; }\n"
     )
+    # Кнопка-трамплин: институциональный графит, полная ширина, крупная зона нажатия.
+    # Селектор строгоscoped по ключу — тулбар таблицы (CSV/поиск/fullscreen) не затрагивается.
+    teleport_css = (
+        ".st-key-teleport_btn { margin: 0.4rem 0 0.2rem 0; }\n"
+        ".st-key-teleport_btn button { width: 100%; min-height: 44px; padding: 0.5rem 1rem !important; "
+        "background: #2c3e50; color: #ffffff; border: 1px solid #2c3e50; border-radius: 2px; "
+        "font-weight: 600; letter-spacing: 0.01em; box-shadow: none; "
+        "transition: background-color .15s ease, border-color .15s ease; }\n"
+        ".st-key-teleport_btn button p, .st-key-teleport_btn button span { "
+        "color: #ffffff !important; font-size: 0.95rem !important; line-height: 1.3 !important; }\n"
+        ".st-key-teleport_btn button:hover { background: #34495e; border-color: #34495e; color: #ffffff; }\n"
+        ".st-key-teleport_btn button:active { background: #22303d; border-color: #22303d; color: #ffffff; }\n"
+        ".st-key-teleport_btn button:focus-visible { outline: 2px solid #2980b9; outline-offset: 2px; }\n"
+    )
     css = (
         "<style>\n"
         ".block-container { padding-top: 4rem; padding-bottom: 2rem; max-width: 100%; }\n"
         ".app-title { color: #2c3e50; font-size: clamp(1.05rem, 4.5vw, 1.75rem); line-height: 1.25; "
         "margin-top: 0.2rem; overflow-wrap: anywhere; white-space: normal; }\n"
         ".stPlotlyChart .modebar { opacity: 1; }\n"
-        + tool_css +
+        + tool_css + teleport_css +
         "@media (max-width: 768px) {\n" + mobile_rules + "}\n"
         "@media (hover: none) {\n"
         ".stPlotlyChart .modebar { opacity: 1 !important; }\n"
@@ -1180,6 +1203,16 @@ st.session_state.setdefault("w_tf", "H1")
 st.session_state.setdefault("w_radar_tf", "D1")
 st.session_state.setdefault("w_radar_active", True)
 
+# --- ONE-CLICK TELEPORT: применяем ДО создания виджетов (требование Streamlit) ---
+_teleport = st.session_state.pop("_teleport", None)
+if _teleport:
+    if _teleport.get("asset") in ASSET_ROUTER:
+        st.session_state["w_symbol"] = _teleport["asset"]
+    if _teleport.get("tf") in TF_MAP:
+        st.session_state["w_tf"] = _teleport["tf"]
+    st.session_state["w_mode"] = "terminal"
+    reset_points()
+
 with st.sidebar:
     lang_label = st.radio("Language / Язык", list(LANGS.keys()), horizontal=True, key="lang", on_change=_on_lang_change)
     LANG = LANGS[lang_label]
@@ -1348,7 +1381,24 @@ if app_mode == "radar":
                 if show_reason:
                     rec[t("col_reason")] = fmt_diag(r.get("diag"))
                 records.append(rec)
-            st.dataframe(pd.DataFrame(records), hide_index=True, **WIDE)
+            # Выбор одной строки. Системный тулбар таблицы (CSV/поиск/fullscreen) остаётся активным.
+            radar_event = st.dataframe(
+                pd.DataFrame(records), hide_index=True,
+                on_select="rerun", selection_mode="single-row", key="radar_table", **WIDE,
+            )
+            try:
+                sel_rows = list(radar_event.selection.rows)
+            except Exception:
+                sel_rows = []
+            if sel_rows:
+                sel_idx = int(sel_rows[0])
+                if 0 <= sel_idx < len(rows):
+                    picked = rows[sel_idx]
+                    tp_asset, tp_tf = picked["asset"], picked["tf"]
+                    if st.button(t("teleport", asset=asset_label(tp_asset), tf=tp_tf),
+                                 key="teleport_btn", **WIDE):
+                        st.session_state["_teleport"] = {"asset": tp_asset, "tf": tp_tf}
+                        st.rerun()
         elif out["results"]:
             st.info(t("no_setups"))
         else:
