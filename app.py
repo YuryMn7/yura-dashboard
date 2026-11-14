@@ -22,9 +22,10 @@ ONE-CLICK TELEPORT: выбор одной строки в таблице Рад�
 
 РИСК-МЕНЕДЖМЕНТ (подготовка к Этапу 2): под ИИ-блоком при трёх точках A-B-C — карточка сделки.
 Точка входа: «Хосода: разворот C» (первый ЗАКРЫТЫЙ бар после C с Close за High_C/Low_C),
-«Пробой вершины B», «По текущей цене», «Своя цена (M1/M2)». Стоп = экстремум C ∓ 0.2*ATR(бар C).
-Депозит и риск в % -> риск в деньгах -> рекомендуемый лот через множители контрактов
-(Форекс 100 000, XAU 100, BTC 1, индексы 1). Ордеров нет — только строгий расчет.
+«Пробой вершины B», «По текущей цене», «Своя цена входа». Стоп = экстремум C ∓ 0.2*ATR(бар C).
+ТАБЛИЦА — ЧИСТАЯ ГЕОМЕТРИЯ: уровни цен, дистанции в пипсах/пунктах и R:R, без валюты инструмента.
+Деньги — только в нижнем интерактивном блоке: депозит и риск в % -> риск в USD -> рекомендуемый лот
+через множители контрактов (Форекс 100 000, XAU 100, BTC 1, индексы 1). Ордеров нет — только расчет.
 
 TELEGRAM PNG: в matplotlib-рендере рисуются ТОЛЬКО те вертикали времени и метки, которые помещаются
 в видимый диапазон x_right (проверка continue), метки обрезаны по осям (clip_on=True) —
@@ -173,8 +174,8 @@ I18N = {
         "risk_title": "Trade parameters (calculated)", "risk_buy": "BUY", "risk_sell": "SELL",
         "entry_mode": "Entry point",
         "entry_hosoda": "Hosoda: C reversal", "entry_break_b": "B breakout",
-        "entry_market": "At market", "entry_custom": "Custom price (M1/M2)",
-        "entry_custom_label": "Entry price", "entry_custom_hint": "Enter the sniper entry price found on the lower timeframe.",
+        "entry_market": "At market", "entry_custom": "Custom entry price",
+        "entry_custom_label": "Entry price", "entry_custom_hint": "Enter the exact sniper entry price.",
         "risk_confirm_level": "Confirmation level", "risk_entry_time": "Confirmation bar",
         "risk_wait": "Waiting for C confirmation: a close {dir} {level} is required.",
         "risk_wait_above": "above", "risk_wait_below": "below",
@@ -278,8 +279,8 @@ I18N = {
         "risk_title": "Параметры сделки (расчет)", "risk_buy": "ПОКУПКА", "risk_sell": "ПРОДАЖА",
         "entry_mode": "Точка входа",
         "entry_hosoda": "Хосода: разворот C", "entry_break_b": "Пробой вершины B",
-        "entry_market": "По текущей цене", "entry_custom": "Своя цена (M1/M2)",
-        "entry_custom_label": "Цена входа", "entry_custom_hint": "Введите точную цену снайперского входа с младшего таймфрейма.",
+        "entry_market": "По текущей цене", "entry_custom": "Своя цена входа",
+        "entry_custom_label": "Цена входа", "entry_custom_hint": "Введите точную цену снайперского входа.",
         "risk_confirm_level": "Уровень подтверждения", "risk_entry_time": "Бар подтверждения",
         "risk_wait": "Ожидание подтверждения C: ждём закрытия {dir} {level}.",
         "risk_wait_above": "выше", "risk_wait_below": "ниже",
@@ -403,13 +404,8 @@ def contract_multiplier(route):
     return 1.0
 
 
-def quote_ccy(route):
-    """Валюта цены из тикера (EUR/USD -> USD); у индексов и DXY не определена."""
-    sym = route["sym"]
-    return sym.split("/")[1] if "/" in sym else ""
-
-
 def fmt_money(v, ccy):
+    """Денежная сумма для нижнего блока депозита (в таблице сделки валюты нет)."""
     s = f"{v:,.2f}".replace(",", " ")
     return f"{s} {ccy}" if ccy else s
 
@@ -1817,7 +1813,6 @@ elif app_mode == "terminal":
             target_px = float(r_tg["N"])
             route_r = ASSET_ROUTER[asset_name]
             psize, pkey = point_size(route_r)
-            ccy = quote_ccy(route_r)
             unit = t(pkey)
             mult = contract_multiplier(route_r)
 
@@ -1865,6 +1860,7 @@ elif app_mode == "terminal":
             reward_dist = abs(target_px - entry_px) if entry_px is not None else None
             rr = (reward_dist / risk_dist) if (risk_dist is not None and risk_dist > 0) else None
 
+            # Таблица — чистая геометрия: уровни, пипсы/пункты, R:R. Валюты здесь нет.
             risk_rows = []
             if entry_px is not None:
                 risk_rows.append((t("risk_entry"), fmt_price(entry_px)))
@@ -1875,8 +1871,8 @@ elif app_mode == "terminal":
             risk_rows.append((t("risk_stop_buy" if side_buy else "risk_stop_sell"), fmt_price(stop_px)))
             risk_rows.append((t("risk_target"), fmt_price(target_px)))
             if entry_px is not None:
-                risk_rows.append((t("risk_risk"), f"{fmt_money(risk_dist, ccy)} · {fmt_points(risk_dist, psize)} {unit}"))
-                risk_rows.append((t("risk_reward"), f"{fmt_money(reward_dist, ccy)} · {fmt_points(reward_dist, psize)} {unit}"))
+                risk_rows.append((t("risk_risk"), f"{fmt_points(risk_dist, psize)} {unit}"))
+                risk_rows.append((t("risk_reward"), f"{fmt_points(reward_dist, psize)} {unit}"))
                 risk_rows.append((t("risk_rr"), f"1 : {rr:.2f}" if rr is not None else t("ai_na")))
             accent = ALICE_LIGHT_COLORS["green" if side_buy else "red"]
             head = t("risk_title") + " · " + t("risk_buy" if side_buy else "risk_sell")
@@ -1900,6 +1896,7 @@ elif app_mode == "terminal":
                     deposit = st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9,
                                               step=1000.0, format="%.0f", key="account_deposit", help=t("deposit_help"))
 
+            # Деньги — только здесь: депозит, риск в USD и рекомендуемый лот
             if entry_px is not None:
                 if rr is None:
                     st.caption(t("risk_zero"))
