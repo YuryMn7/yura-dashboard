@@ -3,6 +3,8 @@
 (height=750, margin 20/110/40/120, легенда снизу, tickangle=45); панель Plotly всегда видна
 (displayModeBar=True, selection_mode points/box/lasso, перекрестье, fullscreen).
 Режим экрана определяется АВТОМАТИЧЕСКИ по User-Agent, переключателя в интерфейсе нет.
+Язык при первой загрузке сессии определяется по Accept-Language (ru -> Русский, иначе English);
+ручной переключатель в сайдбаре сохраняет приоритет.
 Крипта: BTC W1/MN1/MN3 -> старший MN1, на MN3 — понятная причина пропуска.
 Временные цели Kihon/Taiyosuu: у каждой линии подпись с датой и временем в одну строку (прогноз «≈»),
 дальние 172/226/257 проявляются при zoom out; масштаб по умолчанию ограничен Kihon 129 от точки C.
@@ -18,18 +20,20 @@ ONE-CLICK TELEPORT: выбор одной строки в таблице Рад�
 переносит asset/tf в w_mode/w_symbol/w_tf, сбрасывает разметку волны и делает st.rerun().
 Значения применяются в начале следующего прогона ДО создания виджетов (требование Streamlit).
 
-РИСК-МЕНЕДЖМЕНТ (подготовка к Этапу 2): под ИИ-блоком при трёх точках A-B-C выводится карточка
-параметров сделки — вход по текущей цене, стоп C, цель N, риск и прибыль в валюте цены и пунктах,
-R:R, поле «Риск на сделку, %» и пересчёт результата в проценты депозита. Ордеров нет.
-Пункты: Форекс — пипс 0.0001 (JPY-пары 0.01); золото, индексы, BTC — 1.0 единицы цены.
+РИСК-МЕНЕДЖМЕНТ (подготовка к Этапу 2): под ИИ-блоком при трёх точках A-B-C — карточка сделки.
+Точка входа: «Хосода: разворот C» (первый ЗАКРЫТЫЙ бар после C с Close за High_C/Low_C),
+«Пробой вершины B», «По текущей цене», «Своя цена (M1/M2)». Стоп = экстремум C ∓ 0.2*ATR(бар C).
+Депозит и риск в % -> риск в деньгах -> рекомендуемый лот через множители контрактов
+(Форекс 100 000, XAU 100, BTC 1, индексы 1). Ордеров нет — только строгий расчет.
 
 TELEGRAM PNG: в matplotlib-рендере рисуются ТОЛЬКО те вертикали времени и метки, которые помещаются
 в видимый диапазон x_right (проверка continue), метки обрезаны по осям (clip_on=True) —
 bbox_inches="tight" больше не растягивает холст в пустоту справа.
 
 BY DESIGN (штатная защита, не дефект): точки A-B-C сбрасываются при смене инструмента, таймфрейма,
-серверного времени, режимов raw и клиринга, кнопкой «Сбросить точки» и при телепорте из Радара.
-Обновление котировок, смена языка, зум/панорама и отправка отчётов точки НЕ сбрасывают.
+серверного времени, режимов raw и клиринга, кнопкой «Сбросить точки» и при телепорте из Радара;
+вместе с ними очищается своя цена входа. Обновление котировок, смена языка, зум/панорама
+и отправка отчётов точки НЕ сбрасывают.
 
 Конвейер данных, «Алиса», KIHON_SUU и цели Хосоды — без изменений.
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опционально).
@@ -67,6 +71,7 @@ st.session_state.setdefault("chart_ver", 0)
 def reset_points():
     st.session_state.abc_points = []
     st.session_state.chart_ver += 1
+    st.session_state.pop("custom_entry", None)   # своя цена входа привязана к инструменту/ТФ
 
 
 ASSET_ROUTER = {
@@ -118,6 +123,7 @@ KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
 TIME_AXIS_KIHON_CAP = 129
 MN_MONTHS = {"MN1": 1, "MN3": 3, "MN6": 6, "MN24": 24}
 KIJUN_ZONE_ATR = 0.3   # порог засады у Киджун (неизменен)
+STOP_BUFFER_ATR = 0.2  # защитный буфер стопа от экстремума точки C
 
 LANGS = {"English": "en", "Русский": "ru"}
 DEFAULT_LANG = "Русский"
@@ -165,14 +171,25 @@ I18N = {
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} bars)", "hover_forecast": "forecast",
         "chart_wave": "Wave A-B-C",
         "risk_title": "Trade parameters (calculated)", "risk_buy": "BUY", "risk_sell": "SELL",
-        "risk_entry": "Entry (live price)", "risk_stop": "Stop (point C)", "risk_target": "Target N",
-        "risk_risk": "Risk", "risk_reward": "Reward", "risk_rr": "Risk : Reward",
+        "entry_mode": "Entry point",
+        "entry_hosoda": "Hosoda: C reversal", "entry_break_b": "B breakout",
+        "entry_market": "At market", "entry_custom": "Custom price (M1/M2)",
+        "entry_custom_label": "Entry price", "entry_custom_hint": "Enter the sniper entry price found on the lower timeframe.",
+        "risk_confirm_level": "Confirmation level", "risk_entry_time": "Confirmation bar",
+        "risk_wait": "Waiting for C confirmation: a close {dir} {level} is required.",
+        "risk_wait_above": "above", "risk_wait_below": "below",
+        "risk_entry": "Entry", "risk_stop_buy": "Stop (C - 0.2 ATR)", "risk_stop_sell": "Stop (C + 0.2 ATR)",
+        "risk_target": "Target N", "risk_risk": "Risk", "risk_reward": "Reward", "risk_rr": "Risk : Reward",
         "risk_pct_label": "Risk per trade, %",
-        "risk_pct_help": "Share of equity lost if the stop is hit. Used to express the outcome in percent of equity.",
+        "risk_pct_help": "Share of equity lost if the stop is hit. Used for position sizing and percent outcomes.",
+        "deposit_label": "Deposit, $",
+        "deposit_help": "Account equity in USD used to convert the risk percentage into money risk.",
+        "lot_line": "Recommended lot: <b>{lots}</b> (Risk: -{risk} | Target N: +{gain})",
+        "lot_too_small": "Calculated size is below 0.01 lot - reduce the risk distance or increase the deposit.",
         "risk_outcome": "At {pct}% risk: stop -{loss}% of equity, target +{gain}% of equity. Break-even win rate: {be}%.",
-        "risk_units": "Units: Forex - pip 0.0001 (JPY pairs 0.01); gold, indices and BTC - 1.0 price unit. Price currency is the instrument quote.",
-        "risk_geom_bad": "Geometry is inverted: the live price is already beyond the stop or the target - distances are shown as absolute values.",
-        "risk_zero": "Stop equals the live price - Risk : Reward is undefined.",
+        "risk_units": "Units: Forex - pip 0.0001 (JPY 0.01), others - 1.0 price unit. Lot: Forex 100,000, gold 100, BTC 1, indices 1. ATR of bar C = {atr}; stop buffer 0.2 x ATR = {buf}.",
+        "risk_geom_bad": "Geometry is inverted: the entry is already beyond the stop or the target - distances are shown as absolute values.",
+        "risk_zero": "Stop equals the entry price - Risk : Reward and lot size are undefined.",
         "pt_pip": "pips", "pt_point": "pts",
         "err_nodata": "no data", "err_yahoo_nodata": "Yahoo: no data for {detail}",
         "err_td": "TwelveData: {detail}", "err_td_nodata": "TwelveData: no data", "err_exception": "{detail}",
@@ -259,14 +276,25 @@ I18N = {
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} баров)", "hover_forecast": "прогноз",
         "chart_wave": "Волна A-B-C",
         "risk_title": "Параметры сделки (расчет)", "risk_buy": "ПОКУПКА", "risk_sell": "ПРОДАЖА",
-        "risk_entry": "Вход (тек. цена)", "risk_stop": "Стоп (точка C)", "risk_target": "Цель N",
-        "risk_risk": "Риск", "risk_reward": "Прибыль", "risk_rr": "Риск : Прибыль",
+        "entry_mode": "Точка входа",
+        "entry_hosoda": "Хосода: разворот C", "entry_break_b": "Пробой вершины B",
+        "entry_market": "По текущей цене", "entry_custom": "Своя цена (M1/M2)",
+        "entry_custom_label": "Цена входа", "entry_custom_hint": "Введите точную цену снайперского входа с младшего таймфрейма.",
+        "risk_confirm_level": "Уровень подтверждения", "risk_entry_time": "Бар подтверждения",
+        "risk_wait": "Ожидание подтверждения C: ждём закрытия {dir} {level}.",
+        "risk_wait_above": "выше", "risk_wait_below": "ниже",
+        "risk_entry": "Вход", "risk_stop_buy": "Стоп (C − 0.2·ATR)", "risk_stop_sell": "Стоп (C + 0.2·ATR)",
+        "risk_target": "Цель N", "risk_risk": "Риск", "risk_reward": "Прибыль", "risk_rr": "Риск : Прибыль",
         "risk_pct_label": "Риск на сделку, %",
-        "risk_pct_help": "Доля депозита, теряемая при срабатывании стопа. Используется для пересчета результата в проценты депозита.",
+        "risk_pct_help": "Доля депозита, теряемая при срабатывании стопа. Используется для расчета объема и результата в процентах.",
+        "deposit_label": "Депозит, $",
+        "deposit_help": "Размер счета в USD для перевода процента риска в денежный риск.",
+        "lot_line": "Рекомендуемый лот: <b>{lots}</b> (Риск: −{risk} | Цель N: +{gain})",
+        "lot_too_small": "Расчетный объем меньше 0.01 лота — уменьшите дистанцию риска или увеличьте депозит.",
         "risk_outcome": "При риске {pct}%: стоп −{loss}% депозита, цель +{gain}% депозита. Безубыточная доля прибыльных: {be}%.",
-        "risk_units": "Пункты: Форекс — пипс 0.0001 (JPY-пары 0.01); золото, индексы и BTC — 1.0 единицы цены. Валюта цены — котировка инструмента.",
-        "risk_geom_bad": "Геометрия вывернута: текущая цена уже за стопом или за целью — дистанции показаны по модулю.",
-        "risk_zero": "Стоп совпадает с текущей ценой — соотношение R:R не определено.",
+        "risk_units": "Пункты: Форекс — пипс 0.0001 (JPY 0.01), прочие — 1.0 ед. цены. Лот: Форекс 100 000, золото 100, BTC 1, индексы 1. ATR бара C = {atr}; буфер стопа 0.2·ATR = {buf}.",
+        "risk_geom_bad": "Геометрия вывернута: вход уже за стопом или за целью — дистанции показаны по модулю.",
+        "risk_zero": "Стоп совпадает с ценой входа — соотношение R:R и объем не определены.",
         "pt_pip": "пипс", "pt_point": "п.",
         "err_nodata": "нет данных", "err_yahoo_nodata": "Yahoo: нет данных для {detail}",
         "err_td": "TwelveData: {detail}", "err_td_nodata": "TwelveData: нет данных", "err_exception": "{detail}",
@@ -363,6 +391,18 @@ def point_size(route):
     return (1.0, "pt_point")
 
 
+def contract_multiplier(route):
+    """Стоимость 1.0 хода цены на 1 лот: Форекс 100 000, золото 100, BTC 1, индексы 1."""
+    sym = route["sym"]
+    if "BTC" in sym:
+        return 1.0
+    if "XAU" in sym:
+        return 100.0
+    if "/" in sym:
+        return 100000.0
+    return 1.0
+
+
 def quote_ccy(route):
     """Валюта цены из тикера (EUR/USD -> USD); у индексов и DXY не определена."""
     sym = route["sym"]
@@ -385,6 +425,15 @@ def risk_card_html(head, rows, accent):
     body = "".join(f"<tr><td class='rl'>{k}</td><td class='rv'>{v}</td></tr>" for k, v in rows)
     return (f"<div class='risk-card' style='border-left-color:{accent}'>"
             f"<div class='risk-hd'>{head}</div><table class='risk-tb'>{body}</table></div>")
+
+
+def detect_default_lang():
+    """Язык первой загрузки по Accept-Language браузера (ru -> Русский, иначе English)."""
+    try:
+        al = st.context.headers.get("Accept-Language", "").lower()
+        return "Русский" if "ru" in al else "English"
+    except Exception:
+        return DEFAULT_LANG
 
 
 def detect_mobile_ua():
@@ -418,6 +467,7 @@ def inject_css(mobile):
         "h2 { font-size: clamp(1.05rem, 4.5vw, 1.75rem) !important; }\n"
         ".modebar-btn { padding: 3px 5px !important; }\n"
         ".risk-tb td { font-size: 0.8rem; }\n"
+        ".lot-line { font-size: 0.88rem; }\n"
         '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
     )
     tool_css = (
@@ -457,6 +507,9 @@ def inject_css(mobile):
         ".risk-tb tr:last-child td { border-bottom: none; }\n"
         ".risk-tb td.rl { color: #7f8c8d; white-space: nowrap; padding-right: 10px; }\n"
         ".risk-tb td.rv { color: #2c3e50; text-align: right; font-weight: 600; }\n"
+        ".lot-line { border-top: 1px solid #dfe4ea; margin: 2px 0 4px 0; padding-top: 6px; "
+        "font-size: 0.95rem; color: #2c3e50; font-variant-numeric: tabular-nums; }\n"
+        ".lot-line b { font-size: 1.08rem; letter-spacing: 0.01em; }\n"
     )
     css = (
         "<style>\n"
@@ -1258,7 +1311,8 @@ def refresh_button(key):
         st.rerun()
 
 
-PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active", "risk_pct"]
+PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active",
+                "risk_pct", "account_deposit", "entry_mode", "custom_entry"]
 
 
 def _on_lang_change():
@@ -1270,11 +1324,14 @@ if _keep:
     for _k, _v in _keep.items():
         st.session_state[_k] = _v
 
-st.session_state.setdefault("lang", DEFAULT_LANG)
+if "lang" not in st.session_state:
+    st.session_state["lang"] = detect_default_lang()   # GEO / Accept-Language при первой загрузке
 st.session_state.setdefault("w_tf", "H1")
 st.session_state.setdefault("w_radar_tf", "D1")
 st.session_state.setdefault("w_radar_active", True)
 st.session_state.setdefault("risk_pct", 1.0)
+st.session_state.setdefault("account_deposit", 10000.0)
+st.session_state.setdefault("entry_mode", "hosoda")
 
 # --- ONE-CLICK TELEPORT: применяем ДО создания виджетов (требование Streamlit) ---
 _teleport = st.session_state.pop("_teleport", None)
@@ -1752,45 +1809,116 @@ elif app_mode == "terminal":
                             st.caption(t("ai_rel_" + r["reliability"]))
                         st.caption(t("ai_disclaimer"))
 
-        # ---- Риск-менеджмент: сухой расчет параметров будущей позиции (Этап 2 — ордера) ----
+        # ---- Риск-менеджмент: снайперский вход, буфер стопа, депозит и объем (Этап 2 — ордера) ----
         if len(abc) == 3:
             rA, rB, rC = abc
             side_buy = rB["y"] > rA["y"]
             r_tg = hosoda_targets(rA["y"], rB["y"], rC["y"])
-            entry_px, stop_px, target_px = last_close, float(rC["y"]), float(r_tg["N"])
+            target_px = float(r_tg["N"])
             route_r = ASSET_ROUTER[asset_name]
             psize, pkey = point_size(route_r)
             ccy = quote_ccy(route_r)
             unit = t(pkey)
-            risk_dist, reward_dist = abs(entry_px - stop_px), abs(target_px - entry_px)
-            rr = reward_dist / risk_dist if risk_dist > 0 else None
-            risk_rows = [
-                (t("risk_entry"), fmt_price(entry_px)),
-                (t("risk_stop"), fmt_price(stop_px)),
-                (t("risk_target"), fmt_price(target_px)),
-                (t("risk_risk"), f"{fmt_money(risk_dist, ccy)} · {fmt_points(risk_dist, psize)} {unit}"),
-                (t("risk_reward"), f"{fmt_money(reward_dist, ccy)} · {fmt_points(reward_dist, psize)} {unit}"),
-                (t("risk_rr"), f"1 : {rr:.2f}" if rr is not None else t("ai_na")),
-            ]
+            mult = contract_multiplier(route_r)
+
+            # Бар точки C: экстремумы для подтверждения и ATR для буфера стопа
+            high_c = low_c = float(rC["y"])
+            atr_last = float(df["ATR"].iloc[-1])
+            atr_c = atr_last if np.isfinite(atr_last) else 0.0
+            c_pos = None
+            if rC["t"] in df.index:
+                c_pos = int(df.index.get_loc(rC["t"]))
+                cb = df.iloc[c_pos]
+                high_c, low_c = float(cb["High"]), float(cb["Low"])
+                if np.isfinite(cb["ATR"]):
+                    atr_c = float(cb["ATR"])
+            stop_buf = STOP_BUFFER_ATR * atr_c
+            stop_px = float(rC["y"]) - stop_buf if side_buy else float(rC["y"]) + stop_buf
+
+            entry_mode = st.selectbox(t("entry_mode"), ["hosoda", "break_b", "market", "custom"],
+                                      format_func=lambda k: t("entry_" + k), key="entry_mode")
+            entry_px, conf_txt, wait_level = None, None, None
+            if entry_mode == "hosoda":
+                wait_level = high_c if side_buy else low_c
+                if c_pos is not None and c_pos + 1 < len(df) - 1:
+                    seg = df.iloc[c_pos + 1:-1]          # только ЗАКРЫТЫЕ бары после C
+                    mask = (seg["Close"] > wait_level) if side_buy else (seg["Close"] < wait_level)
+                    hits = np.flatnonzero(mask.to_numpy())
+                    if len(hits):
+                        j = c_pos + 1 + int(hits[0])
+                        entry_px = float(df["Close"].iloc[j])
+                        conf_txt = f"{df.index[j]:%Y-%m-%d %H:%M}"
+            elif entry_mode == "break_b":
+                entry_px = float(rB["y"])
+            elif entry_mode == "market":
+                entry_px = last_close
+            else:
+                st.session_state.setdefault("custom_entry", float(last_close))
+                dec = 5 if last_close < 10 else (3 if last_close < 1000 else 2)
+                entry_px = float(st.number_input(t("entry_custom_label"), min_value=0.0,
+                                                 step=10.0 ** (-dec), format=f"%.{dec}f", key="custom_entry"))
+                if entry_px <= 0:
+                    entry_px = None
+                    st.caption(t("entry_custom_hint"))
+
+            risk_dist = abs(entry_px - stop_px) if entry_px is not None else None
+            reward_dist = abs(target_px - entry_px) if entry_px is not None else None
+            rr = (reward_dist / risk_dist) if (risk_dist is not None and risk_dist > 0) else None
+
+            risk_rows = []
+            if entry_px is not None:
+                risk_rows.append((t("risk_entry"), fmt_price(entry_px)))
+                if conf_txt:
+                    risk_rows.append((t("risk_entry_time"), conf_txt))
+            elif wait_level is not None:
+                risk_rows.append((t("risk_confirm_level"), fmt_price(wait_level)))
+            risk_rows.append((t("risk_stop_buy" if side_buy else "risk_stop_sell"), fmt_price(stop_px)))
+            risk_rows.append((t("risk_target"), fmt_price(target_px)))
+            if entry_px is not None:
+                risk_rows.append((t("risk_risk"), f"{fmt_money(risk_dist, ccy)} · {fmt_points(risk_dist, psize)} {unit}"))
+                risk_rows.append((t("risk_reward"), f"{fmt_money(reward_dist, ccy)} · {fmt_points(reward_dist, psize)} {unit}"))
+                risk_rows.append((t("risk_rr"), f"1 : {rr:.2f}" if rr is not None else t("ai_na")))
             accent = ALICE_LIGHT_COLORS["green" if side_buy else "red"]
             head = t("risk_title") + " · " + t("risk_buy" if side_buy else "risk_sell")
             st.markdown(risk_card_html(head, risk_rows, accent), unsafe_allow_html=True)
+
+            if entry_px is None and wait_level is not None:
+                st.info(t("risk_wait", dir=t("risk_wait_above" if side_buy else "risk_wait_below"),
+                          level=fmt_price(wait_level)))
+
             if MOBILE:
                 risk_pct = st.number_input(t("risk_pct_label"), min_value=0.1, max_value=100.0,
                                            step=0.5, format="%.1f", key="risk_pct", help=t("risk_pct_help"))
+                deposit = st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9,
+                                          step=1000.0, format="%.0f", key="account_deposit", help=t("deposit_help"))
             else:
-                rc1, _rc2 = st.columns([1, 3])
+                rc1, rc2, _rc3 = st.columns([1, 1, 2])
                 with rc1:
                     risk_pct = st.number_input(t("risk_pct_label"), min_value=0.1, max_value=100.0,
                                                step=0.5, format="%.1f", key="risk_pct", help=t("risk_pct_help"))
-            if rr is None:
-                st.caption(t("risk_zero"))
-            else:
-                st.caption(t("risk_outcome", pct=f"{risk_pct:.1f}", loss=f"{risk_pct:.1f}",
-                             gain=f"{risk_pct * rr:.1f}", be=f"{100.0 / (1.0 + rr):.1f}"))
-                if not ((stop_px < entry_px < target_px) if side_buy else (target_px < entry_px < stop_px)):
-                    st.caption(t("risk_geom_bad"))
-            st.caption(t("risk_units"))
+                with rc2:
+                    deposit = st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9,
+                                              step=1000.0, format="%.0f", key="account_deposit", help=t("deposit_help"))
+
+            if entry_px is not None:
+                if rr is None:
+                    st.caption(t("risk_zero"))
+                else:
+                    risk_usd = deposit * (risk_pct / 100.0)
+                    lots = risk_usd / (risk_dist * mult) if (risk_dist > 0 and mult > 0) else 0.0
+                    gain_usd = lots * reward_dist * mult
+                    st.markdown(
+                        "<div class='lot-line'>" + t("lot_line", lots=f"{lots:.2f}",
+                                                     risk=fmt_money(risk_usd, "USD"),
+                                                     gain=fmt_money(gain_usd, "USD")) + "</div>",
+                        unsafe_allow_html=True)
+                    if lots < 0.01:
+                        st.caption(t("lot_too_small"))
+                    st.caption(t("risk_outcome", pct=f"{risk_pct:.1f}", loss=f"{risk_pct:.1f}",
+                                 gain=f"{risk_pct * rr:.1f}", be=f"{100.0 / (1.0 + rr):.1f}"))
+                    if not ((stop_px < entry_px < target_px) if side_buy else (target_px < entry_px < stop_px)):
+                        st.caption(t("risk_geom_bad"))
+            st.caption(t("risk_units", atr=fmt_dist(atr_c), buf=fmt_dist(stop_buf)))
 
         if st.button(t("tg_button"), key="tg_send", **WIDE):
             token, chat_id = _tg_credentials()
