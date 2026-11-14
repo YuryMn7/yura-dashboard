@@ -5,27 +5,31 @@
 Режим экрана определяется АВТОМАТИЧЕСКИ по User-Agent, переключателя в интерфейсе нет.
 Крипта: BTC W1/MN1/MN3 -> старший MN1, на MN3 — понятная причина пропуска.
 Временные цели Kihon/Taiyosuu: у каждой линии подпись с датой и временем в одну строку (прогноз «≈»),
-дальние 172/226/257 проявляются при zoom out; те же даты в PNG для Telegram.
-Масштаб по умолчанию ограничен Kihon 129 от точки C, чтобы свечи не сжимались.
+дальние 172/226/257 проявляются при zoom out; масштаб по умолчанию ограничен Kihon 129 от точки C.
 Обновление котировок — монохромная иконка ↻ в стиле панели графика; точки и цели не сбрасываются.
 
 РАДАР (Real-Time засада у Киджун): тренд HTF, Облако, Тенкан/Киджун и Чикоу подтверждаются
 по последней ЗАКРЫТОЙ свече (iloc[-2]); триггер зоны проверяется по АКТИВНОЙ свече (iloc[-1]) —
-цена и тени против Киджун закрытого бара с порогом 0.3*ATR. Для SELL достаточно касания тенью сверху,
-для BUY — снизу. Колонка «Причина» показывает расстояние до Киджун и недостающие подтверждения.
-Источник данных Радара — Yahoo (золото = GC=F, индексы), терминал — TwelveData там, где настроен.
+цена и тени против Киджун закрытого бара с порогом 0.3*ATR. Колонка «Причина» показывает расстояние
+до Киджун и недостающие подтверждения. Источник данных Радара — Yahoo (золото = GC=F, индексы).
 
-ONE-CLICK TELEPORT: таблица Радара поддерживает выбор одной строки (on_select="rerun",
-selection_mode="single-row"); системный тулбар таблицы (CSV/поиск/fullscreen) остаётся активным.
-Под таблицей появляется кнопка «➔ Открыть <актив> (<ТФ>) в Аналитическом терминале»; по нажатию
-выбранные значения переносятся в w_mode/w_symbol/w_tf, разметка волны сбрасывается (reset_points)
-и происходит st.rerun(). Значения применяются в начале следующего прогона ДО создания виджетов —
-это требование Streamlit (запись в ключ уже созданного виджета запрещена).
+ONE-CLICK TELEPORT: выбор одной строки в таблице Радара (on_select="rerun", single-row);
+системный тулбар таблицы (CSV/поиск/fullscreen) остаётся активным. Кнопка «➔ Открыть ... в Терминале»
+переносит asset/tf в w_mode/w_symbol/w_tf, сбрасывает разметку волны и делает st.rerun().
+Значения применяются в начале следующего прогона ДО создания виджетов (требование Streamlit).
+
+РИСК-МЕНЕДЖМЕНТ (подготовка к Этапу 2): под ИИ-блоком при трёх точках A-B-C выводится карточка
+параметров сделки — вход по текущей цене, стоп C, цель N, риск и прибыль в валюте цены и пунктах,
+R:R, поле «Риск на сделку, %» и пересчёт результата в проценты депозита. Ордеров нет.
+Пункты: Форекс — пипс 0.0001 (JPY-пары 0.01); золото, индексы, BTC — 1.0 единицы цены.
+
+TELEGRAM PNG: в matplotlib-рендере рисуются ТОЛЬКО те вертикали времени и метки, которые помещаются
+в видимый диапазон x_right (проверка continue), метки обрезаны по осям (clip_on=True) —
+bbox_inches="tight" больше не растягивает холст в пустоту справа.
 
 BY DESIGN (штатная защита, не дефект): точки A-B-C сбрасываются при смене инструмента, таймфрейма,
-серверного времени, режимов raw и клиринга, кнопкой «Сбросить точки» и при телепорте из Радара —
-эти действия меняют метки времени свечей, к которым привязаны точки. Обновление котировок,
-смена языка, зум/панорама и отправка отчётов точки НЕ сбрасывают.
+серверного времени, режимов raw и клиринга, кнопкой «Сбросить точки» и при телепорте из Радара.
+Обновление котировок, смена языка, зум/панорама и отправка отчётов точки НЕ сбрасывают.
 
 Конвейер данных, «Алиса», KIHON_SUU и цели Хосоды — без изменений.
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опционально).
@@ -160,6 +164,16 @@ I18N = {
         "chart_time_targets": "Time targets", "hover_high": "High", "hover_low": "Low",
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} bars)", "hover_forecast": "forecast",
         "chart_wave": "Wave A-B-C",
+        "risk_title": "Trade parameters (calculated)", "risk_buy": "BUY", "risk_sell": "SELL",
+        "risk_entry": "Entry (live price)", "risk_stop": "Stop (point C)", "risk_target": "Target N",
+        "risk_risk": "Risk", "risk_reward": "Reward", "risk_rr": "Risk : Reward",
+        "risk_pct_label": "Risk per trade, %",
+        "risk_pct_help": "Share of equity lost if the stop is hit. Used to express the outcome in percent of equity.",
+        "risk_outcome": "At {pct}% risk: stop -{loss}% of equity, target +{gain}% of equity. Break-even win rate: {be}%.",
+        "risk_units": "Units: Forex - pip 0.0001 (JPY pairs 0.01); gold, indices and BTC - 1.0 price unit. Price currency is the instrument quote.",
+        "risk_geom_bad": "Geometry is inverted: the live price is already beyond the stop or the target - distances are shown as absolute values.",
+        "risk_zero": "Stop equals the live price - Risk : Reward is undefined.",
+        "pt_pip": "pips", "pt_point": "pts",
         "err_nodata": "no data", "err_yahoo_nodata": "Yahoo: no data for {detail}",
         "err_td": "TwelveData: {detail}", "err_td_nodata": "TwelveData: no data", "err_exception": "{detail}",
         "err_no_processed": "no data after processing",
@@ -244,6 +258,16 @@ I18N = {
         "chart_time_targets": "Временные цели", "hover_high": "Хай", "hover_low": "Лоу",
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} баров)", "hover_forecast": "прогноз",
         "chart_wave": "Волна A-B-C",
+        "risk_title": "Параметры сделки (расчет)", "risk_buy": "ПОКУПКА", "risk_sell": "ПРОДАЖА",
+        "risk_entry": "Вход (тек. цена)", "risk_stop": "Стоп (точка C)", "risk_target": "Цель N",
+        "risk_risk": "Риск", "risk_reward": "Прибыль", "risk_rr": "Риск : Прибыль",
+        "risk_pct_label": "Риск на сделку, %",
+        "risk_pct_help": "Доля депозита, теряемая при срабатывании стопа. Используется для пересчета результата в проценты депозита.",
+        "risk_outcome": "При риске {pct}%: стоп −{loss}% депозита, цель +{gain}% депозита. Безубыточная доля прибыльных: {be}%.",
+        "risk_units": "Пункты: Форекс — пипс 0.0001 (JPY-пары 0.01); золото, индексы и BTC — 1.0 единицы цены. Валюта цены — котировка инструмента.",
+        "risk_geom_bad": "Геометрия вывернута: текущая цена уже за стопом или за целью — дистанции показаны по модулю.",
+        "risk_zero": "Стоп совпадает с текущей ценой — соотношение R:R не определено.",
+        "pt_pip": "пипс", "pt_point": "п.",
         "err_nodata": "нет данных", "err_yahoo_nodata": "Yahoo: нет данных для {detail}",
         "err_td": "TwelveData: {detail}", "err_td_nodata": "TwelveData: нет данных", "err_exception": "{detail}",
         "err_no_processed": "нет данных после обработки",
@@ -331,6 +355,38 @@ def fmt_diag(d):
     return t("diag_" + kind)
 
 
+def point_size(route):
+    """(размер пункта, ключ подписи): Форекс — пипс, остальные — 1.0 единицы цены."""
+    sym = route["sym"]
+    if "/" in sym and "BTC" not in sym and "XAU" not in sym:
+        return (0.01, "pt_pip") if sym.endswith("JPY") else (0.0001, "pt_pip")
+    return (1.0, "pt_point")
+
+
+def quote_ccy(route):
+    """Валюта цены из тикера (EUR/USD -> USD); у индексов и DXY не определена."""
+    sym = route["sym"]
+    return sym.split("/")[1] if "/" in sym else ""
+
+
+def fmt_money(v, ccy):
+    s = f"{v:,.2f}".replace(",", " ")
+    return f"{s} {ccy}" if ccy else s
+
+
+def fmt_points(v, size):
+    p = v / size
+    s = f"{p:,.1f}" if size < 1 else f"{p:,.2f}"
+    return s.replace(",", " ")
+
+
+def risk_card_html(head, rows, accent):
+    """Компактная институциональная карточка параметров сделки (только наши строки и числа)."""
+    body = "".join(f"<tr><td class='rl'>{k}</td><td class='rv'>{v}</td></tr>" for k, v in rows)
+    return (f"<div class='risk-card' style='border-left-color:{accent}'>"
+            f"<div class='risk-hd'>{head}</div><table class='risk-tb'>{body}</table></div>")
+
+
 def detect_mobile_ua():
     """Автоматическое определение телефона по User-Agent; планшеты считаются десктопом."""
     try:
@@ -361,6 +417,7 @@ def inject_css(mobile):
         "h1, h2, h3 { margin-top: 0.2rem !important; line-height: 1.25 !important; overflow-wrap: anywhere; }\n"
         "h2 { font-size: clamp(1.05rem, 4.5vw, 1.75rem) !important; }\n"
         ".modebar-btn { padding: 3px 5px !important; }\n"
+        ".risk-tb td { font-size: 0.8rem; }\n"
         '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
     )
     tool_css = (
@@ -378,8 +435,6 @@ def inject_css(mobile):
         ".st-key-refresh_term button:active { background: #e3e9ee; border-color: #2c3e50; }\n"
         ".st-key-refresh_term button:focus-visible { outline: 1px solid #2c3e50; outline-offset: 1px; }\n"
     )
-    # Кнопка-трамплин: институциональный графит, полная ширина, крупная зона нажатия.
-    # Селектор строгоscoped по ключу — тулбар таблицы (CSV/поиск/fullscreen) не затрагивается.
     teleport_css = (
         ".st-key-teleport_btn { margin: 0.4rem 0 0.2rem 0; }\n"
         ".st-key-teleport_btn button { width: 100%; min-height: 44px; padding: 0.5rem 1rem !important; "
@@ -392,13 +447,24 @@ def inject_css(mobile):
         ".st-key-teleport_btn button:active { background: #22303d; border-color: #22303d; color: #ffffff; }\n"
         ".st-key-teleport_btn button:focus-visible { outline: 2px solid #2980b9; outline-offset: 2px; }\n"
     )
+    risk_css = (
+        ".risk-card { border: 1px solid #dfe4ea; border-left: 3px solid #2c3e50; background: #fbfcfd; "
+        "padding: 8px 12px; margin: 0.2rem 0 0.5rem 0; border-radius: 2px; }\n"
+        ".risk-hd { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; "
+        "color: #7f8c8d; margin-bottom: 4px; }\n"
+        ".risk-tb { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }\n"
+        ".risk-tb td { padding: 2px 0; font-size: 0.86rem; border-bottom: 1px solid #eef1f4; }\n"
+        ".risk-tb tr:last-child td { border-bottom: none; }\n"
+        ".risk-tb td.rl { color: #7f8c8d; white-space: nowrap; padding-right: 10px; }\n"
+        ".risk-tb td.rv { color: #2c3e50; text-align: right; font-weight: 600; }\n"
+    )
     css = (
         "<style>\n"
         ".block-container { padding-top: 4rem; padding-bottom: 2rem; max-width: 100%; }\n"
         ".app-title { color: #2c3e50; font-size: clamp(1.05rem, 4.5vw, 1.75rem); line-height: 1.25; "
         "margin-top: 0.2rem; overflow-wrap: anywhere; white-space: normal; }\n"
         ".stPlotlyChart .modebar { opacity: 1; }\n"
-        + tool_css + teleport_css +
+        + tool_css + teleport_css + risk_css +
         "@media (max-width: 768px) {\n" + mobile_rules + "}\n"
         "@media (hover: none) {\n"
         ".stPlotlyChart .modebar { opacity: 1 !important; }\n"
@@ -1120,16 +1186,22 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
 
         def vlabel(x_pos, text_, color, y_frac, size=7):
             ax.text(x_pos, y_frac, text_, transform=ax.get_xaxis_transform(), rotation=90,
-                    ha="center", va="center", fontsize=size, color=color, zorder=7,
+                    ha="center", va="center", fontsize=size, color=color, zorder=7, clip_on=True,
                     bbox=dict(boxstyle="round,pad=0.12", facecolor="white", edgecolor="none", alpha=0.75))
 
+        # Рисуем ТОЛЬКО то, что физически помещается в видимый диапазон: иначе bbox_inches="tight"
+        # растягивает холст вправо под дальние метки (172/226/257) и создаёт пустое белое поле.
         for x_pos, base, col, y_frac in ((cx + time_ab, f"AB {int(time_ab)}", "blue", 0.30),
                                          (cx + time_ac, f"AC {int(time_ac)}", "teal", 0.30)):
+            if x_pos > x_right:
+                continue
             ts_, fc_ = bar_time_at(df_plot, x_pos, tf, is_fx, clock)
             ax.axvline(x_pos, color=col, linestyle=":", linewidth=1.1, zorder=2)
             vlabel(x_pos, time_target_label(base, ts_, fc_, tf, mobile), col, y_frac, 8)
         for k in KIHON_SUU:
             xk = cx + k - 1
+            if xk > x_right:
+                continue
             ts_, fc_ = bar_time_at(df_plot, xk, tf, is_fx, clock)
             ax.axvline(xk, color="gray", linestyle="--", linewidth=0.8, alpha=0.35, zorder=2)
             vlabel(xk, time_target_label(str(k), ts_, fc_, tf, mobile), "#7f8c8d", 0.78, 7)
@@ -1186,7 +1258,7 @@ def refresh_button(key):
         st.rerun()
 
 
-PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active"]
+PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active", "risk_pct"]
 
 
 def _on_lang_change():
@@ -1202,6 +1274,7 @@ st.session_state.setdefault("lang", DEFAULT_LANG)
 st.session_state.setdefault("w_tf", "H1")
 st.session_state.setdefault("w_radar_tf", "D1")
 st.session_state.setdefault("w_radar_active", True)
+st.session_state.setdefault("risk_pct", 1.0)
 
 # --- ONE-CLICK TELEPORT: применяем ДО создания виджетов (требование Streamlit) ---
 _teleport = st.session_state.pop("_teleport", None)
@@ -1678,6 +1751,46 @@ elif app_mode == "terminal":
                                 st.caption(t("ai_uplift", v=f"{r['uplift']:+.2f}"))
                             st.caption(t("ai_rel_" + r["reliability"]))
                         st.caption(t("ai_disclaimer"))
+
+        # ---- Риск-менеджмент: сухой расчет параметров будущей позиции (Этап 2 — ордера) ----
+        if len(abc) == 3:
+            rA, rB, rC = abc
+            side_buy = rB["y"] > rA["y"]
+            r_tg = hosoda_targets(rA["y"], rB["y"], rC["y"])
+            entry_px, stop_px, target_px = last_close, float(rC["y"]), float(r_tg["N"])
+            route_r = ASSET_ROUTER[asset_name]
+            psize, pkey = point_size(route_r)
+            ccy = quote_ccy(route_r)
+            unit = t(pkey)
+            risk_dist, reward_dist = abs(entry_px - stop_px), abs(target_px - entry_px)
+            rr = reward_dist / risk_dist if risk_dist > 0 else None
+            risk_rows = [
+                (t("risk_entry"), fmt_price(entry_px)),
+                (t("risk_stop"), fmt_price(stop_px)),
+                (t("risk_target"), fmt_price(target_px)),
+                (t("risk_risk"), f"{fmt_money(risk_dist, ccy)} · {fmt_points(risk_dist, psize)} {unit}"),
+                (t("risk_reward"), f"{fmt_money(reward_dist, ccy)} · {fmt_points(reward_dist, psize)} {unit}"),
+                (t("risk_rr"), f"1 : {rr:.2f}" if rr is not None else t("ai_na")),
+            ]
+            accent = ALICE_LIGHT_COLORS["green" if side_buy else "red"]
+            head = t("risk_title") + " · " + t("risk_buy" if side_buy else "risk_sell")
+            st.markdown(risk_card_html(head, risk_rows, accent), unsafe_allow_html=True)
+            if MOBILE:
+                risk_pct = st.number_input(t("risk_pct_label"), min_value=0.1, max_value=100.0,
+                                           step=0.5, format="%.1f", key="risk_pct", help=t("risk_pct_help"))
+            else:
+                rc1, _rc2 = st.columns([1, 3])
+                with rc1:
+                    risk_pct = st.number_input(t("risk_pct_label"), min_value=0.1, max_value=100.0,
+                                               step=0.5, format="%.1f", key="risk_pct", help=t("risk_pct_help"))
+            if rr is None:
+                st.caption(t("risk_zero"))
+            else:
+                st.caption(t("risk_outcome", pct=f"{risk_pct:.1f}", loss=f"{risk_pct:.1f}",
+                             gain=f"{risk_pct * rr:.1f}", be=f"{100.0 / (1.0 + rr):.1f}"))
+                if not ((stop_px < entry_px < target_px) if side_buy else (target_px < entry_px < stop_px)):
+                    st.caption(t("risk_geom_bad"))
+            st.caption(t("risk_units"))
 
         if st.button(t("tg_button"), key="tg_send", **WIDE):
             token, chat_id = _tg_credentials()
