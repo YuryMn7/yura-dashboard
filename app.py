@@ -18,30 +18,32 @@
 ONE-CLICK TELEPORT: выбор одной строки в таблице Радара (on_select="rerun", single-row);
 системный тулбар таблицы (CSV/поиск/fullscreen) остаётся активным. Кнопка «➔ Открыть ... в Терминале»
 переносит asset/tf в w_mode/w_symbol/w_tf, сбрасывает разметку волны и делает st.rerun().
-Значения применяются в начале следующего прогона ДО создания виджетов (требование Streamlit).
 
-РИСК-МЕНЕДЖМЕНТ (подготовка к Этапу 2): под ИИ-блоком при трёх точках A-B-C — карточка сделки.
+РИСК-МЕНЕДЖМЕНТ: под ИИ-блоком при трёх точках A-B-C — карточка сделки.
 Точка входа: «Хосода: разворот C» (первый ЗАКРЫТЫЙ бар после C с Close за High_C/Low_C),
 «Пробой точки B», «По текущей цене», «Своя цена входа». Стоп = экстремум C ∓ 0.2*ATR(бар C).
-ТАБЛИЦА — ЧИСТАЯ ГЕОМЕТРИЯ: уровни цен, дистанции в пипсах/пунктах и R:R, без валюты инструмента.
-Деньги — только в нижнем интерактивном блоке: депозит и риск в % -> риск в USD -> рекомендуемый лот
-через множители контрактов (Форекс 100 000, XAU 100, BTC 1, индексы 1). Ордеров нет — только расчет.
+Таблица — чистая геометрия: уровни, пипсы/пункты, R:R. Деньги — в нижнем блоке депозита и строке лота.
 
-TELEGRAM PNG: в matplotlib-рендере рисуются ТОЛЬКО те вертикали времени и метки, которые помещаются
-в видимый диапазон x_right (проверка continue), метки обрезаны по осям (clip_on=True) —
-bbox_inches="tight" больше не растягивает холст в пустоту справа.
+ЭТАП 2 — ТОРГОВЫЙ ШЛЮЗ: строго под строкой лота расположена кнопка «➔ Исполнить приказ в MetaTrader 5».
+Она отправляет в Telegram команду /order {JSON} для советника IchimokuGuardian.mq5 (протокол:
+token, id, symbol, side, entry, sl, tp, risk_percent, comment). Тикер нормализуется под MT5
+(mt5_symbol: без слэшей, пробелов и скобок). Кнопка заблокирована, пока точка входа не определена.
+Окончательный контроль риска — на стороне советника (потолок риска, лимиты просадки, лот по шагу брокера).
 
-BY DESIGN (штатная защита, не дефект): точки A-B-C сбрасываются при смене инструмента, таймфрейма,
-серверного времени, режимов raw и клиринга, кнопкой «Сбросить точки» и при телепорте из Радара;
-вместе с ними очищается своя цена входа. Обновление котировок, смена языка, зум/панорама
-и отправка отчётов точки НЕ сбрасывают.
+TELEGRAM PNG: в matplotlib-рендере рисуются только вертикали и метки внутри x_right (clip_on=True) —
+холст не растягивается в пустоту справа.
 
-Конвейер данных, «Алиса», KIHON_SUU и цели Хосоды — без изменений.
+BY DESIGN (штатная защита): точки A-B-C сбрасываются при смене инструмента, таймфрейма, серверного
+времени, режимов raw и клиринга, кнопкой «Сбросить точки» и при телепорте; вместе с ними очищается
+своя цена входа. Обновление котировок, смена языка, зум/панорама и отчёты точки НЕ сбрасывают.
+
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опционально).
-Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID.
+Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц., по умолчанию
+SECRET_ICHIMOKU_TOKEN). Все секреты вырезаются из текстов ошибок через safe_err.
 """
 import gc
 import io
+import json
 import re
 from datetime import timedelta, timezone
 
@@ -125,6 +127,7 @@ TIME_AXIS_KIHON_CAP = 129
 MN_MONTHS = {"MN1": 1, "MN3": 3, "MN6": 6, "MN24": 24}
 KIJUN_ZONE_ATR = 0.3   # порог засады у Киджун (неизменен)
 STOP_BUFFER_ATR = 0.2  # защитный буфер стопа от экстремума точки C
+MT5_DEFAULT_TOKEN = "SECRET_ICHIMOKU_TOKEN"
 
 LANGS = {"English": "en", "Русский": "ru"}
 DEFAULT_LANG = "Русский"
@@ -182,15 +185,22 @@ I18N = {
         "risk_entry": "Entry", "risk_stop_buy": "Stop (C - 0.2 ATR)", "risk_stop_sell": "Stop (C + 0.2 ATR)",
         "risk_target": "Target N", "risk_risk": "Risk", "risk_reward": "Reward", "risk_rr": "Risk : Reward",
         "risk_pct_label": "Risk per trade, %",
-        "risk_pct_help": "Share of equity lost if the stop is hit. Used for position sizing and percent outcomes.",
+        "risk_pct_help": "Share of equity lost if the stop is hit. The EA applies its own hard cap on top of this.",
         "deposit_label": "Deposit, $",
         "deposit_help": "Account equity in USD used to convert the risk percentage into money risk.",
         "lot_line": "Recommended lot: <b>{lots}</b> (Risk: -{risk} | Target N: +{gain})",
-        "lot_too_small": "Calculated size is below 0.01 lot - reduce the risk distance or increase the deposit.",
+        "lot_too_small": "Calculated size is below 0.01 lot - the EA will reject this order. Reduce the risk distance or increase the deposit.",
         "risk_outcome": "At {pct}% risk: stop -{loss}% of equity, target +{gain}% of equity. Break-even win rate: {be}%.",
         "risk_units": "Units: Forex - pip 0.0001 (JPY 0.01), others - 1.0 price unit. Lot: Forex 100,000, gold 100, BTC 1, indices 1. ATR of bar C = {atr}; stop buffer 0.2 x ATR = {buf}.",
         "risk_geom_bad": "Geometry is inverted: the entry is already beyond the stop or the target - distances are shown as absolute values.",
         "risk_zero": "Stop equals the entry price - Risk : Reward and lot size are undefined.",
+        "mt5_exec_btn": "➔ Execute order in MetaTrader 5",
+        "mt5_need_entry": "Entry is not confirmed - the order button is locked. Wait for a close beyond the C extreme, or switch the entry mode.",
+        "mt5_no_secrets": "Add TELEGRAM_TOKEN and TELEGRAM_CHAT_ID to the app secrets.",
+        "mt5_sending": "Sending the order to the gateway...",
+        "mt5_sent": "Order sent to the Telegram trading gateway. Await the execution confirmation in MT5.",
+        "mt5_sent_id": "Order {oid} · {sym} {side} · {lots} lots · risk {risk}%",
+        "mt5_err": "Gateway error: {detail}",
         "pt_pip": "pips", "pt_point": "pts",
         "err_nodata": "no data", "err_yahoo_nodata": "Yahoo: no data for {detail}",
         "err_td": "TwelveData: {detail}", "err_td_nodata": "TwelveData: no data", "err_exception": "{detail}",
@@ -287,15 +297,22 @@ I18N = {
         "risk_entry": "Вход", "risk_stop_buy": "Стоп (C − 0.2·ATR)", "risk_stop_sell": "Стоп (C + 0.2·ATR)",
         "risk_target": "Цель N", "risk_risk": "Риск", "risk_reward": "Прибыль", "risk_rr": "Риск : Прибыль",
         "risk_pct_label": "Риск на сделку, %",
-        "risk_pct_help": "Доля депозита, теряемая при срабатывании стопа. Используется для расчета объема и результата в процентах.",
+        "risk_pct_help": "Доля депозита, теряемая при срабатывании стопа. Советник дополнительно применит свой жесткий потолок риска.",
         "deposit_label": "Депозит, $",
         "deposit_help": "Размер счета в USD для перевода процента риска в денежный риск.",
         "lot_line": "Рекомендуемый лот: <b>{lots}</b> (Риск: −{risk} | Цель N: +{gain})",
-        "lot_too_small": "Расчетный объем меньше 0.01 лота — уменьшите дистанцию риска или увеличьте депозит.",
+        "lot_too_small": "Расчетный объем меньше 0.01 лота — советник отклонит приказ. Уменьшите дистанцию риска или увеличьте депозит.",
         "risk_outcome": "При риске {pct}%: стоп −{loss}% депозита, цель +{gain}% депозита. Безубыточная доля прибыльных: {be}%.",
         "risk_units": "Пункты: Форекс — пипс 0.0001 (JPY 0.01), прочие — 1.0 ед. цены. Лот: Форекс 100 000, золото 100, BTC 1, индексы 1. ATR бара C = {atr}; буфер стопа 0.2·ATR = {buf}.",
         "risk_geom_bad": "Геометрия вывернута: вход уже за стопом или за целью — дистанции показаны по модулю.",
         "risk_zero": "Стоп совпадает с ценой входа — соотношение R:R и объем не определены.",
+        "mt5_exec_btn": "➔ Исполнить приказ в MetaTrader 5",
+        "mt5_need_entry": "Вход не подтверждён — кнопка приказа заблокирована. Дождитесь закрытия за экстремумом C или смените режим входа.",
+        "mt5_no_secrets": "Добавьте TELEGRAM_TOKEN и TELEGRAM_CHAT_ID в секреты приложения.",
+        "mt5_sending": "Передача приказа в торговый шлюз...",
+        "mt5_sent": "Приказ передан в торговый шлюз Telegram. Ожидайте подтверждения исполнения в MT5.",
+        "mt5_sent_id": "Приказ {oid} · {sym} {side} · {lots} лота · риск {risk}%",
+        "mt5_err": "Ошибка шлюза: {detail}",
         "pt_pip": "пипс", "pt_point": "п.",
         "err_nodata": "нет данных", "err_yahoo_nodata": "Yahoo: нет данных для {detail}",
         "err_td": "TwelveData: {detail}", "err_td_nodata": "TwelveData: нет данных", "err_exception": "{detail}",
@@ -361,6 +378,49 @@ def fmt_err(err):
     if isinstance(err, tuple):
         return t("err_" + err[0], **err[1])
     return str(err)
+
+
+def _secret_values():
+    """Все известные секреты — для вырезания из текстов ошибок."""
+    vals = [API_KEY]
+    for k in ("TELEGRAM_TOKEN", "MT5_SECRET_TOKEN"):
+        try:
+            v = st.secrets.get(k, "")
+            if v:
+                vals.append(str(v))
+        except Exception:
+            pass
+    return [v for v in vals if v and len(v) >= 6]
+
+
+def safe_err(e):
+    """Текст ошибки без секретов: ключ TwelveData, токен бота, токен MT5."""
+    txt = e if isinstance(e, str) else f"{type(e).__name__}: {e}"
+    for s in _secret_values():
+        txt = txt.replace(s, "***")
+    return txt
+
+
+def mt5_symbol(asset_key):
+    """Тикер под спецификацию MetaTrader 5: без скобок, слэшей и пробелов.
+    EUR/USD -> EURUSD, XAU/USD (Gold) -> XAUUSD, GER40 (DAX) -> GER40, SPX500 -> SPX500.
+    Для инструментов с не-латинским именем берётся тикер провайдера (DXY)."""
+    base = re.sub(r"\(.*?\)", "", asset_key)
+    base = re.sub(r"[\s/]+", "", base).strip().upper()
+    if not base or not base.isascii():
+        route = ASSET_ROUTER.get(asset_key)
+        src = route["sym"] if route else asset_key
+        base = re.sub(r"[\s/]+", "", src).upper()
+    return base
+
+
+def price_digits(price):
+    """Знаков после запятой для цены инструмента (как в fmt_price)."""
+    if price >= 1000:
+        return 2
+    if price >= 10:
+        return 3
+    return 5
 
 
 def fmt_dist(v):
@@ -493,6 +553,23 @@ def inject_css(mobile):
         ".st-key-teleport_btn button:active { background: #22303d; border-color: #22303d; color: #ffffff; }\n"
         ".st-key-teleport_btn button:focus-visible { outline: 2px solid #2980b9; outline-offset: 2px; }\n"
     )
+    # Боевая кнопка шлюза: тот же графит, но рамка темнее — визуальный вес приказа.
+    exec_css = (
+        ".st-key-mt5_send_order { margin: 0.4rem 0 0.2rem 0; }\n"
+        ".st-key-mt5_send_order button { width: 100%; min-height: 44px; padding: 0.5rem 1rem !important; "
+        "background: #2c3e50; color: #ffffff; border: 1px solid #1b2a38; border-radius: 2px; "
+        "font-weight: 600; letter-spacing: 0.01em; box-shadow: none; "
+        "transition: background-color .15s ease, border-color .15s ease; }\n"
+        ".st-key-mt5_send_order button p, .st-key-mt5_send_order button span { "
+        "color: #ffffff !important; font-size: 0.95rem !important; line-height: 1.3 !important; }\n"
+        ".st-key-mt5_send_order button:hover { background: #34495e; border-color: #1b2a38; color: #ffffff; }\n"
+        ".st-key-mt5_send_order button:active { background: #22303d; border-color: #1b2a38; color: #ffffff; }\n"
+        ".st-key-mt5_send_order button:focus-visible { outline: 2px solid #2980b9; outline-offset: 2px; }\n"
+        ".st-key-mt5_send_order button:disabled { background: #eef1f4; border-color: #dfe4ea; "
+        "color: #9aa7b2; cursor: not-allowed; }\n"
+        ".st-key-mt5_send_order button:disabled p, .st-key-mt5_send_order button:disabled span { "
+        "color: #9aa7b2 !important; }\n"
+    )
     risk_css = (
         ".risk-card { border: 1px solid #dfe4ea; border-left: 3px solid #2c3e50; background: #fbfcfd; "
         "padding: 8px 12px; margin: 0.2rem 0 0.5rem 0; border-radius: 2px; }\n"
@@ -513,7 +590,7 @@ def inject_css(mobile):
         ".app-title { color: #2c3e50; font-size: clamp(1.05rem, 4.5vw, 1.75rem); line-height: 1.25; "
         "margin-top: 0.2rem; overflow-wrap: anywhere; white-space: normal; }\n"
         ".stPlotlyChart .modebar { opacity: 1; }\n"
-        + tool_css + teleport_css + risk_css +
+        + tool_css + teleport_css + exec_css + risk_css +
         "@media (max-width: 768px) {\n" + mobile_rules + "}\n"
         "@media (hover: none) {\n"
         ".stPlotlyChart .modebar { opacity: 1 !important; }\n"
@@ -523,10 +600,6 @@ def inject_css(mobile):
         + "</style>"
     )
     st.markdown(css, unsafe_allow_html=True)
-
-
-def safe_err(e):
-    return f"{type(e).__name__}: {e}".replace(API_KEY, "***")
 
 
 def align_start(df, rule):
@@ -1199,6 +1272,32 @@ def _tg_credentials():
         return None, None
 
 
+def _mt5_secret():
+    """Секретный токен авторизации для советника IchimokuGuardian."""
+    try:
+        return str(st.secrets.get("MT5_SECRET_TOKEN", MT5_DEFAULT_TOKEN))
+    except Exception:
+        return MT5_DEFAULT_TOKEN
+
+
+def send_mt5_order(payload):
+    """Приказ в шлюз IchimokuGuardian: /order {JSON} в Telegram. Возвращает (ok, error)."""
+    token, chat_id = _tg_credentials()
+    if not token or not chat_id:
+        return False, t("mt5_no_secrets")
+    text = "/order " + json.dumps(payload, separators=(",", ":"))
+    try:
+        r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                          data={"chat_id": chat_id, "text": text, "disable_web_page_preview": "true"},
+                          timeout=20)
+        res = r.json()
+        if not res.get("ok"):
+            return False, safe_err(str(res.get("description", "unknown error")))
+        return True, None
+    except Exception as e:
+        return False, safe_err(e)
+
+
 def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     import matplotlib
     matplotlib.use("Agg")
@@ -1238,8 +1337,6 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
                     ha="center", va="center", fontsize=size, color=color, zorder=7, clip_on=True,
                     bbox=dict(boxstyle="round,pad=0.12", facecolor="white", edgecolor="none", alpha=0.75))
 
-        # Рисуем ТОЛЬКО то, что физически помещается в видимый диапазон: иначе bbox_inches="tight"
-        # растягивает холст вправо под дальние метки (172/226/257) и создаёт пустое белое поле.
         for x_pos, base, col, y_frac in ((cx + time_ab, f"AB {int(time_ab)}", "blue", 0.30),
                                          (cx + time_ac, f"AC {int(time_ac)}", "teal", 0.30)):
             if x_pos > x_right:
@@ -1293,10 +1390,10 @@ def send_telegram(token, chat_id, text, png):
             r = requests.post(base + "/sendMessage", data={"chat_id": chat_id, "text": text}, timeout=30)
         res = r.json()
         if not res.get("ok"):
-            return False, str(res.get("description", "unknown error")).replace(token, "***")
+            return False, safe_err(str(res.get("description", "unknown error")))
         return True, None
     except Exception as e:
-        return False, f"{type(e).__name__}: {e}".replace(token, "***")
+        return False, safe_err(e)
 
 
 def refresh_button(key):
@@ -1507,7 +1604,6 @@ if app_mode == "radar":
                 if show_reason:
                     rec[t("col_reason")] = fmt_diag(r.get("diag"))
                 records.append(rec)
-            # Выбор одной строки. Системный тулбар таблицы (CSV/поиск/fullscreen) остаётся активным.
             radar_event = st.dataframe(
                 pd.DataFrame(records), hide_index=True,
                 on_select="rerun", selection_mode="single-row", key="radar_table", **WIDE,
@@ -1805,7 +1901,7 @@ elif app_mode == "terminal":
                             st.caption(t("ai_rel_" + r["reliability"]))
                         st.caption(t("ai_disclaimer"))
 
-        # ---- Риск-менеджмент: снайперский вход, буфер стопа, депозит и объем (Этап 2 — ордера) ----
+        # ---- Риск-менеджмент + пусковой механизм Этапа 2 ----
         if len(abc) == 3:
             rA, rB, rC = abc
             side_buy = rB["y"] > rA["y"]
@@ -1849,7 +1945,7 @@ elif app_mode == "terminal":
                 entry_px = last_close
             else:
                 st.session_state.setdefault("custom_entry", float(last_close))
-                dec = 5 if last_close < 10 else (3 if last_close < 1000 else 2)
+                dec = price_digits(last_close)
                 entry_px = float(st.number_input(t("entry_custom_label"), min_value=0.0,
                                                  step=10.0 ** (-dec), format=f"%.{dec}f", key="custom_entry"))
                 if entry_px <= 0:
@@ -1896,26 +1992,64 @@ elif app_mode == "terminal":
                     deposit = st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9,
                                               step=1000.0, format="%.0f", key="account_deposit", help=t("deposit_help"))
 
-            # Деньги — только здесь: депозит, риск в USD и рекомендуемый лот
-            if entry_px is not None:
-                if rr is None:
-                    st.caption(t("risk_zero"))
-                else:
-                    risk_usd = deposit * (risk_pct / 100.0)
-                    lots = risk_usd / (risk_dist * mult) if (risk_dist > 0 and mult > 0) else 0.0
-                    gain_usd = lots * reward_dist * mult
-                    st.markdown(
-                        "<div class='lot-line'>" + t("lot_line", lots=f"{lots:.2f}",
-                                                     risk=fmt_money(risk_usd, "USD"),
-                                                     gain=fmt_money(gain_usd, "USD")) + "</div>",
-                        unsafe_allow_html=True)
-                    if lots < 0.01:
-                        st.caption(t("lot_too_small"))
-                    st.caption(t("risk_outcome", pct=f"{risk_pct:.1f}", loss=f"{risk_pct:.1f}",
-                                 gain=f"{risk_pct * rr:.1f}", be=f"{100.0 / (1.0 + rr):.1f}"))
-                    if not ((stop_px < entry_px < target_px) if side_buy else (target_px < entry_px < stop_px)):
-                        st.caption(t("risk_geom_bad"))
+            # --- Деньги: строка лота, затем строго под ней боевая кнопка шлюза ---
+            lot_ready = (entry_px is not None and rr is not None)
+            lots, risk_usd, gain_usd = 0.0, 0.0, 0.0
+            if lot_ready:
+                risk_usd = deposit * (risk_pct / 100.0)
+                lots = risk_usd / (risk_dist * mult) if (risk_dist > 0 and mult > 0) else 0.0
+                gain_usd = lots * reward_dist * mult
+                st.markdown(
+                    "<div class='lot-line'>" + t("lot_line", lots=f"{lots:.2f}",
+                                                 risk=fmt_money(risk_usd, "USD"),
+                                                 gain=fmt_money(gain_usd, "USD")) + "</div>",
+                    unsafe_allow_html=True)
+            elif entry_px is not None:
+                st.caption(t("risk_zero"))
+
+            send_clicked = st.button(t("mt5_exec_btn"), key="mt5_send_order",
+                                     disabled=(not lot_ready), **WIDE)
+            if not lot_ready:
+                st.caption(t("mt5_need_entry"))
+
+            if lot_ready:
+                if lots < 0.01:
+                    st.caption(t("lot_too_small"))
+                st.caption(t("risk_outcome", pct=f"{risk_pct:.1f}", loss=f"{risk_pct:.1f}",
+                             gain=f"{risk_pct * rr:.1f}", be=f"{100.0 / (1.0 + rr):.1f}"))
+                if not ((stop_px < entry_px < target_px) if side_buy else (target_px < entry_px < stop_px)):
+                    st.caption(t("risk_geom_bad"))
             st.caption(t("risk_units", atr=fmt_dist(atr_c), buf=fmt_dist(stop_buf)))
+
+            # --- Отправка приказа в шлюз IchimokuGuardian через Telegram ---
+            if send_clicked:
+                tg_token, tg_chat = _tg_credentials()
+                if not tg_token or not tg_chat:
+                    st.error(t("mt5_no_secrets"))
+                else:
+                    sym_clean = mt5_symbol(asset_name)
+                    side_txt = "BUY" if side_buy else "SELL"
+                    order_id = f"{sym_clean}-{tf_name}-{int(pd.Timestamp.now().timestamp())}"
+                    dg = price_digits(last_close)
+                    payload = {
+                        "token": _mt5_secret(),
+                        "id": order_id,
+                        "symbol": sym_clean,
+                        "side": side_txt,
+                        "entry": round(float(entry_px), dg),
+                        "sl": round(float(stop_px), dg),
+                        "tp": round(float(target_px), dg),
+                        "risk_percent": float(risk_pct),
+                        "comment": "Hosoda N",
+                    }
+                    with st.spinner(t("mt5_sending")):
+                        ok, err = send_mt5_order(payload)
+                    if ok:
+                        st.success(t("mt5_sent"))
+                        st.caption(t("mt5_sent_id", oid=order_id, sym=sym_clean, side=side_txt,
+                                     lots=f"{lots:.2f}", risk=f"{risk_pct:.2f}"))
+                    else:
+                        st.error(t("mt5_err", detail=err))
 
         if st.button(t("tg_button"), key="tg_send", **WIDE):
             token, chat_id = _tg_credentials()
