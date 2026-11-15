@@ -22,7 +22,7 @@ ONE-CLICK TELEPORT: выбор одной строки в таблице Рад�
 
 РИСК-МЕНЕДЖМЕНТ (подготовка к Этапу 2): под ИИ-блоком при трёх точках A-B-C — карточка сделки.
 Точка входа: «Хосода: разворот C» (первый ЗАКРЫТЫЙ бар после C с Close за High_C/Low_C),
-«Пробой вершины B», «По текущей цене», «Своя цена входа». Стоп = экстремум C ∓ 0.2*ATR(бар C).
+«Пробой точки B», «По текущей цене», «Своя цена входа». Стоп = экстремум C ∓ 0.2*ATR(бар C).
 ТАБЛИЦА — ЧИСТАЯ ГЕОМЕТРИЯ: уровни цен, дистанции в пипсах/пунктах и R:R, без валюты инструмента.
 Деньги — только в нижнем интерактивном блоке: депозит и риск в % -> риск в USD -> рекомендуемый лот
 через множители контрактов (Форекс 100 000, XAU 100, BTC 1, индексы 1). Ордеров нет — только расчет.
@@ -173,7 +173,7 @@ I18N = {
         "chart_wave": "Wave A-B-C",
         "risk_title": "Trade parameters (calculated)", "risk_buy": "BUY", "risk_sell": "SELL",
         "entry_mode": "Entry point",
-        "entry_hosoda": "Hosoda: C reversal", "entry_break_b": "B breakout",
+        "entry_hosoda": "Hosoda: C reversal", "entry_break_b": "Point B breakout",
         "entry_market": "At market", "entry_custom": "Custom entry price",
         "entry_custom_label": "Entry price", "entry_custom_hint": "Enter the exact sniper entry price.",
         "risk_confirm_level": "Confirmation level", "risk_entry_time": "Confirmation bar",
@@ -278,7 +278,7 @@ I18N = {
         "chart_wave": "Волна A-B-C",
         "risk_title": "Параметры сделки (расчет)", "risk_buy": "ПОКУПКА", "risk_sell": "ПРОДАЖА",
         "entry_mode": "Точка входа",
-        "entry_hosoda": "Хосода: разворот C", "entry_break_b": "Пробой вершины B",
+        "entry_hosoda": "Хосода: разворот C", "entry_break_b": "Пробой точки B",
         "entry_market": "По текущей цене", "entry_custom": "Своя цена входа",
         "entry_custom_label": "Цена входа", "entry_custom_hint": "Введите точную цену снайперского входа.",
         "risk_confirm_level": "Уровень подтверждения", "risk_entry_time": "Бар подтверждения",
