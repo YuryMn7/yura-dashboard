@@ -24,17 +24,19 @@ ONE-CLICK TELEPORT: выбор одной строки в таблице Рад�
 «Пробой точки B», «По текущей цене», «Своя цена входа». Стоп = экстремум C ∓ 0.2*ATR(бар C).
 Таблица — чистая геометрия: уровни, пипсы/пункты, R:R. Деньги — в нижнем блоке депозита и строке лота.
 
-РАСЧЕТ ЛОТА (исправлено): lот считается через ЧЕСТНУЮ стоимость пункта в USD на 1 стандартный лот —
-pip_value_usd(asset_key, current_price, psize). JPY-пары: 1000 JPY за пипс, пересчет по курсу USD/JPY;
+РАСЧЕТ ЛОТА: через честную стоимость пункта в USD на 1 стандартный лот —
+pip_value_usd(asset_key, current_price, psize). JPY: 1000 JPY за пипс по курсу USD/JPY;
 прямые пары: $10 за пипс; EUR/AUD: 10 AUD в USD; золото: $100 за пункт; BTC: $1; индексы: $1.
 pips = risk_dist / psize; loss_per_lot = pips * pip_value_usd; lots = risk_usd / loss_per_lot
 с округлением ВНИЗ до шага 0.01. Кросс-курсы — с Yahoo (кэш 5 мин), резерв: 155.0 и 0.65.
 
-ЭТАП 2 — ТОРГОВЫЙ ШЛЮЗ: строго под строкой лота кнопка «➔ Исполнить приказ в MetaTrader 5»
-отправляет в Telegram команду /order {JSON} для советника IchimokuGuardian.mq5 (token, id, symbol,
-side, entry, sl, tp, risk_percent, comment). Тикер нормализуется mt5_symbol. Кнопка заблокирована,
-пока точка входа не определена. Окончательный расчет лота и контроль риска — на стороне советника
-по спецификации брокера (SYMBOL_TRADE_TICK_VALUE / TICK_SIZE / VOLUME_STEP).
+ЭТАП 2 — CLOUD RELAY (KVdb): кнопка «➔ Исполнить приказ в MetaTrader 5» кладет чистый JSON
+в облачный ящик MT5_RELAY_URL (по умолчанию https://kvdb.io/YuraGuardian777/order) методом POST
+с ?ttl=120 — через две минуты неисполненный приказ самоуничтожается. Советник IchimokuGuardian.mq5
+опрашивает этот же адрес через WebRequest (InpServerURL). TELEGRAM БОЛЬШЕ НЕ УЧАСТВУЕТ В ПРИКАЗАХ:
+бот и секреты TELEGRAM_TOKEN / TELEGRAM_CHAT_ID остаются только для отчетов об исполнении
+(рапорт отправляет советник из MT5, кнопка отчета графика — из терминала).
+Окончательный расчет лота и контроль риска — на стороне советника по спецификации брокера.
 
 TELEGRAM PNG: в matplotlib-рендере рисуются только вертикали и метки внутри x_right (clip_on=True).
 
@@ -43,8 +45,9 @@ BY DESIGN (штатная защита): точки A-B-C сбрасываютс
 своя цена входа. Обновление котировок, смена языка, зум/панорама и отчёты точки НЕ сбрасывают.
 
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опционально).
-Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.).
-Все секреты вырезаются из текстов ошибок через safe_err.
+Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.),
+MT5_RELAY_URL (опц., адрес ящика KVdb). Все секреты, включая имя бакета шлюза, вырезаются
+из текстов ошибок через safe_err.
 """
 import gc
 import io
@@ -136,6 +139,8 @@ LOT_STEP = 0.01        # шаг лота для округления вниз
 USDJPY_APPROX = 155.0  # резервный курс USD/JPY для JPY-кроссов
 AUDUSD_APPROX = 0.65   # резервный курс AUD/USD для EUR/AUD
 MT5_DEFAULT_TOKEN = "SECRET_ICHIMOKU_TOKEN"
+MT5_RELAY_DEFAULT = "https://kvdb.io/YuraGuardian777/order"   # облачный ларец приказов
+MT5_ORDER_TTL = 120    # секунд жизни приказа в шлюзе
 
 LANGS = {"English": "en", "Русский": "ru"}
 DEFAULT_LANG = "Русский"
@@ -205,10 +210,10 @@ I18N = {
         "risk_zero": "Stop equals the entry price - Risk : Reward and lot size are undefined.",
         "mt5_exec_btn": "➔ Execute order in MetaTrader 5",
         "mt5_need_entry": "Entry is not confirmed - the order button is locked. Wait for a close beyond the C extreme, or switch the entry mode.",
-        "mt5_no_secrets": "Add TELEGRAM_TOKEN and TELEGRAM_CHAT_ID to the app secrets.",
-        "mt5_sending": "Sending the order to the gateway...",
-        "mt5_sent": "Order sent to the Telegram trading gateway. Await the execution confirmation in MT5.",
+        "mt5_sending": "Sending the order to the cloud gateway...",
+        "mt5_sent": "Order sent to the MT5 cloud gateway. Await the execution confirmation in Telegram.",
         "mt5_sent_id": "Order {oid} · {sym} {side} · {lots} lots · risk {risk}%",
+        "mt5_ttl_note": "The order lives in the gateway for {ttl} seconds. If the EA is offline, the box clears itself and no order is placed.",
         "mt5_err": "Gateway error: {detail}",
         "pt_pip": "pips", "pt_point": "pts",
         "err_nodata": "no data", "err_yahoo_nodata": "Yahoo: no data for {detail}",
@@ -318,10 +323,10 @@ I18N = {
         "risk_zero": "Стоп совпадает с ценой входа — соотношение R:R и объем не определены.",
         "mt5_exec_btn": "➔ Исполнить приказ в MetaTrader 5",
         "mt5_need_entry": "Вход не подтверждён — кнопка приказа заблокирована. Дождитесь закрытия за экстремумом C или смените режим входа.",
-        "mt5_no_secrets": "Добавьте TELEGRAM_TOKEN и TELEGRAM_CHAT_ID в секреты приложения.",
-        "mt5_sending": "Передача приказа в торговый шлюз...",
-        "mt5_sent": "Приказ передан в торговый шлюз Telegram. Ожидайте подтверждения исполнения в MT5.",
+        "mt5_sending": "Передача приказа в облачный шлюз...",
+        "mt5_sent": "Приказ передан в облачный шлюз MT5. Ожидайте подтверждения исполнения в Telegram.",
         "mt5_sent_id": "Приказ {oid} · {sym} {side} · {lots} лота · риск {risk}%",
+        "mt5_ttl_note": "Приказ хранится в шлюзе {ttl} секунд. Если советник не в сети, ларец очистится сам — приказа не будет.",
         "mt5_err": "Ошибка шлюза: {detail}",
         "pt_pip": "пипс", "pt_point": "п.",
         "err_nodata": "нет данных", "err_yahoo_nodata": "Yahoo: нет данных для {detail}",
@@ -390,21 +395,36 @@ def fmt_err(err):
     return str(err)
 
 
+def _relay_url():
+    """Адрес облачного ларьца приказов KVdb (секрет MT5_RELAY_URL либо значение по умолчанию)."""
+    try:
+        return str(st.secrets.get("MT5_RELAY_URL", MT5_RELAY_DEFAULT))
+    except Exception:
+        return MT5_RELAY_DEFAULT
+
+
 def _secret_values():
-    """Все известные секреты — для вырезания из текстов ошибок."""
+    """Все известные секреты — для вырезания из текстов ошибок.
+    Имя бакета KVdb тоже секрет: оно дает право записи в торговый шлюз."""
     vals = [API_KEY]
-    for k in ("TELEGRAM_TOKEN", "MT5_SECRET_TOKEN"):
+    for k in ("TELEGRAM_TOKEN", "MT5_SECRET_TOKEN", "MT5_RELAY_URL"):
         try:
             v = st.secrets.get(k, "")
             if v:
                 vals.append(str(v))
         except Exception:
             pass
+    try:
+        bucket = re.sub(r"^https?://[^/]+/", "", _relay_url()).split("/")[0].split("?")[0]
+        if bucket:
+            vals.append(bucket)
+    except Exception:
+        pass
     return [v for v in vals if v and len(v) >= 6]
 
 
 def safe_err(e):
-    """Текст ошибки без секретов: ключ TwelveData, токен бота, токен MT5."""
+    """Текст ошибки без секретов: ключ TwelveData, токен бота, токен MT5, адрес и бакет шлюза."""
     txt = e if isinstance(e, str) else f"{type(e).__name__}: {e}"
     for s in _secret_values():
         txt = txt.replace(s, "***")
@@ -1305,6 +1325,7 @@ def alice_run(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets):
 
 
 def _tg_credentials():
+    """Секреты Telegram — только для отчетов (приказы идут через облачный шлюз KVdb)."""
     try:
         return str(st.secrets["TELEGRAM_TOKEN"]), str(st.secrets["TELEGRAM_CHAT_ID"])
     except Exception:
@@ -1320,19 +1341,14 @@ def _mt5_secret():
 
 
 def send_mt5_order(payload):
-    """Приказ в шлюз IchimokuGuardian: /order {JSON} в Telegram. Возвращает (ok, error)."""
-    token, chat_id = _tg_credentials()
-    if not token or not chat_id:
-        return False, t("mt5_no_secrets")
-    text = "/order " + json.dumps(payload, separators=(",", ":"))
+    """Приказ в облачный шлюз KVdb: чистый JSON методом POST, TTL 120 секунд.
+    Советник IchimokuGuardian опрашивает этот же ящик через WebRequest. Возвращает (ok, error)."""
+    relay_url = _relay_url()
     try:
-        r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                          data={"chat_id": chat_id, "text": text, "disable_web_page_preview": "true"},
-                          timeout=20)
-        res = r.json()
-        if not res.get("ok"):
-            return False, safe_err(str(res.get("description", "unknown error")))
-        return True, None
+        r = requests.post(f"{relay_url}?ttl={MT5_ORDER_TTL}", data=json.dumps(payload), timeout=15)
+        if r.ok:
+            return True, None
+        return False, safe_err(r.text)
     except Exception as e:
         return False, safe_err(e)
 
@@ -1949,7 +1965,7 @@ elif app_mode == "terminal":
             route_r = ASSET_ROUTER[asset_name]
             psize, pkey = point_size(route_r)
             unit = t(pkey)
-            # ЧЕСТНАЯ стоимость пункта в USD на 1 стандартный лот (заменяет жесткие множители)
+            # ЧЕСТНАЯ стоимость пункта в USD на 1 стандартный лот
             pval = pip_value_usd(asset_name, last_close, psize)
 
             # Бар точки C: экстремумы для подтверждения и ATR для буфера стопа
@@ -2066,35 +2082,32 @@ elif app_mode == "terminal":
             pv_txt = f"{pval:.4f}" if 0.0 < pval < 10.0 else f"{pval:.2f}"
             st.caption(t("risk_units", pv=pv_txt, atr=fmt_dist(atr_c), buf=fmt_dist(stop_buf)))
 
-            # --- Отправка приказа в шлюз IchimokuGuardian через Telegram ---
+            # --- Отправка приказа в облачный шлюз KVdb (Telegram — только для отчетов) ---
             if send_clicked:
-                tg_token, tg_chat = _tg_credentials()
-                if not tg_token or not tg_chat:
-                    st.error(t("mt5_no_secrets"))
+                sym_clean = mt5_symbol(asset_name)
+                side_txt = "BUY" if side_buy else "SELL"
+                order_id = f"{sym_clean}-{tf_name}-{int(pd.Timestamp.now().timestamp())}"
+                dg = price_digits(last_close)
+                payload = {
+                    "token": _mt5_secret(),
+                    "id": order_id,
+                    "symbol": sym_clean,
+                    "side": side_txt,
+                    "entry": round(float(entry_px), dg),
+                    "sl": round(float(stop_px), dg),
+                    "tp": round(float(target_px), dg),
+                    "risk_percent": float(risk_pct),
+                    "comment": "Hosoda N",
+                }
+                with st.spinner(t("mt5_sending")):
+                    ok, err = send_mt5_order(payload)
+                if ok:
+                    st.success(t("mt5_sent"))
+                    st.caption(t("mt5_sent_id", oid=order_id, sym=sym_clean, side=side_txt,
+                                 lots=f"{lots:.2f}", risk=f"{risk_pct:.2f}"))
+                    st.caption(t("mt5_ttl_note", ttl=MT5_ORDER_TTL))
                 else:
-                    sym_clean = mt5_symbol(asset_name)
-                    side_txt = "BUY" if side_buy else "SELL"
-                    order_id = f"{sym_clean}-{tf_name}-{int(pd.Timestamp.now().timestamp())}"
-                    dg = price_digits(last_close)
-                    payload = {
-                        "token": _mt5_secret(),
-                        "id": order_id,
-                        "symbol": sym_clean,
-                        "side": side_txt,
-                        "entry": round(float(entry_px), dg),
-                        "sl": round(float(stop_px), dg),
-                        "tp": round(float(target_px), dg),
-                        "risk_percent": float(risk_pct),
-                        "comment": "Hosoda N",
-                    }
-                    with st.spinner(t("mt5_sending")):
-                        ok, err = send_mt5_order(payload)
-                    if ok:
-                        st.success(t("mt5_sent"))
-                        st.caption(t("mt5_sent_id", oid=order_id, sym=sym_clean, side=side_txt,
-                                     lots=f"{lots:.2f}", risk=f"{risk_pct:.2f}"))
-                    else:
-                        st.error(t("mt5_err", detail=err))
+                    st.error(t("mt5_err", detail=err))
 
         if st.button(t("tg_button"), key="tg_send", **WIDE):
             token, chat_id = _tg_credentials()
