@@ -24,22 +24,27 @@ ONE-CLICK TELEPORT: выбор одной строки в таблице Рад�
 «Пробой точки B», «По текущей цене», «Своя цена входа». Стоп = экстремум C ∓ 0.2*ATR(бар C).
 Таблица — чистая геометрия: уровни, пипсы/пункты, R:R. Деньги — в нижнем блоке депозита и строке лота.
 
-ЭТАП 2 — ТОРГОВЫЙ ШЛЮЗ: строго под строкой лота расположена кнопка «➔ Исполнить приказ в MetaTrader 5».
-Она отправляет в Telegram команду /order {JSON} для советника IchimokuGuardian.mq5 (протокол:
-token, id, symbol, side, entry, sl, tp, risk_percent, comment). Тикер нормализуется под MT5
-(mt5_symbol: без слэшей, пробелов и скобок). Кнопка заблокирована, пока точка входа не определена.
-Окончательный контроль риска — на стороне советника (потолок риска, лимиты просадки, лот по шагу брокера).
+РАСЧЕТ ЛОТА (исправлено): lот считается через ЧЕСТНУЮ стоимость пункта в USD на 1 стандартный лот —
+pip_value_usd(asset_key, current_price, psize). JPY-пары: 1000 JPY за пипс, пересчет по курсу USD/JPY;
+прямые пары: $10 за пипс; EUR/AUD: 10 AUD в USD; золото: $100 за пункт; BTC: $1; индексы: $1.
+pips = risk_dist / psize; loss_per_lot = pips * pip_value_usd; lots = risk_usd / loss_per_lot
+с округлением ВНИЗ до шага 0.01. Кросс-курсы — с Yahoo (кэш 5 мин), резерв: 155.0 и 0.65.
 
-TELEGRAM PNG: в matplotlib-рендере рисуются только вертикали и метки внутри x_right (clip_on=True) —
-холст не растягивается в пустоту справа.
+ЭТАП 2 — ТОРГОВЫЙ ШЛЮЗ: строго под строкой лота кнопка «➔ Исполнить приказ в MetaTrader 5»
+отправляет в Telegram команду /order {JSON} для советника IchimokuGuardian.mq5 (token, id, symbol,
+side, entry, sl, tp, risk_percent, comment). Тикер нормализуется mt5_symbol. Кнопка заблокирована,
+пока точка входа не определена. Окончательный расчет лота и контроль риска — на стороне советника
+по спецификации брокера (SYMBOL_TRADE_TICK_VALUE / TICK_SIZE / VOLUME_STEP).
+
+TELEGRAM PNG: в matplotlib-рендере рисуются только вертикали и метки внутри x_right (clip_on=True).
 
 BY DESIGN (штатная защита): точки A-B-C сбрасываются при смене инструмента, таймфрейма, серверного
 времени, режимов raw и клиринга, кнопкой «Сбросить точки» и при телепорте; вместе с ними очищается
 своя цена входа. Обновление котировок, смена языка, зум/панорама и отчёты точки НЕ сбрасывают.
 
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опционально).
-Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц., по умолчанию
-SECRET_ICHIMOKU_TOKEN). Все секреты вырезаются из текстов ошибок через safe_err.
+Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.).
+Все секреты вырезаются из текстов ошибок через safe_err.
 """
 import gc
 import io
@@ -127,6 +132,9 @@ TIME_AXIS_KIHON_CAP = 129
 MN_MONTHS = {"MN1": 1, "MN3": 3, "MN6": 6, "MN24": 24}
 KIJUN_ZONE_ATR = 0.3   # порог засады у Киджун (неизменен)
 STOP_BUFFER_ATR = 0.2  # защитный буфер стопа от экстремума точки C
+LOT_STEP = 0.01        # шаг лота для округления вниз
+USDJPY_APPROX = 155.0  # резервный курс USD/JPY для JPY-кроссов
+AUDUSD_APPROX = 0.65   # резервный курс AUD/USD для EUR/AUD
 MT5_DEFAULT_TOKEN = "SECRET_ICHIMOKU_TOKEN"
 
 LANGS = {"English": "en", "Русский": "ru"}
@@ -190,8 +198,9 @@ I18N = {
         "deposit_help": "Account equity in USD used to convert the risk percentage into money risk.",
         "lot_line": "Recommended lot: <b>{lots}</b> (Risk: -{risk} | Target N: +{gain})",
         "lot_too_small": "Calculated size is below 0.01 lot - the EA will reject this order. Reduce the risk distance or increase the deposit.",
+        "lot_no_value": "Point value in USD is unavailable for this instrument - lot size cannot be calculated.",
         "risk_outcome": "At {pct}% risk: stop -{loss}% of equity, target +{gain}% of equity. Break-even win rate: {be}%.",
-        "risk_units": "Units: Forex - pip 0.0001 (JPY 0.01), others - 1.0 price unit. Lot: Forex 100,000, gold 100, BTC 1, indices 1. ATR of bar C = {atr}; stop buffer 0.2 x ATR = {buf}.",
+        "risk_units": "Units: Forex - pip 0.0001 (JPY 0.01), others - 1.0 price unit. Point value per 1 lot ~ {pv} USD. ATR of bar C = {atr}; stop buffer 0.2 x ATR = {buf}.",
         "risk_geom_bad": "Geometry is inverted: the entry is already beyond the stop or the target - distances are shown as absolute values.",
         "risk_zero": "Stop equals the entry price - Risk : Reward and lot size are undefined.",
         "mt5_exec_btn": "➔ Execute order in MetaTrader 5",
@@ -302,8 +311,9 @@ I18N = {
         "deposit_help": "Размер счета в USD для перевода процента риска в денежный риск.",
         "lot_line": "Рекомендуемый лот: <b>{lots}</b> (Риск: −{risk} | Цель N: +{gain})",
         "lot_too_small": "Расчетный объем меньше 0.01 лота — советник отклонит приказ. Уменьшите дистанцию риска или увеличьте депозит.",
+        "lot_no_value": "Стоимость пункта в USD для этого инструмента недоступна — лот рассчитать нельзя.",
         "risk_outcome": "При риске {pct}%: стоп −{loss}% депозита, цель +{gain}% депозита. Безубыточная доля прибыльных: {be}%.",
-        "risk_units": "Пункты: Форекс — пипс 0.0001 (JPY 0.01), прочие — 1.0 ед. цены. Лот: Форекс 100 000, золото 100, BTC 1, индексы 1. ATR бара C = {atr}; буфер стопа 0.2·ATR = {buf}.",
+        "risk_units": "Пункты: Форекс — пипс 0.0001 (JPY 0.01), прочие — 1.0 ед. цены. Стоимость пункта на 1 лот ≈ {pv} USD. ATR бара C = {atr}; буфер стопа 0.2·ATR = {buf}.",
         "risk_geom_bad": "Геометрия вывернута: вход уже за стопом или за целью — дистанции показаны по модулю.",
         "risk_zero": "Стоп совпадает с ценой входа — соотношение R:R и объем не определены.",
         "mt5_exec_btn": "➔ Исполнить приказ в MetaTrader 5",
@@ -452,16 +462,46 @@ def point_size(route):
     return (1.0, "pt_point")
 
 
-def contract_multiplier(route):
-    """Стоимость 1.0 хода цены на 1 лот: Форекс 100 000, золото 100, BTC 1, индексы 1."""
-    sym = route["sym"]
+def _fx_last(sym_yf):
+    """Последняя цена кросс-курса с Yahoo (кэш 5 мин) для пересчета в USD; None при неудаче."""
+    try:
+        dfx, errx = fetch_yahoo(sym_yf, "M15")
+        if errx or dfx.empty:
+            return None
+        v = float(dfx["Close"].iloc[-1])
+        return v if v > 0.0 else None
+    except Exception:
+        return None
+
+
+def pip_value_usd(asset_key, current_price, psize):
+    """Стоимость 1 пункта/пипса в USD на 1 стандартный лот.
+    Форекс: 100 000 базовой валюты -> 100000*psize в валюте котировки, далее пересчет в USD.
+    JPY: 1000 JPY / курс USD/JPY. Прямые пары: строго $10 за пипс. EUR/AUD: 10 AUD по AUD/USD.
+    Золото: 100 унций -> $100 за пункт. BTC: 1 BTC -> $1. Индексы: 1 контракт -> $1."""
+    route = ASSET_ROUTER.get(asset_key)
+    sym = route["sym"] if route else asset_key
     if "BTC" in sym:
-        return 1.0
+        return 1.0 * psize
     if "XAU" in sym:
-        return 100.0
-    if "/" in sym:
-        return 100000.0
-    return 1.0
+        return 100.0 * psize
+    if "/" not in sym:
+        return 1.0 * psize                      # индексы и DXY: 1 пункт = $1 на 1 контракт
+    amount = 100000.0 * psize                   # сумма в валюте котировки на 1 лот
+    quote = sym.split("/")[1]
+    if quote == "USD":
+        return amount                           # 0.0001 * 100000 = $10.00
+    if quote == "JPY":
+        if "USD/JPY" in sym and current_price > 0.0:
+            rate = current_price
+        else:
+            rate = _fx_last("USDJPY=X") or USDJPY_APPROX
+        return amount / rate if rate > 0.0 else amount / USDJPY_APPROX
+    if quote == "AUD":
+        rate = _fx_last("AUDUSD=X") or AUDUSD_APPROX
+        return amount * rate
+    rate = _fx_last(f"{quote}USD=X")
+    return amount * rate if rate else amount
 
 
 def fmt_money(v, ccy):
@@ -553,7 +593,6 @@ def inject_css(mobile):
         ".st-key-teleport_btn button:active { background: #22303d; border-color: #22303d; color: #ffffff; }\n"
         ".st-key-teleport_btn button:focus-visible { outline: 2px solid #2980b9; outline-offset: 2px; }\n"
     )
-    # Боевая кнопка шлюза: тот же графит, но рамка темнее — визуальный вес приказа.
     exec_css = (
         ".st-key-mt5_send_order { margin: 0.4rem 0 0.2rem 0; }\n"
         ".st-key-mt5_send_order button { width: 100%; min-height: 44px; padding: 0.5rem 1rem !important; "
@@ -1910,7 +1949,8 @@ elif app_mode == "terminal":
             route_r = ASSET_ROUTER[asset_name]
             psize, pkey = point_size(route_r)
             unit = t(pkey)
-            mult = contract_multiplier(route_r)
+            # ЧЕСТНАЯ стоимость пункта в USD на 1 стандартный лот (заменяет жесткие множители)
+            pval = pip_value_usd(asset_name, last_close, psize)
 
             # Бар точки C: экстремумы для подтверждения и ATR для буфера стопа
             high_c = low_c = float(rC["y"])
@@ -1992,20 +2032,24 @@ elif app_mode == "terminal":
                     deposit = st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9,
                                               step=1000.0, format="%.0f", key="account_deposit", help=t("deposit_help"))
 
-            # --- Деньги: строка лота, затем строго под ней боевая кнопка шлюза ---
-            lot_ready = (entry_px is not None and rr is not None)
+            # --- Деньги: лот через стоимость пункта в USD, затем строго под ним боевая кнопка ---
+            lot_ready = (entry_px is not None and rr is not None and pval > 0.0)
             lots, risk_usd, gain_usd = 0.0, 0.0, 0.0
             if lot_ready:
                 risk_usd = deposit * (risk_pct / 100.0)
-                lots = risk_usd / (risk_dist * mult) if (risk_dist > 0 and mult > 0) else 0.0
-                gain_usd = lots * reward_dist * mult
+                pips_risk = risk_dist / psize
+                pips_reward = reward_dist / psize
+                loss_per_lot = pips_risk * pval
+                raw_lots = (risk_usd / loss_per_lot) if loss_per_lot > 0.0 else 0.0
+                lots = float(np.floor(raw_lots / LOT_STEP) * LOT_STEP)   # округление ВНИЗ, шаг 0.01
+                gain_usd = lots * pips_reward * pval
                 st.markdown(
                     "<div class='lot-line'>" + t("lot_line", lots=f"{lots:.2f}",
-                                                 risk=fmt_money(risk_usd, "USD"),
+                                                 risk=fmt_money(lots * loss_per_lot, "USD"),
                                                  gain=fmt_money(gain_usd, "USD")) + "</div>",
                     unsafe_allow_html=True)
             elif entry_px is not None:
-                st.caption(t("risk_zero"))
+                st.caption(t("risk_zero") if rr is None else t("lot_no_value"))
 
             send_clicked = st.button(t("mt5_exec_btn"), key="mt5_send_order",
                                      disabled=(not lot_ready), **WIDE)
@@ -2013,13 +2057,14 @@ elif app_mode == "terminal":
                 st.caption(t("mt5_need_entry"))
 
             if lot_ready:
-                if lots < 0.01:
+                if lots < LOT_STEP:
                     st.caption(t("lot_too_small"))
                 st.caption(t("risk_outcome", pct=f"{risk_pct:.1f}", loss=f"{risk_pct:.1f}",
                              gain=f"{risk_pct * rr:.1f}", be=f"{100.0 / (1.0 + rr):.1f}"))
                 if not ((stop_px < entry_px < target_px) if side_buy else (target_px < entry_px < stop_px)):
                     st.caption(t("risk_geom_bad"))
-            st.caption(t("risk_units", atr=fmt_dist(atr_c), buf=fmt_dist(stop_buf)))
+            pv_txt = f"{pval:.4f}" if 0.0 < pval < 10.0 else f"{pval:.2f}"
+            st.caption(t("risk_units", pv=pv_txt, atr=fmt_dist(atr_c), buf=fmt_dist(stop_buf)))
 
             # --- Отправка приказа в шлюз IchimokuGuardian через Telegram ---
             if send_clicked:
