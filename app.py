@@ -1,12 +1,17 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.43. Стиль: institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.44. Стиль: institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 Крипта: BTC W1/MN1/MN3 -> старший MN1.
 
+ЛЕГЕНДА-ХАД: фракталы сведены в группы Plotly — minor (малый максимум + малый минимум) и major
+(главный максимум + главный минимум). У каждой группы одна плашка-носитель, остальные трейсы
+showlegend=False. layout.legend.groupclick="togglegroup" — один клик гасит/возвращает всю группу.
+Облако Кумо работает по той же схеме. Имена трейсов не меняются: ховер и детекция клика прежние.
+
 КНОПКА ОБНОВЛЕНИЯ ↻: наложена на верхнюю полосу графика слева (в одном ряду с modebar справа),
-абсолютное позиционирование внутри оболочки st.container(key="chart_shell") — ноль строк в потоке,
-холст не сдвигается вниз. Если данных нет и график не строится, кнопка рендерится обычным
-компактным элементом над предупреждением, чтобы повторить загрузку было чем.
+абсолютное позиционирование внутри оболочки st.container(key="chart_shell") — ноль строк в потоке.
+Если данных нет и график не строится, кнопка рендерится обычным компактным элементом над
+предупреждением, чтобы повторить загрузку было чем.
 
 РАДАР (Real-Time засада у Киджун): тренд/Облако/линии/Чикоу — по закрытому бару (iloc[-2]);
 зона засады — по активной свече (iloc[-1]) с порогом 0.3*ATR. Колонка «Причина» — диагностика.
@@ -18,7 +23,6 @@ ONE-CLICK TELEPORT: выбор строки в таблице Радара -> п
 Ховер — одна компактная строка (тёмная плашка, рамка #a88a45, 11px), не экранирует область нажатия.
 Слой переключается в нативной легенде Plotly силами браузера, без серверной перерисовки.
 Клик по маркеру ставит точку волны — расчёт можно начать до формирования фрактала.
-Пояснение механики — в тултипе нижней статус-строки; отдельной подписи под графиком нет.
 
 ГОРИЗОНТ ПРОЕКЦИИ: +76 баров от точки C (канон Какан). Тот же предел в PNG для Telegram.
 
@@ -148,6 +152,8 @@ CAND_C_COLOR = ACCENT_MUTED
 CAND_HOVER_BG = "rgba(20, 24, 35, 0.85)"
 CAND_HOVER_BORDER = ACCENT_MUTED
 CAND_HOVER_FONT = "#E8EDF5"
+MINOR_COLOR = "#95a5a6"
+MAJOR_COLOR = "#2c3e50"
 
 LANGS = {"English": "en", "Русский": "ru"}
 DEFAULT_LANG = "Русский"
@@ -190,6 +196,7 @@ I18N = {
         "chart_price": "Price", "chart_kumo": "Kumo Cloud",
         "chart_minor_high": "Minor High", "chart_minor_low": "Minor Low",
         "chart_major_high": "Major High", "chart_major_low": "Major Low",
+        "chart_minor_group": "Minor fractals", "chart_major_group": "Major fractals",
         "chart_time_targets": "Time targets", "hover_high": "High", "hover_low": "Low",
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} bars)", "hover_forecast": "forecast",
         "chart_wave": "Wave A-B-C", "chart_cand_c": "Cand. C",
@@ -197,7 +204,7 @@ I18N = {
         "cand_hover": "<b>Preliminary C:</b> %{customdata:.5f}<extra></extra>",
         "pts_bar": "Points selected: <b>{n}/3</b>",
         "pts_hint": "cand. C",
-        "pts_hint_tip": "Preliminary C: extremum of the last 3 bars including the live one, for an early entry. Tap the marker to place a wave point before the fractal forms. Toggle the layer in the chart legend.",
+        "pts_hint_tip": "Preliminary C: extremum of the last 3 bars including the live one, for an early entry. Tap the marker to place a wave point before the fractal forms. Toggle layers in the chart legend - one click switches a whole fractal group.",
         "risk_title": "Trade parameters (calculated)", "risk_buy": "BUY", "risk_sell": "SELL",
         "entry_mode": "Entry point",
         "entry_hosoda": "Hosoda: C reversal", "entry_break_b": "Point B breakout",
@@ -323,6 +330,7 @@ I18N = {
         "chart_price": "Цена", "chart_kumo": "Облако Кумо",
         "chart_minor_high": "Малый максимум", "chart_minor_low": "Малый минимум",
         "chart_major_high": "Главный максимум", "chart_major_low": "Главный минимум",
+        "chart_minor_group": "Малые фракталы", "chart_major_group": "Главные фракталы",
         "chart_time_targets": "Временные цели", "hover_high": "Хай", "hover_low": "Лоу",
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} баров)", "hover_forecast": "прогноз",
         "chart_wave": "Волна A-B-C", "chart_cand_c": "Предв. C",
@@ -330,7 +338,7 @@ I18N = {
         "cand_hover": "<b>Предварительная C:</b> %{customdata:.5f}<extra></extra>",
         "pts_bar": "Выбрано точек: <b>{n}/3</b>",
         "pts_hint": "предв. C",
-        "pts_hint_tip": "Предварительная C: экстремум последних 3 баров, включая текущий, для раннего входа. Нажмите маркер, чтобы поставить точку волны до формирования фрактала. Слой переключается в легенде графика.",
+        "pts_hint_tip": "Предварительная C: экстремум последних 3 баров, включая текущий, для раннего входа. Нажмите маркер, чтобы поставить точку волны до формирования фрактала. Слои переключаются в легенде: один клик гасит всю группу фракталов.",
         "risk_title": "Параметры сделки (расчет)", "risk_buy": "ПОКУПКА", "risk_sell": "ПРОДАЖА",
         "entry_mode": "Точка входа",
         "entry_hosoda": "Хосода: разворот C", "entry_break_b": "Пробой точки B",
@@ -595,11 +603,13 @@ def chart_ui(mobile):
     if mobile:
         return dict(height=560, margin=dict(l=8, r=58, t=48, b=64), tick_div=5, tick_angle=0,
                     tick_font=dict(size=9), y_font=dict(size=9),
-                    legend=dict(orientation="h", yanchor="top", y=-0.20, xanchor="center", x=0.5, font=dict(size=8)),
+                    legend=dict(orientation="h", yanchor="top", y=-0.20, xanchor="center", x=0.5,
+                                font=dict(size=8), groupclick="togglegroup"),
                     ann_font=8, vlabel_font=8, mark_minor=4, mark_major=8, wave_mark=7)
     return dict(height=750, margin=dict(l=20, r=110, t=40, b=120), tick_div=10, tick_angle=45,
                 tick_font=None, y_font=None,
-                legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5),
+                legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5,
+                            groupclick="togglegroup"),
                 ann_font=10, vlabel_font=9, mark_minor=5, mark_major=10, wave_mark=8)
 
 
@@ -655,8 +665,6 @@ def inject_css(mobile):
         ".st-key-chart_shell .st-key-refresh_term { top: 5px; left: 2px; }\n"
         '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
     )
-    # Оболочка графика: позиционированный контекст для оверлея обновления.
-    # Абсолютный ребёнок вынут из flex-потока — не добавляет ни строки, ни gap.
     tool_css = (
         ".st-key-chart_shell { position: relative; }\n"
         ".st-key-refresh_term { display: flex; justify-content: flex-end; margin: 0 0 0.25rem 0; }\n"
@@ -1928,12 +1936,14 @@ elif app_mode == "terminal":
         pfmt = tick_fmt(last_close)
         time_txt = df_plot.index.strftime("%Y-%m-%d %H:%M").to_numpy()
 
-        def marker_trace(mask, kind, price_col, offset_mult, size, color, name):
+        def marker_trace(mask, kind, price_col, offset_mult, size, color, name, group):
+            """Трейс фракталов: имя сохраняется для ховера и клика, в легенду не выходит."""
             sub = df_plot.loc[mask]
             sign = 1 if kind == "High" else -1
             return go.Scatter(
                 x=sub["x_idx"], y=sub[price_col] + sign * sub["ATR"] * offset_mult,
                 mode="markers", marker=dict(size=size, color=color), name=name,
+                legendgroup=group, showlegend=False,
                 customdata=sub[price_col].to_numpy(dtype=float), text=time_txt[np.flatnonzero(mask.to_numpy())],
                 hovertemplate=f"{name}<br>{t('hover_' + kind.lower())}: %{{customdata:{pfmt}}}<br>%{{text}}<extra></extra>",
             )
@@ -1942,17 +1952,30 @@ elif app_mode == "terminal":
         minor_low = df_plot["Minor_Low"] & ~df_plot["Major_Low"]
         major_high = df_plot["Major_High"]
         major_low = df_plot["Major_Low"]
-        fig.add_trace(marker_trace(minor_high, "High", "High", 0.2, UIP["mark_minor"], "#95a5a6", t("chart_minor_high")))
-        fig.add_trace(marker_trace(minor_low, "Low", "Low", 0.2, UIP["mark_minor"], "#95a5a6", t("chart_minor_low")))
-        fig.add_trace(marker_trace(major_high, "High", "High", 0.5, UIP["mark_major"], "#2c3e50", t("chart_major_high")))
-        fig.add_trace(marker_trace(major_low, "Low", "Low", 0.5, UIP["mark_major"], "#2c3e50", t("chart_major_low")))
+        fig.add_trace(marker_trace(minor_high, "High", "High", 0.2, UIP["mark_minor"], MINOR_COLOR, t("chart_minor_high"), "minor"))
+        fig.add_trace(marker_trace(minor_low, "Low", "Low", 0.2, UIP["mark_minor"], MINOR_COLOR, t("chart_minor_low"), "minor"))
+        fig.add_trace(marker_trace(major_high, "High", "High", 0.5, UIP["mark_major"], MAJOR_COLOR, t("chart_major_high"), "major"))
+        fig.add_trace(marker_trace(major_low, "Low", "Low", 0.5, UIP["mark_major"], MAJOR_COLOR, t("chart_major_low"), "major"))
+
+        # Носители легенды: одна плашка на группу, клик гасит обе стороны (groupclick=togglegroup).
+        fig.add_trace(go.Scatter(
+            x=[None], y=[None], mode="markers",
+            marker=dict(size=UIP["mark_minor"], color=MINOR_COLOR),
+            name=t("chart_minor_group"), legendgroup="minor", showlegend=True, hoverinfo="skip",
+        ))
+        fig.add_trace(go.Scatter(
+            x=[None], y=[None], mode="markers",
+            marker=dict(size=UIP["mark_major"], color=MAJOR_COLOR),
+            name=t("chart_major_group"), legendgroup="major", showlegend=True, hoverinfo="skip",
+        ))
+
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["tenkan"], line=dict(color="#2980b9", width=1.5), name="Tenkan-sen"))
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["kijun"], line=dict(color="#e74c3c", width=2), name="Kijun-sen"))
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["chikou"], line=dict(color="#1e8449", width=1.2), name="Chikou Span"))
 
         x_cloud = np.arange(len(df_plot)) + 26
         sa, sb = df_plot["raw_senkou_a"].to_numpy(dtype=float), df_plot["raw_senkou_b"].to_numpy(dtype=float)
-        fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", fill="toself", fillcolor="rgba(128,128,128,0.3)", line=dict(width=0), name=t("chart_kumo"), legendgroup="cloud"))
+        fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", fill="toself", fillcolor="rgba(128,128,128,0.3)", line=dict(width=0), name=t("chart_kumo"), legendgroup="cloud", showlegend=True, hoverinfo="skip"))
 
         i, n = 0, len(sa)
         while i < n:
