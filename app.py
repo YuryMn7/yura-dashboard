@@ -1,7 +1,12 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.42. Стиль: institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.43. Стиль: institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
-Крипта: BTC W1/MN1/MN3 -> старший MN1. Обновление котировок — иконка ↻, точки не сбрасываются.
+Крипта: BTC W1/MN1/MN3 -> старший MN1.
+
+КНОПКА ОБНОВЛЕНИЯ ↻: наложена на верхнюю полосу графика слева (в одном ряду с modebar справа),
+абсолютное позиционирование внутри оболочки st.container(key="chart_shell") — ноль строк в потоке,
+холст не сдвигается вниз. Если данных нет и график не строится, кнопка рендерится обычным
+компактным элементом над предупреждением, чтобы повторить загрузку было чем.
 
 РАДАР (Real-Time засада у Киджун): тренд/Облако/линии/Чикоу — по закрытому бару (iloc[-2]);
 зона засады — по активной свече (iloc[-1]) с порогом 0.3*ATR. Колонка «Причина» — диагностика.
@@ -11,8 +16,7 @@ ONE-CLICK TELEPORT: выбор строки в таблице Радара -> п
 Нисходящий тренд (Тенкан < Киджун) — максимум High последних 3 свечей включая активную;
 восходящий — минимум Low. Отступ 0.2*ATR. Единственный акцентный тон — приглушённый #a88a45.
 Ховер — одна компактная строка (тёмная плашка, рамка #a88a45, 11px), не экранирует область нажатия.
-СЛОЙ ПЕРЕКЛЮЧАЕТСЯ В ЛЕГЕНДЕ PLOTLY (native legend HUD): плашка «Предв. C» скрывает и возвращает
-маркер силами браузера, без серверной перерисовки. Отдельного виджета-тумблера нет.
+Слой переключается в нативной легенде Plotly силами браузера, без серверной перерисовки.
 Клик по маркеру ставит точку волны — расчёт можно начать до формирования фрактала.
 Пояснение механики — в тултипе нижней статус-строки; отдельной подписи под графиком нет.
 
@@ -648,11 +652,14 @@ def inject_css(mobile):
         ".pts-bar { position: fixed; left: 0.6rem; right: 0.6rem; bottom: 0.4rem; z-index: 60; "
         "background: rgba(251,252,253,0.97); box-shadow: 0 -1px 6px rgba(44,62,80,0.10); "
         "pointer-events: none; }\n"
+        ".st-key-chart_shell .st-key-refresh_term { top: 5px; left: 2px; }\n"
         '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
     )
+    # Оболочка графика: позиционированный контекст для оверлея обновления.
+    # Абсолютный ребёнок вынут из flex-потока — не добавляет ни строки, ни gap.
     tool_css = (
-        ".st-key-refresh_term { display: flex; justify-content: flex-end; align-items: center; "
-        "margin: 0 0 -0.55rem 0; padding-right: 2px; }\n"
+        ".st-key-chart_shell { position: relative; }\n"
+        ".st-key-refresh_term { display: flex; justify-content: flex-end; margin: 0 0 0.25rem 0; }\n"
         ".st-key-refresh_term button { height: 28px; width: 30px; min-height: 0 !important; "
         "display: inline-flex; align-items: center; justify-content: center; "
         "padding: 0 !important; margin: 0; border: 1px solid #dfe4ea; border-radius: 2px; "
@@ -664,6 +671,10 @@ def inject_css(mobile):
         ".st-key-refresh_term button:hover { background: #eef2f5; border-color: #2c3e50; color: #2c3e50; }\n"
         ".st-key-refresh_term button:active { background: #e3e9ee; border-color: #2c3e50; }\n"
         ".st-key-refresh_term button:focus-visible { outline: 1px solid #2c3e50; outline-offset: 1px; }\n"
+        ".st-key-chart_shell .st-key-refresh_term { position: absolute; top: 6px; left: 4px; "
+        "z-index: 7; display: block; width: 30px; height: 28px; "
+        "margin: 0 !important; padding: 0 !important; pointer-events: none; }\n"
+        ".st-key-chart_shell .st-key-refresh_term button { pointer-events: auto; }\n"
     )
     status_css = (
         ".pts-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; "
@@ -1629,6 +1640,7 @@ def send_telegram(token, chat_id, text, png):
 
 
 def refresh_button(key):
+    """Компактная иконка ↻: чистит только кэш котировок, точки и цели сохраняет."""
     if st.button(t("refresh"), key=key, help=t("refresh_help")):
         fetch_smart_data.clear()
         fetch_yahoo.clear()
@@ -1889,12 +1901,11 @@ elif app_mode == "terminal":
     df_raw, fetch_err = fetch_smart_data(asset_name, tf_name)
     df_raw = prepare_ohlc(df_raw, tf_name, is_fx, count_weekend, drop_clearing, offset_choice)
 
-    refresh_button("refresh_term")
-
     if is_crypto_asset(ASSET_ROUTER[asset_name]) and tf_name in ("MN3", "MN6", "MN24") and 0 < len(df_raw) < MIN_LTF_BARS:
         st.info(t("crypto_hist_note", tf=tf_name, n=len(df_raw)))
 
     if df_raw.empty:
+        refresh_button("refresh_term")
         st.warning(t("no_data"))
         if fetch_err:
             st.caption(t("reason", detail=fmt_err(fetch_err)))
@@ -2050,16 +2061,19 @@ elif app_mode == "terminal":
             modebar=dict(bgcolor="rgba(255,255,255,0.9)", color="#2c3e50", activecolor="#e74c3c"),
         )
 
-        event = st.plotly_chart(
-            fig,
-            key=f"chart_{st.session_state.chart_ver}",
-            on_select="rerun",
-            selection_mode=("points", "box", "lasso"),
-            config={"scrollZoom": False, "displayModeBar": True, "displaylogo": False,
-                    "modeBarButtonsToAdd": ["toggleSpikelines"], "modeBarButtonsToRemove": []},
-            theme=None,
-            **WIDE,
-        )
+        # Оболочка графика: ↻ оверлеем в верхней полосе, ноль строк в потоке.
+        with st.container(key="chart_shell"):
+            refresh_button("refresh_term")
+            event = st.plotly_chart(
+                fig,
+                key=f"chart_{st.session_state.chart_ver}",
+                on_select="rerun",
+                selection_mode=("points", "box", "lasso"),
+                config={"scrollZoom": False, "displayModeBar": True, "displaylogo": False,
+                        "modeBarButtonsToAdd": ["toggleSpikelines"], "modeBarButtonsToRemove": []},
+                theme=None,
+                **WIDE,
+            )
 
         st.markdown(points_bar_html(len(abc)), unsafe_allow_html=True)
         if len(abc) == 3 and len(pts) < 3:
