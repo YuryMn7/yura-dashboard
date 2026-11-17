@@ -1,19 +1,22 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.47. Стиль: institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.48. Институциональный минимализм, zero-clutter, zero-emoji на холсте.
 
-ЕДИНАЯ ПАНЕЛЬ ИНСТРУМЕНТОВ: наш кластер (↻ − + ⌂) и родная панель Plotly сведены в ОДНУ строку
-на верхней полосе холста, все чипы одной геометрии 30×28 (28×28 на мобильном), одинаковые рамка,
-фон, радиус и ховер. Инструмент по умолчанию — панорамирование: тянешь график, одиночный клик
-по фракталу ставит точку волны. Убраны: рамка-выделение, лассо, родные +/−, перекрестье.
+ПАНЕЛЬ ИНСТРУМЕНТОВ — ОДНА РОДНАЯ СТРОКА: панель Plotly живёт внутри iframe компонента и
+недоступна для CSS страницы, поэтому она скрыта (displayModeBar=False), а все её функции
+перенесены в НАШУ панель чипов одной геометрии и одного стиля: ↻ ← → − + ⌂ ↓.
+Чипы 30×28 (28×28 на мобильном), одна рамка, фон, радиус, ховер; вынуты из потока абсолютным
+позиционированием — ноль строк в layout. Кнопка fullscreen Streamlit приведена к той же геометрии.
 
-ЗУМ НЕ СБРАСЫВАЕТСЯ: диапазоны осей пишутся в layout ТОЛЬКО когда вид меняется осознанно
-(кнопки −/+/⌂, сброс точек, открытие горизонта +76 при третьей точке). При тапе по фракталу
-диапазоны не передаются вовсе — Plotly.react сохраняет клиентский зум и пан пользователя.
-yaxis.fixedrange=True — родные жесты двигают только горизонталь, как в MT4; вертикаль
-подгоняется нашими кнопками (fit_y_range по видимым свечам).
+ВЬЮПОРТ ПОЛНОСТЬЮ СЕРВЕРНЫЙ — ЗУМ НЕ ТЕРЯЕТСЯ: окно хранится в session_state (vx0/vx1) и
+пишется в layout при КАЖДОЙ перерисовке. Обе оси fixedrange=True — клиентских жестов, которые
+могли бы сбить кадр, не существует. Тап по фракталу ставит точку и НЕ меняет масштаб.
+Масштаб: − + (якорь — правая кромка) и ВЫДЕЛЕНИЕ РАМКОЙ прямо по холсту (drag = рамка → зум в неё).
+Сдвиг: ← →. ⌂ — вид по умолчанию. Вертикаль всегда автоподгонка (MT4).
 
-ГОРИЗОНТ: правая граница всегда включает вынос Облака Кумо (+26 баров), при трёх точках —
-проекцию Хосоды (+76 от C). Продолжение Облака всегда в кадре.
+ЦЕЛИ ВИДНЫ ВСЕГДА: в вертикальную рамку включаются все четыре уровня Хосоды (V, N, E, NT) и
+точки волны A-B-C — цель выше или ниже текущей цены не уходит за кадр.
+
+ГОРИЗОНТ: правая граница включает вынос Облака Кумо (+26 баров), при трёх точках — проекцию +76 от C.
 
 ЛЕГЕНДА-ХАД: фракталы в группах minor/major, одна плашка на группу, groupclick="togglegroup".
 Облако Кумо — по той же схеме. Имена трейсов не меняются: ховер и детекция клика прежние.
@@ -24,24 +27,16 @@ ONE-CLICK TELEPORT: выбор строки в таблице Радара -> п
 
 ПРЕДВАРИТЕЛЬНАЯ C: маркер размером с малый фрактал, виден ДО расстановки A-B-C. Нисходящий тренд
 (Тенкан < Киджун) — максимум High последних 3 свечей включая активную; восходящий — минимум Low.
-Отступ 0.2*ATR, тон #a88a45. Ховер — одна компактная строка. Слой гасится в легенде браузером.
 
-ВХОДЫ ПО ПРОБОЮ (trigger_plan): «Хосода: разворот C» — уровень High/Low свечи C, окно 3 свечи;
-«Пробой точки B» — уровень цены B, окно 17 свечей, стоп за ОБЛАКОМ ± 0.2*ATR.
-Подтверждение = ЗАКРЫТИЕ свечи за уровнем. Правило догона: уход <= 1*ATR -> рынок,
-дальше -> ЛИМИТНЫЙ ордер на самый уровень. Нет подтверждения -> наблюдение (watch).
+ВХОДЫ ПО ПРОБОЮ: «Хосода: разворот C» — уровень High/Low свечи C, окно 3 свечи; «Пробой точки B» —
+уровень цены B, окно 17 свечей, стоп за ОБЛАКОМ ± 0.2*ATR. Подтверждение = ЗАКРЫТИЕ за уровнем.
+Правило догона: уход <= 1*ATR -> рынок, дальше -> ЛИМИТНЫЙ ордер на уровень. Иначе — наблюдение.
 
-АЛИСА — ZERO-LAG: ALICE_LAG = 0 в обучении и инференсе, вход = бар C, признаки причинны.
+АЛИСА — ZERO-LAG: ALICE_LAG = 0, вход = бар C, признаки причинны.
 РИСК: дефолт 0.5 %, шаг 0.1 %. ЛОТ: pip_value_usd, округление ВНИЗ до шага 0.01.
-ШЛЮЗ: карточка /order {JSON} в Telegram с кнопкой подтверждения; финальный лот и комплаенс —
-на стороне советника.
+ШЛЮЗ: карточка /order {JSON} в Telegram с кнопкой подтверждения; финальный лот и комплаенс — у советника.
 
-НИЖНЯЯ ПАНЕЛЬ: «Выбрано точек: X/3» и ширина окна в барах; на мобильных фиксирована внизу.
-
-BY DESIGN: точки A-B-C и вид сбрасываются при смене инструмента, ТФ, серверного времени,
-raw, клиринга, кнопкой «Сбросить точки» и при телепорте.
-
-Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опц.).
+Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (matplotlib — опц.).
 Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.).
 """
 import gc
@@ -75,14 +70,15 @@ st.session_state.setdefault("chart_ver", 0)
 
 
 def reset_view():
-    """Вид по умолчанию: полный горизонт + вертикальная подгонка (применится один раз)."""
-    st.session_state["view_zoom"] = 1.0
-    st.session_state["_view_apply"] = True
+    """Вид по умолчанию: полный горизонт, вертикаль по свечам и целям."""
+    st.session_state.pop("vx0", None)
+    st.session_state.pop("vx1", None)
+    st.session_state.pop("_png_bytes", None)
+    st.session_state.chart_ver += 1
 
 
 def reset_points():
     st.session_state.abc_points = []
-    st.session_state.chart_ver += 1
     st.session_state.pop("custom_entry", None)
     reset_view()
 
@@ -148,6 +144,7 @@ MT5_EXEC_MARK = "IG_EXEC"
 TRIG_WATCH_BARS = {"hosoda": 3, "break_b": 17}
 ATR_CHASE_LIMIT = 1.0
 CAND_C_BARS = 3
+
 ACCENT_MUTED = "#a88a45"
 CAND_C_COLOR = ACCENT_MUTED
 CAND_HOVER_BG = "rgba(20, 24, 35, 0.85)"
@@ -156,21 +153,23 @@ CAND_HOVER_FONT = "#E8EDF5"
 MINOR_COLOR = "#95a5a6"
 MAJOR_COLOR = "#2c3e50"
 CHIP_BORDER = "#dfe4ea"
-CHIP_BG = "rgba(255,255,255,0.92)"
+CHIP_BG = "rgba(255,255,255,0.94)"
 CHIP_HOVER = "#eef2f5"
+CHIP_ACTIVE = "#e3e9ee"
 INK = "#2c3e50"
 ACTIVE_INK = "#e74c3c"
 
 VIEW_ZOOM_STEP = 1.35
-VIEW_ZOOM_MAX = 40.0
+VIEW_PAN_STEP = 0.25
 VIEW_Y_PAD = 0.05
 VIEW_MIN_BARS = 6
 GLYPH_REFRESH = "↻"
+GLYPH_LEFT = "←"
+GLYPH_RIGHT = "→"
 GLYPH_OUT = "−"
 GLYPH_IN = "+"
 GLYPH_HOME = "⌂"
-
-MODEBAR_REMOVE = ["select2d", "lasso2d", "zoomIn2d", "zoomOut2d", "toggleSpikelines"]
+GLYPH_PNG = "↓"
 
 LANGS = {"English": "en", "Русский": "ru"}
 DEFAULT_LANG = "Русский"
@@ -188,11 +187,14 @@ I18N = {
         "terminal_settings": "Terminal Settings", "symbol": "Symbol:", "timeframe": "Timeframe:",
         "wave_points": "Wave Points (A-B-C)", "pt_a": "A (Start)", "pt_b": "B (Peak/Trough)", "pt_c": "C (Retracement)",
         "awaiting": "Awaiting {label}...", "clear_points": "Clear Points",
-        "refresh": "↻",
-        "refresh_help": "Refresh quotes. Wave A-B-C, price and time targets are preserved.",
-        "view_out_help": "Zoom out horizontally. Vertical scale re-fits to the visible candles.",
+        "refresh": "↻", "refresh_help": "Refresh quotes. Wave, targets and your zoom are preserved.",
+        "view_left_help": "Shift the window left. Vertical scale re-fits.",
+        "view_right_help": "Shift the window right toward the latest bar.",
+        "view_out_help": "Zoom out horizontally from the right edge. Vertical scale re-fits.",
         "view_in_help": "Zoom in horizontally from the right edge. Vertical scale re-fits.",
-        "view_home_help": "Default view: full horizon including the Kumo projection, vertical fit.",
+        "view_home_help": "Default view: full horizon with the Kumo projection and vertical fit.",
+        "view_png_help": "Prepare a PNG snapshot of the current view for download.",
+        "png_download": "Download chart PNG",
         "scanner_title": "Global Market Scanner",
         "filter_active": "Show active signals only (hide 'Waiting')",
         "run_scan_all": "Scan all timeframes", "processing_tf": "Processing {asset} / {tf}...",
@@ -225,7 +227,7 @@ I18N = {
         "pts_bar": "Points selected: <b>{n}/3</b>",
         "pts_window": "{bars} bars",
         "pts_hint": "cand. C",
-        "pts_hint_tip": "Preliminary C: extremum of the last 3 bars including the live one. Drag pans the chart, a single tap on a fractal places a wave point and keeps your zoom. Layers toggle in the legend; − + zoom horizontally with vertical re-fit, ⌂ restores the default view.",
+        "pts_hint_tip": "Drag a box on the chart to zoom into it. A single tap on a fractal places a wave point and keeps your zoom. Toolbar: refresh, shift, zoom, default view, PNG. Targets V/N/E/NT are always inside the vertical frame.",
         "risk_title": "Trade parameters (calculated)", "risk_buy": "BUY", "risk_sell": "SELL",
         "entry_mode": "Entry point",
         "entry_hosoda": "Hosoda: C reversal", "entry_break_b": "Point B breakout",
@@ -289,7 +291,7 @@ I18N = {
         "ai_det_target": "Target {target} was already crossed at the C bar close: the outcome is known (target reached).",
         "ai_det_stop": "Level C was already broken at the C bar close: the outcome is known (stop).",
         "tg_button": "Send report to Telegram", "tg_sending": "Sending report...", "tg_sent": "Report sent to Telegram.",
-        "tg_sent_text": "Chart image is unavailable (install kaleido or matplotlib); a text-only report was sent.",
+        "tg_sent_text": "Chart image is unavailable (install matplotlib); a text-only report was sent.",
         "tg_err": "Telegram error: {detail}",
         "tg_no_secrets": "Add TELEGRAM_TOKEN and TELEGRAM_CHAT_ID to the app secrets.",
         "tg_report": "Ichimoku Wave Terminal\n{symbol} | {tf} | {bar}\nPrice: {price}\nHTF trend ({htf}): {trend}\nTarget N: {target}\nAI verdict: {verdict}",
@@ -326,11 +328,14 @@ I18N = {
         "terminal_settings": "Настройки терминала", "symbol": "Инструмент:", "timeframe": "Таймфрейм:",
         "wave_points": "Точки волны (A-B-C)", "pt_a": "A (начало)", "pt_b": "B (пик/впадина)", "pt_c": "C (откат)",
         "awaiting": "Ожидается {label}...", "clear_points": "Сбросить точки",
-        "refresh": "↻",
-        "refresh_help": "Обновить котировки. Волна A-B-C, цели по цене и по времени сохраняются.",
-        "view_out_help": "Уменьшить масштаб по горизонтали. Вертикаль подстроится под видимые свечи.",
-        "view_in_help": "Увеличить масштаб по горизонтали от правой кромки. Вертикаль подстроится сама.",
-        "view_home_help": "Вид по умолчанию: полный горизонт вместе с выносом Облака и вертикальная подгонка.",
+        "refresh": "↻", "refresh_help": "Обновить котировки. Волна, цели и ваш масштаб сохраняются.",
+        "view_left_help": "Сдвинуть окно влево. Вертикаль подстроится сама.",
+        "view_right_help": "Сдвинуть окно вправо, к последнему бару.",
+        "view_out_help": "Уменьшить масштаб по горизонтали от правой кромки. Вертикаль подстроится.",
+        "view_in_help": "Увеличить масштаб по горизонтали от правой кромки. Вертикаль подстроится.",
+        "view_home_help": "Вид по умолчанию: полный горизонт с выносом Облака и вертикальная подгонка.",
+        "view_png_help": "Подготовить PNG-снимок текущего вида для скачивания.",
+        "png_download": "Скачать PNG графика",
         "scanner_title": "Глобальный сканер рынка",
         "filter_active": "Показывать только активные сигналы (Скрыть 'Ждем')",
         "run_scan_all": "Сканировать все таймфреймы", "processing_tf": "Обработка: {asset} / {tf}...",
@@ -363,7 +368,7 @@ I18N = {
         "pts_bar": "Выбрано точек: <b>{n}/3</b>",
         "pts_window": "{bars} баров",
         "pts_hint": "предв. C",
-        "pts_hint_tip": "Предварительная C: экстремум последних 3 баров, включая текущий. Перетаскивание двигает график, одиночный тап по фракталу ставит точку волны и сохраняет ваш масштаб. Слои гасятся в легенде; − + масштабируют горизонталь с вертикальной подгонкой, ⌂ возвращает вид по умолчанию.",
+        "pts_hint_tip": "Проведите рамку по холсту — график увеличится в неё. Одиночный тап по фракталу ставит точку волны и сохраняет ваш масштаб. Панель: котировки, сдвиг, масштаб, вид по умолчанию, PNG. Цели V/N/E/NT всегда внутри вертикальной рамки.",
         "risk_title": "Параметры сделки (расчет)", "risk_buy": "ПОКУПКА", "risk_sell": "ПРОДАЖА",
         "entry_mode": "Точка входа",
         "entry_hosoda": "Хосода: разворот C", "entry_break_b": "Пробой точки B",
@@ -427,7 +432,7 @@ I18N = {
         "ai_det_target": "Цель {target} уже пересечена на закрытии бара C: исход известен (цель достигнута).",
         "ai_det_stop": "Уровень C уже пробит на закрытии бара C: исход известен (стоп).",
         "tg_button": "Отправить отчет в Telegram", "tg_sending": "Отправка отчета...", "tg_sent": "Отчет отправлен в Telegram.",
-        "tg_sent_text": "Изображение графика недоступно (установите kaleido или matplotlib); отправлен только текстовый отчет.",
+        "tg_sent_text": "Изображение графика недоступно (установите matplotlib); отправлен только текстовый отчет.",
         "tg_err": "Ошибка Telegram: {detail}",
         "tg_no_secrets": "Добавьте TELEGRAM_TOKEN и TELEGRAM_CHAT_ID в секреты приложения.",
         "tg_report": "Ichimoku Wave Terminal\n{symbol} | {tf} | {bar}\nЦена: {price}\nТренд HTF ({htf}): {trend}\nЦель N: {target}\nВердикт ИИ: {verdict}",
@@ -604,7 +609,8 @@ def points_bar_html(n, bars):
             "</div>")
 
 
-def fit_y_range(df_plot, left, right):
+def fit_y_range(df_plot, left, right, extra=()):
+    """Вертикаль по видимым свечам + цели Хосоды и точки волны: цель никогда не уходит за кадр."""
     n = len(df_plot)
     if n == 0:
         return [0.0, 1.0]
@@ -618,26 +624,77 @@ def fit_y_range(df_plot, left, right):
     if not (np.isfinite(lo) and np.isfinite(hi)):
         cl = float(df_plot["Close"].iloc[-1])
         lo, hi = cl * 0.999, cl * 1.001
+    for v in extra:
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(fv):
+            lo = min(lo, fv)
+            hi = max(hi, fv)
     span = hi - lo
     pad = span * VIEW_Y_PAD if span > 0 else max(abs(hi) * 0.001, 1e-6)
     return [lo - pad, hi + pad]
 
 
-def view_action(kind):
-    """Осознанная смена вида: только здесь диапазоны уходят в layout."""
-    vz = float(st.session_state.get("view_zoom", 1.0))
-    full = float(st.session_state.get("_view_full", 1.0))
+def view_window(full_lo, full_hi):
+    """Окно из session_state, приведённое к границам данных. Полностью серверное состояние."""
+    full_span = max(1.0, full_hi - full_lo)
+    x0 = st.session_state.get("vx0")
+    x1 = st.session_state.get("vx1")
+    if x0 is None or x1 is None:
+        return full_lo, full_hi
+    x0 = float(x0)
+    x1 = float(x1)
+    if x1 - x0 < VIEW_MIN_BARS:
+        x1 = x0 + VIEW_MIN_BARS
+    if x1 > full_hi:
+        shift = x1 - full_hi
+        x1 = full_hi
+        x0 -= shift
+    if x0 < full_lo:
+        shift = full_lo - x0
+        x0 = full_lo
+        x1 += shift
+    x0 = max(full_lo, x0)
+    x1 = min(full_hi, x1)
+    if x1 - x0 < VIEW_MIN_BARS:
+        x0, x1 = full_lo, full_hi
+    return x0, x1
+
+
+def view_action(kind, full_lo, full_hi, x0, x1):
+    """Все изменения вида — серверные, поэтому переживают любой тап и перерисовку."""
+    span = x1 - x0
+    full_span = max(1.0, full_hi - full_lo)
     if kind == "home":
-        vz = 1.0
+        st.session_state.pop("vx0", None)
+        st.session_state.pop("vx1", None)
     elif kind == "in":
-        vz = min(vz * VIEW_ZOOM_STEP, VIEW_ZOOM_MAX)
-    else:
-        vz = max(vz / VIEW_ZOOM_STEP, 1.0)
-    vz = min(max(vz, 1.0), VIEW_ZOOM_MAX)
-    if full > 0 and full / vz < VIEW_MIN_BARS:
-        vz = max(1.0, full / VIEW_MIN_BARS)
-    st.session_state["view_zoom"] = vz
-    st.session_state["_view_apply"] = True
+        new_span = max(VIEW_MIN_BARS, span / VIEW_ZOOM_STEP)
+        x0, x1 = x1 - new_span, x1
+    elif kind == "out":
+        new_span = min(full_span, span * VIEW_ZOOM_STEP)
+        x0, x1 = x1 - new_span, x1
+    elif kind == "left":
+        step = span * VIEW_PAN_STEP
+        x0, x1 = x0 - step, x1 - step
+    elif kind == "right":
+        step = span * VIEW_PAN_STEP
+        x0, x1 = x0 + step, x1 + step
+    if kind != "home":
+        if x0 < full_lo:
+            x1 += full_lo - x0
+            x0 = full_lo
+        if x1 > full_hi:
+            x0 -= x1 - full_hi
+            x1 = full_hi
+        x0 = max(full_lo, x0)
+        x1 = min(full_hi, x1)
+        st.session_state["vx0"] = float(x0)
+        st.session_state["vx1"] = float(x1)
+    st.session_state.pop("_png_bytes", None)
+    st.session_state.chart_ver += 1
     st.rerun()
 
 
@@ -661,7 +718,7 @@ def detect_mobile_ua():
 
 def chart_ui(mobile):
     if mobile:
-        return dict(height=560, margin=dict(l=8, r=58, t=44, b=64), tick_div=5, tick_angle=0,
+        return dict(height=560, margin=dict(l=8, r=58, t=42, b=64), tick_div=5, tick_angle=0,
                     tick_font=dict(size=9), y_font=dict(size=9),
                     legend=dict(orientation="h", yanchor="top", y=-0.20, xanchor="center", x=0.5,
                                 font=dict(size=8), groupclick="togglegroup"),
@@ -710,8 +767,8 @@ def candidate_c_extreme(df_plot, bars=CAND_C_BARS):
 
 
 def inject_css(mobile):
-    cw = 28 if mobile else 30      # ширина чипа
-    ch = 28                        # высота чипа — единая для обеих панелей
+    cw = 28 if mobile else 30
+    chh = 28
     icon = 13 if mobile else 14
     mobile_rules = (
         ".block-container { padding-top: 3.2rem !important; padding-left: 0.6rem !important; "
@@ -725,60 +782,49 @@ def inject_css(mobile):
         "pointer-events: none; }\n"
         '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
     )
-    # ЕДИНАЯ ПАНЕЛЬ: наш кластер и modebar Plotly — одна строка, одна геометрия чипов.
-    unified = (
-        ".st-key-chart_shell { position: relative; }\n"
-        ".st-key-chart_tools { position: absolute; top: 0; left: 0; z-index: 8; "
-        "display: flex !important; flex-direction: row !important; align-items: center; "
-        f"gap: 2px !important; height: {ch}px; width: auto !important; "
-        "margin: 0 !important; padding: 0 !important; pointer-events: none; }\n"
-        f".st-key-chart_tools > div, .st-key-chart_tools [data-testid='stElementContainer'] {{ "
-        f"flex: 0 0 {cw}px; width: {cw}px; min-width: 0 !important; height: {ch}px; "
-        "margin: 0 !important; padding: 0 !important; pointer-events: auto; }\n"
-        f".st-key-chart_tools button, .st-key-refresh_term button {{ "
-        f"width: {cw}px; height: {ch}px; min-height: 0 !important; min-width: 0 !important; "
-        "display: inline-flex; align-items: center; justify-content: center; "
-        f"padding: 0 !important; margin: 0; border: 1px solid {CHIP_BORDER}; border-radius: 2px; "
-        f"background: {CHIP_BG}; color: {INK}; box-shadow: none; box-sizing: border-box; "
-        "transition: background-color .15s ease, border-color .15s ease; }\n"
-        ".st-key-chart_tools button p, .st-key-chart_tools button span, "
-        ".st-key-refresh_term button p, .st-key-refresh_term button span { "
-        f"font-size: {icon}px !important; line-height: 1 !important; margin: 0 !important; color: {INK}; "
-        'font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif; }\n'
-        f".st-key-chart_tools button:hover, .st-key-refresh_term button:hover {{ "
-        f"background: {CHIP_HOVER}; border-color: {INK}; color: {INK}; }}\n"
-        ".st-key-chart_tools button:active, .st-key-refresh_term button:active { "
-        f"background: #e3e9ee; border-color: {INK}; }}\n"
-        f".st-key-chart_tools button:focus-visible, .st-key-refresh_term button:focus-visible {{ "
-        f"outline: 1px solid {INK}; outline-offset: 1px; }}\n"
-        ".st-key-refresh_term { display: flex; justify-content: flex-end; margin: 0 0 0.25rem 0; }\n"
-        # --- modebar Plotly в ту же строку и в те же чипы ---
-        ".st-key-chart_shell .modebar-container { top: 0 !important; }\n"
-        ".st-key-chart_shell .modebar { top: 0 !important; display: flex !important; "
-        "align-items: center; gap: 4px !important; background: transparent !important; "
-        f"height: {ch}px; }}\n"
-        ".st-key-chart_shell .modebar-group { float: none !important; display: flex !important; "
-        "align-items: center; gap: 2px; padding: 0 !important; margin: 0 !important; }\n"
-        f".st-key-chart_shell .modebar-btn {{ width: {cw}px; height: {ch}px; padding: 0 !important; "
-        "margin: 0 !important; display: inline-flex !important; align-items: center; "
-        f"justify-content: center; border: 1px solid {CHIP_BORDER}; border-radius: 2px; "
-        f"background: {CHIP_BG}; box-sizing: border-box; "
-        "transition: background-color .15s ease, border-color .15s ease; }\n"
-        f".st-key-chart_shell .modebar-btn svg {{ width: {icon}px; height: {icon}px; "
-        "position: static !important; top: auto !important; }\n"
-        f".st-key-chart_shell .modebar-btn path {{ fill: {INK} !important; }}\n"
-        f".st-key-chart_shell .modebar-btn:hover {{ background: {CHIP_HOVER}; border-color: {INK}; }}\n"
-        f".st-key-chart_shell .modebar-btn:hover path, .st-key-chart_shell .modebar-btn.active path {{ "
-        f"fill: {ACTIVE_INK} !important; }}\n"
-        f".st-key-chart_shell .modebar-btn.active {{ border-color: {ACTIVE_INK}; }}\n"
-        # --- тулбар Streamlit (fullscreen) — в ту же строку ---
-        f".st-key-chart_shell [data-testid='stElementToolbar'] {{ top: 0 !important; }}\n"
-        f".st-key-chart_shell [data-testid='stElementToolbar'] button {{ "
-        f"width: {cw}px; height: {ch}px; min-height: 0 !important; padding: 0 !important; "
+    chip = (
+        f"width: {cw}px; height: {chh}px; min-height: 0 !important; min-width: 0 !important; "
+        "display: inline-flex !important; align-items: center; justify-content: center; "
+        "padding: 0 !important; margin: 0 !important; box-sizing: border-box; "
         f"border: 1px solid {CHIP_BORDER}; border-radius: 2px; background: {CHIP_BG}; "
-        "display: inline-flex; align-items: center; justify-content: center; }\n"
-        f".st-key-chart_shell [data-testid='stElementToolbar'] svg {{ width: {icon}px; height: {icon}px; "
-        f"color: {INK}; }}\n"
+        f"color: {INK}; box-shadow: none; "
+        "transition: background-color .15s ease, border-color .15s ease, transform .1s ease; "
+    )
+    chip_text = (
+        f"font-size: {icon}px !important; line-height: 1 !important; margin: 0 !important; "
+        f"color: {INK} !important; font-weight: 500; "
+        'font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif; '
+    )
+    toolbar = (
+        ".st-key-chart_shell { position: relative; }\n"
+        ".st-key-chart_tools { position: absolute; top: 0; left: 0; z-index: 9; "
+        "display: flex !important; flex-direction: row !important; align-items: center; "
+        f"gap: 3px !important; height: {chh}px; width: auto !important; "
+        "margin: 0 !important; padding: 0 !important; pointer-events: none; }\n"
+        ".st-key-chart_tools > div, .st-key-chart_tools [data-testid='stElementContainer'] { "
+        f"flex: 0 0 {cw}px; width: {cw}px; min-width: 0 !important; height: {chh}px; "
+        "margin: 0 !important; padding: 0 !important; pointer-events: auto; }\n"
+        f".st-key-chart_tools button {{ {chip} }}\n"
+        f".st-key-chart_tools button p, .st-key-chart_tools button span {{ {chip_text} }}\n"
+        f".st-key-chart_tools button:hover {{ background: {CHIP_HOVER}; border-color: {INK}; }}\n"
+        f".st-key-chart_tools button:hover p, .st-key-chart_tools button:hover span {{ color: {ACTIVE_INK} !important; }}\n"
+        f".st-key-chart_tools button:active {{ background: {CHIP_ACTIVE}; border-color: {INK}; transform: translateY(1px); }}\n"
+        f".st-key-chart_tools button:focus-visible {{ outline: 1px solid {INK}; outline-offset: 1px; }}\n"
+        # тулбар Streamlit (fullscreen) — та же геометрия и та же строка
+        ".st-key-chart_shell [data-testid='stElementToolbar'] { top: 0 !important; right: 0 !important; }\n"
+        ".st-key-chart_shell [data-testid='stElementToolbar'] > div { "
+        "background: transparent !important; border: none !important; box-shadow: none !important; }\n"
+        f".st-key-chart_shell [data-testid='stElementToolbar'] button {{ {chip} }}\n"
+        f".st-key-chart_shell [data-testid='stElementToolbar'] svg {{ width: {icon}px; height: {icon}px; color: {INK}; }}\n"
+        f".st-key-chart_shell [data-testid='stElementToolbar'] button:hover {{ background: {CHIP_HOVER}; border-color: {INK}; }}\n"
+        ".st-key-refresh_term { display: flex; justify-content: flex-end; margin: 0 0 0.25rem 0; }\n"
+        f".st-key-refresh_term button {{ {chip} }}\n"
+        f".st-key-refresh_term button p, .st-key-refresh_term button span {{ {chip_text} }}\n"
+        f".st-key-refresh_term button:hover {{ background: {CHIP_HOVER}; border-color: {INK}; }}\n"
+        ".st-key-png_slot { margin: 0.1rem 0 0.2rem 0; }\n"
+        f".st-key-png_slot button {{ min-height: 34px; border: 1px solid {CHIP_BORDER}; border-radius: 2px; "
+        f"background: {CHIP_BG}; color: {INK}; font-size: 0.84rem; }}\n"
+        f".st-key-png_slot button:hover {{ background: {CHIP_HOVER}; border-color: {INK}; color: {INK}; }}\n"
     )
     status_css = (
         ".pts-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; "
@@ -830,16 +876,21 @@ def inject_css(mobile):
         f"font-size: 0.95rem; color: {INK}; font-variant-numeric: tabular-nums; }}\n"
         ".lot-line b { font-size: 1.08rem; letter-spacing: 0.01em; }\n"
     )
+    scroll_css = (
+        "* { scrollbar-width: thin; scrollbar-color: #c3ccd4 #f4f6f8; }\n"
+        "*::-webkit-scrollbar { width: 9px; height: 9px; }\n"
+        f"*::-webkit-scrollbar-track {{ background: #f4f6f8; border-left: 1px solid {CHIP_BORDER}; }}\n"
+        f"*::-webkit-scrollbar-thumb {{ background: #c3ccd4; border-radius: 2px; border: 2px solid #f4f6f8; }}\n"
+        f"*::-webkit-scrollbar-thumb:hover {{ background: {ACCENT_MUTED}; }}\n"
+    )
     css = (
         "<style>\n"
         ".block-container { padding-top: 4rem; padding-bottom: 2rem; max-width: 100%; }\n"
         f".app-title {{ color: {INK}; font-size: clamp(1.05rem, 4.5vw, 1.75rem); line-height: 1.25; "
         "margin-top: 0.2rem; overflow-wrap: anywhere; white-space: normal; }\n"
-        ".stPlotlyChart .modebar { opacity: 1; }\n"
-        + unified + status_css + teleport_css + exec_css + risk_css +
+        + toolbar + status_css + teleport_css + exec_css + risk_css + scroll_css +
         "@media (max-width: 768px) {\n" + mobile_rules + "}\n"
         "@media (hover: none) {\n"
-        ".stPlotlyChart .modebar { opacity: 1 !important; }\n"
         '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
         "}\n"
         + (mobile_rules if mobile else "")
@@ -1635,17 +1686,21 @@ def send_mt5_order(payload, confirm_label):
         return False, safe_err(e)
 
 
-def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+def render_chart_png(df_plot, pts, targets, title, tf, is_fx, mobile, y_extra=()):
+    """PNG текущего вида: тот же горизонт и та же вертикальная рамка, что на экране."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception:
+        return None
 
     x = np.arange(len(df_plot))
     o, h, l, c = (df_plot[k].to_numpy(dtype=float) for k in ("Open", "High", "Low", "Close"))
     fig_, ax = plt.subplots(figsize=(14, 7.5), dpi=130)
     ax.vlines(x, l, h, color=INK, linewidth=0.8, zorder=3)
-    ax.bar(x, np.abs(c - o), bottom=np.minimum(o, c), width=0.6, color=np.where(c >= o, "white", INK),
-           edgecolor=INK, linewidth=0.8, zorder=4)
+    ax.bar(x, np.abs(c - o), bottom=np.minimum(o, c), width=0.6,
+           color=np.where(c >= o, "white", INK), edgecolor=INK, linewidth=0.8, zorder=4)
     ax.plot(x, df_plot["tenkan"].to_numpy(dtype=float), color="#2980b9", linewidth=1.2, zorder=5)
     ax.plot(x, df_plot["kijun"].to_numpy(dtype=float), color="#e74c3c", linewidth=1.6, zorder=5)
     ax.plot(x, df_plot["chikou"].to_numpy(dtype=float), color="#1e8449", linewidth=1.0, zorder=5)
@@ -1653,13 +1708,16 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     ax.fill_between(x + CLOUD_FORWARD_BARS, sa, sb, where=sa >= sb, color="#2ecc71", alpha=0.25, linewidth=0, zorder=1)
     ax.fill_between(x + CLOUD_FORWARD_BARS, sa, sb, where=sa < sb, color="#e74c3c", alpha=0.20, linewidth=0, zorder=1)
     if pts:
-        ax.plot([p_["x"] for p_ in pts], [p_["y"] for p_ in pts], color="#f39c12", marker="o", markersize=5, linewidth=1.6, zorder=6)
+        ax.plot([p_["x"] for p_ in pts], [p_["y"] for p_ in pts], color="#f39c12",
+                marker="o", markersize=5, linewidth=1.6, zorder=6)
         for letter, p_ in zip("ABC", pts):
-            ax.annotate(letter, (p_["x"], p_["y"]), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=10, color=ACCENT_MUTED)
+            ax.annotate(letter, (p_["x"], p_["y"]), textcoords="offset points", xytext=(0, 8),
+                        ha="center", fontsize=10, color=ACCENT_MUTED)
     colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
     for name, val in (targets or {}).items():
         ax.axhline(val, color=colors.get(name, "gray"), linestyle="--", linewidth=1.0, zorder=2)
-        ax.text(1.0, val, f" {name} {fmt_price(val)}", transform=ax.get_yaxis_transform(), va="center", fontsize=9, color=colors.get(name, "gray"))
+        ax.text(1.0, val, f" {name} {fmt_price(val)}", transform=ax.get_yaxis_transform(),
+                va="center", fontsize=9, color=colors.get(name, "gray"))
 
     x_right = float(len(df_plot) - 1 + CLOUD_FORWARD_BARS)
     if len(pts) == 3:
@@ -1694,10 +1752,10 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
         ax.plot([cand_["x"]], [cand_["y"]], marker="o", markersize=4,
                 color=CAND_C_COLOR, linestyle="none", zorder=6, clip_on=True)
 
-    v_left = float(st.session_state.get("_view_left", -1.5))
+    v_left = float(st.session_state.get("_view_left", -0.5))
     v_right = float(st.session_state.get("_view_right", x_right + 1.5))
     ax.set_xlim(v_left, v_right)
-    ax.set_ylim(*fit_y_range(df_plot, v_left, v_right))
+    ax.set_ylim(*fit_y_range(df_plot, v_left, v_right, y_extra))
     step = max(1, len(df_plot) // 10)
     ax.set_xticks(x[::step])
     ax.set_xticklabels(df_plot.index.strftime("%Y-%m-%d %H:%M")[::step], rotation=45, ha="right", fontsize=8)
@@ -1711,17 +1769,6 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     plt.close(fig_)
     buf.seek(0)
     return buf
-
-
-def render_chart_png(fig, df_plot, pts, targets, title, tf, is_fx, mobile):
-    try:
-        return io.BytesIO(fig.to_image(format="png", width=1400, height=800, scale=2)), "plotly"
-    except Exception:
-        pass
-    try:
-        return _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile), "matplotlib"
-    except Exception:
-        return None, None
 
 
 def send_telegram(token, chat_id, text, png):
@@ -1745,6 +1792,7 @@ def refresh_button(key):
     if st.button(t("refresh"), key=key, help=t("refresh_help")):
         fetch_smart_data.clear()
         fetch_yahoo.clear()
+        st.session_state.pop("_png_bytes", None)
         st.rerun()
 
 
@@ -1769,8 +1817,6 @@ st.session_state.setdefault("w_radar_active", True)
 st.session_state.setdefault("risk_pct", RISK_PCT_DEFAULT)
 st.session_state.setdefault("account_deposit", 10000.0)
 st.session_state.setdefault("entry_mode", "hosoda")
-st.session_state.setdefault("view_zoom", 1.0)
-st.session_state.setdefault("_view_apply", True)
 
 _teleport = st.session_state.pop("_teleport", None)
 if _teleport:
@@ -2044,12 +2090,10 @@ elif app_mode == "terminal":
 
         minor_high = df_plot["Minor_High"] & ~df_plot["Major_High"]
         minor_low = df_plot["Minor_Low"] & ~df_plot["Major_Low"]
-        major_high = df_plot["Major_High"]
-        major_low = df_plot["Major_Low"]
         fig.add_trace(marker_trace(minor_high, "High", "High", 0.2, UIP["mark_minor"], MINOR_COLOR, t("chart_minor_high"), "minor"))
         fig.add_trace(marker_trace(minor_low, "Low", "Low", 0.2, UIP["mark_minor"], MINOR_COLOR, t("chart_minor_low"), "minor"))
-        fig.add_trace(marker_trace(major_high, "High", "High", 0.5, UIP["mark_major"], MAJOR_COLOR, t("chart_major_high"), "major"))
-        fig.add_trace(marker_trace(major_low, "Low", "Low", 0.5, UIP["mark_major"], MAJOR_COLOR, t("chart_major_low"), "major"))
+        fig.add_trace(marker_trace(df_plot["Major_High"], "High", "High", 0.5, UIP["mark_major"], MAJOR_COLOR, t("chart_major_high"), "major"))
+        fig.add_trace(marker_trace(df_plot["Major_Low"], "Low", "Low", 0.5, UIP["mark_major"], MAJOR_COLOR, t("chart_major_low"), "major"))
 
         fig.add_trace(go.Scatter(
             x=[None], y=[None], mode="markers",
@@ -2068,7 +2112,8 @@ elif app_mode == "terminal":
 
         x_cloud = np.arange(len(df_plot)) + CLOUD_FORWARD_BARS
         sa, sb = df_plot["raw_senkou_a"].to_numpy(dtype=float), df_plot["raw_senkou_b"].to_numpy(dtype=float)
-        fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", fill="toself", fillcolor="rgba(128,128,128,0.3)", line=dict(width=0), name=t("chart_kumo"), legendgroup="cloud", showlegend=True, hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", fill="toself", fillcolor="rgba(128,128,128,0.3)",
+                                 line=dict(width=0), name=t("chart_kumo"), legendgroup="cloud", showlegend=True, hoverinfo="skip"))
 
         i, n = 0, len(sa)
         while i < n:
@@ -2084,7 +2129,8 @@ elif app_mode == "terminal":
                 xs = np.concatenate([x_cloud[i:end], x_cloud[i:end][::-1]])
                 ys = np.concatenate([sa[i:end], sb[i:end][::-1]])
                 color = "rgba(46, 204, 113, 0.35)" if is_up else "rgba(231, 76, 60, 0.28)"
-                fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", fill="toself", fillcolor=color, line=dict(width=0), showlegend=False, legendgroup="cloud", hoverinfo="skip"))
+                fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", fill="toself", fillcolor=color, line=dict(width=0),
+                                         showlegend=False, legendgroup="cloud", hoverinfo="skip"))
             i = j
 
         pts = []
@@ -2098,14 +2144,18 @@ elif app_mode == "terminal":
         cand = candidate_c_extreme(df_plot)
 
         tt_x, tt_text = [], []
+        targets_map = {}
+        y_extra = []
         x_view_right = float(len(df_plot) - 1 + CLOUD_FORWARD_BARS)
         if len(pts) == 3:
             A, B, C = pts
-            tg = hosoda_targets(A["y"], B["y"], C["y"])
-            V, N, E, NT = tg["V"], tg["N"], tg["E"], tg["NT"]
+            targets_map = hosoda_targets(A["y"], B["y"], C["y"])
+            y_extra = list(targets_map.values()) + [A["y"], B["y"], C["y"]]
             colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
-            for name, val in {"V": V, "N": N, "E": E, "NT": NT}.items():
-                fig.add_hline(y=val, line_dash="dash", line_color=colors[name], annotation_text=f"{name} {fmt_price(val)}", annotation_position="right", annotation_font_size=UIP["ann_font"], annotation_font_color=colors[name])
+            for name, val in targets_map.items():
+                fig.add_hline(y=val, line_dash="dash", line_color=colors[name],
+                              annotation_text=f"{name} {fmt_price(val)}", annotation_position="right",
+                              annotation_font_size=UIP["ann_font"], annotation_font_color=colors[name])
             time_ab, time_ac = abs(B["x"] - A["x"]), abs(C["x"] - A["x"])
             clock = _forecast_clock(df_plot, tf_name, is_fx)
             x_view_right = float(max(x_view_right, C["x"] + TIME_AXIS_FORWARD_BARS))
@@ -2131,7 +2181,9 @@ elif app_mode == "terminal":
             for k in KIHON_SUU:
                 time_line(C["x"] + k - 1, str(k), "#7f8c8d", "dash", 0.78, t("hover_kihon", k=k), opacity=0.35)
 
-            fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]], mode="lines+markers", line=dict(color="#f39c12", width=2), marker=dict(size=UIP["wave_mark"]), name=t("chart_wave"), hovertemplate=f"%{{y:{pfmt}}}<extra>{t('chart_wave')}</extra>"))
+            fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]], mode="lines+markers",
+                                     line=dict(color="#f39c12", width=2), marker=dict(size=UIP["wave_mark"]),
+                                     name=t("chart_wave"), hovertemplate=f"%{{y:{pfmt}}}<extra>{t('chart_wave')}</extra>"))
 
         if tt_x:
             y_top = float(df_plot["High"].max())
@@ -2151,43 +2203,27 @@ elif app_mode == "terminal":
                                 font=dict(size=11, color=CAND_HOVER_FONT), namelength=0),
             ))
 
-        # Третья точка открывает горизонт проекции — единственная автоматическая смена вида.
+        # Третья точка открывает горизонт проекции, не сбрасывая левую кромку пользователя.
         if st.session_state.get("_view_abc") != len(abc):
             st.session_state["_view_abc"] = len(abc)
             if len(abc) == 3:
-                st.session_state["_view_apply"] = True
+                st.session_state["vx1"] = x_view_right + 1.5
+                st.session_state.pop("_png_bytes", None)
 
-        max_right = x_view_right + 1.5
-        min_left = -0.5
-        full_span = max(1.0, max_right - min_left)
-        vz = min(max(float(st.session_state.get("view_zoom", 1.0)), 1.0), VIEW_ZOOM_MAX)
-        if full_span / vz < VIEW_MIN_BARS:
-            vz = max(1.0, full_span / VIEW_MIN_BARS)
-        span = full_span / vz
-        v_right = max_right
-        v_left = v_right - span
-        st.session_state["view_zoom"] = vz
-        st.session_state["_view_full"] = full_span
-        st.session_state["_view_left"] = v_left
-        st.session_state["_view_right"] = v_right
-        vis_bars = max(0, min(len(df_plot) - 1, int(np.floor(v_right))) - max(0, int(np.ceil(v_left))) + 1)
-        y_fit = fit_y_range(df_plot, v_left, v_right)
-        apply_view = bool(st.session_state.get("_view_apply", True))
+        full_lo, full_hi = -0.5, x_view_right + 1.5
+        vx0, vx1 = view_window(full_lo, full_hi)
+        st.session_state["_view_left"] = vx0
+        st.session_state["_view_right"] = vx1
+        vis_bars = max(0, min(len(df_plot) - 1, int(np.floor(vx1))) - max(0, int(np.ceil(vx0))) + 1)
+        y_fit = fit_y_range(df_plot, vx0, vx1, y_extra)
 
         tick_step = max(1, len(df_plot) // UIP["tick_div"])
         time_fmt = axis_time_fmt(tf_name) if MOBILE else "%Y-%m-%d %H:%M"
         yaxis = dict(side="right", tickformat=tick_fmt(last_close), showgrid=True, gridcolor="#f0f0f0",
-                     fixedrange=True)
+                     range=y_fit, autorange=False, fixedrange=True)
         xaxis = dict(tickmode="array", tickvals=df_plot["x_idx"].to_numpy()[::tick_step],
                      ticktext=df_plot.index.strftime(time_fmt)[::tick_step], showgrid=True, gridcolor="#f0f0f0",
-                     tickangle=UIP["tick_angle"], fixedrange=False)
-        # Диапазоны пишем ТОЛЬКО при осознанной смене вида — иначе Plotly хранит зум пользователя.
-        if apply_view:
-            xaxis["range"] = [v_left, v_right]
-            xaxis["autorange"] = False
-            yaxis["range"] = y_fit
-            yaxis["autorange"] = False
-            st.session_state["_view_apply"] = False
+                     tickangle=UIP["tick_angle"], range=[vx0, vx1], autorange=False, fixedrange=True)
         if UIP["y_font"]:
             yaxis["tickfont"] = UIP["y_font"]
         if UIP["tick_font"]:
@@ -2198,32 +2234,49 @@ elif app_mode == "terminal":
             plot_bgcolor="#ffffff", paper_bgcolor="#ffffff",
             margin=UIP["margin"],
             yaxis=yaxis, xaxis=xaxis,
-            hovermode="closest", clickmode="event+select", dragmode="pan",
+            hovermode="closest", clickmode="event+select", dragmode="select",
             font=dict(color=INK),
             legend=UIP["legend"],
-            modebar=dict(bgcolor="rgba(255,255,255,0)", color=INK, activecolor=ACTIVE_INK),
+            selectdirection="h",
+            newselection=dict(line=dict(color=ACCENT_MUTED, width=1, dash="dot")),
+            activeselection=dict(fillcolor="rgba(168,138,69,0.10)", opacity=0.6),
         )
 
         with st.container(key="chart_shell"):
             with st.container(key="chart_tools"):
                 refresh_button("refresh_term")
+                if st.button(GLYPH_LEFT, key="view_left", help=t("view_left_help")):
+                    view_action("left", full_lo, full_hi, vx0, vx1)
+                if st.button(GLYPH_RIGHT, key="view_right", help=t("view_right_help")):
+                    view_action("right", full_lo, full_hi, vx0, vx1)
                 if st.button(GLYPH_OUT, key="view_out", help=t("view_out_help")):
-                    view_action("out")
+                    view_action("out", full_lo, full_hi, vx0, vx1)
                 if st.button(GLYPH_IN, key="view_in", help=t("view_in_help")):
-                    view_action("in")
+                    view_action("in", full_lo, full_hi, vx0, vx1)
                 if st.button(GLYPH_HOME, key="view_home", help=t("view_home_help")):
-                    view_action("home")
+                    view_action("home", full_lo, full_hi, vx0, vx1)
+                if st.button(GLYPH_PNG, key="view_png", help=t("view_png_help")):
+                    buf_ = render_chart_png(df_plot, pts, targets_map,
+                                            f"{asset_label(asset_name)} | {tf_name}",
+                                            tf_name, is_fx, MOBILE, y_extra)
+                    st.session_state["_png_bytes"] = buf_.getvalue() if buf_ else None
+                    st.rerun()
             event = st.plotly_chart(
                 fig,
                 key=f"chart_{st.session_state.chart_ver}",
                 on_select="rerun",
-                selection_mode=("points", "box", "lasso"),
-                config={"scrollZoom": False, "displayModeBar": True, "displaylogo": False,
-                        "modeBarButtonsToAdd": [],
-                        "modeBarButtonsToRemove": MODEBAR_REMOVE},
+                selection_mode=("points", "box"),
+                config={"scrollZoom": False, "displayModeBar": False, "displaylogo": False,
+                        "doubleClick": False},
                 theme=None,
                 **WIDE,
             )
+
+        if st.session_state.get("_png_bytes"):
+            with st.container(key="png_slot"):
+                st.download_button(t("png_download"), data=st.session_state["_png_bytes"],
+                                   file_name=f"{mt5_symbol(asset_name)}_{tf_name}.png",
+                                   mime="image/png", **WIDE)
 
         st.markdown(points_bar_html(len(abc), vis_bars), unsafe_allow_html=True)
         if len(abc) == 3 and len(pts) < 3:
@@ -2310,8 +2363,7 @@ elif app_mode == "terminal":
         if len(abc) == 3:
             rA, rB, rC = abc
             side_buy = rB["y"] > rA["y"]
-            r_tg = hosoda_targets(rA["y"], rB["y"], rC["y"])
-            target_px = float(r_tg["N"])
+            target_px = float(hosoda_targets(rA["y"], rB["y"], rC["y"])["N"])
             route_r = ASSET_ROUTER[asset_name]
             psize, pkey = point_size(route_r)
             unit = t(pkey)
@@ -2419,12 +2471,10 @@ elif app_mode == "terminal":
             lots, risk_usd, gain_usd = 0.0, 0.0, 0.0
             if lot_ready:
                 risk_usd = deposit * (risk_pct / 100.0)
-                pips_risk = risk_dist / psize
-                pips_reward = reward_dist / psize
-                loss_per_lot = pips_risk * pval
+                loss_per_lot = (risk_dist / psize) * pval
                 raw_lots = (risk_usd / loss_per_lot) if loss_per_lot > 0.0 else 0.0
                 lots = float(np.floor(raw_lots / LOT_STEP) * LOT_STEP)
-                gain_usd = lots * pips_reward * pval
+                gain_usd = lots * (reward_dist / psize) * pval
                 st.markdown(
                     "<div class='lot-line'>" + t("lot_line", lots=f"{lots:.2f}",
                                                  risk=fmt_money(lots * loss_per_lot, "USD"),
@@ -2497,18 +2547,16 @@ elif app_mode == "terminal":
                 st.error(t("tg_no_secrets"))
             else:
                 with st.spinner(t("tg_sending")):
-                    tg_pts = [{"x": p_["x"], "y": p_["y"]} for p_ in pts] if len(pts) == 3 else []
-                    tg_abc = st.session_state.abc_points
-                    tg_targets = hosoda_targets(*(p_["y"] for p_ in tg_abc)) if len(tg_abc) == 3 else {}
                     htf_arr_t, htf_tf_t, htf_missing_t = htf_info()
                     trend_key = {1.0: "tg_up", -1.0: "tg_down", 0.0: "tg_flat"}[float(htf_arr_t[-1])] if not htf_missing_t else "tg_na"
                     report = t(
                         "tg_report", symbol=asset_label(asset_name), tf=tf_name, bar=f"{df_plot.index[-1]:%Y-%m-%d %H:%M}",
                         price=fmt_price(last_close), htf=htf_tf_t, trend=t(trend_key),
-                        target=fmt_price(tg_targets["N"]) if tg_targets else t("tg_na"),
+                        target=fmt_price(targets_map["N"]) if targets_map else t("tg_na"),
                         verdict=t("ai_light_" + ai_light) if ai_light else t("tg_na"))
-                    png, _engine = render_chart_png(fig, df_plot, tg_pts, tg_targets,
-                                                    f"{asset_label(asset_name)} | {tf_name}", tf_name, is_fx, MOBILE)
+                    png = render_chart_png(df_plot, pts, targets_map,
+                                           f"{asset_label(asset_name)} | {tf_name}",
+                                           tf_name, is_fx, MOBILE, y_extra)
                     ok, err = send_telegram(token, chat_id, report, png)
                 if not ok:
                     st.error(t("tg_err", detail=err))
@@ -2517,9 +2565,25 @@ elif app_mode == "terminal":
                 else:
                     st.success(t("tg_sent"))
 
-        if (event and event.selection and event.selection.get("points")
-                and len(event.selection["points"]) == 1 and len(st.session_state.abc_points) < 3):
-            clicked = event.selection["points"][0]
+        # --- Рамка по холсту = зум в неё (серверный, переживает тапы). Тап по фракталу = точка волны. ---
+        sel = getattr(event, "selection", None) if event else None
+        boxes = (sel or {}).get("box") or []
+        if boxes:
+            bx = boxes[0]
+            xr = bx.get("x") or []
+            if len(xr) == 2 and abs(float(xr[1]) - float(xr[0])) >= 1.0:
+                lo_, hi_ = float(min(xr)), float(max(xr))
+                if hi_ - lo_ < VIEW_MIN_BARS:
+                    mid = (lo_ + hi_) / 2.0
+                    lo_, hi_ = mid - VIEW_MIN_BARS / 2.0, mid + VIEW_MIN_BARS / 2.0
+                st.session_state["vx0"] = max(full_lo, lo_)
+                st.session_state["vx1"] = min(full_hi, hi_)
+                st.session_state.pop("_png_bytes", None)
+                st.session_state.chart_ver += 1
+                st.rerun()
+        elif (sel and sel.get("points") and len(sel["points"]) == 1
+              and len(st.session_state.abc_points) < 3):
+            clicked = sel["points"][0]
             x_val = clicked.get("x")
             if x_val is not None:
                 rows = df_plot.loc[df_plot["x_idx"] == x_val]
@@ -2544,5 +2608,6 @@ elif app_mode == "terminal":
                             price = float(row["Low"])
                     if price is not None and not any(p["t"] == row.name for p in st.session_state.abc_points):
                         st.session_state.abc_points.append({"t": row.name, "y": price})
+                        st.session_state.chart_ver += 1
                         st.rerun()
         gc.collect()
