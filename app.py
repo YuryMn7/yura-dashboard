@@ -1,5 +1,5 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.41. Стиль: institutional minimalist, zero-clutter.
+SPEC v1.42. Стиль: institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 Крипта: BTC W1/MN1/MN3 -> старший MN1. Обновление котировок — иконка ↻, точки не сбрасываются.
 
@@ -7,13 +7,14 @@ SPEC v1.41. Стиль: institutional minimalist, zero-clutter.
 зона засады — по активной свече (iloc[-1]) с порогом 0.3*ATR. Колонка «Причина» — диагностика.
 ONE-CLICK TELEPORT: выбор строки в таблице Радара -> перенос в Терминал.
 
-ПРЕДВАРИТЕЛЬНАЯ ТОЧКА C: маленькая янтарная точка размером с малый фрактал, видна ДО расстановки
-A-B-C. Нисходящий тренд (Тенкан < Киджун) — максимум High последних 3 свечей включая активную;
-восходящий — минимум Low. Отступ 0.2*ATR. Ховер — одна компактная строка (тёмная плашка,
-янтарная рамка, 11px), не экранирует область нажатия.
-СЛОЙ ПЕРЕКЛЮЧАЕТСЯ В ЛЕГЕНДЕ PLOTLY (native legend HUD): плашка «🟡 Предв. C» скрывает и возвращает
-точку силами браузера, без серверной перерисовки. Отдельного виджета-тумблера нет.
-Клик по точке ставит точку волны — расчёт можно начать до формирования фрактала.
+ПРЕДВАРИТЕЛЬНАЯ C (Preliminary C): маркер размером с малый фрактал, виден ДО расстановки A-B-C.
+Нисходящий тренд (Тенкан < Киджун) — максимум High последних 3 свечей включая активную;
+восходящий — минимум Low. Отступ 0.2*ATR. Единственный акцентный тон — приглушённый #a88a45.
+Ховер — одна компактная строка (тёмная плашка, рамка #a88a45, 11px), не экранирует область нажатия.
+СЛОЙ ПЕРЕКЛЮЧАЕТСЯ В ЛЕГЕНДЕ PLOTLY (native legend HUD): плашка «Предв. C» скрывает и возвращает
+маркер силами браузера, без серверной перерисовки. Отдельного виджета-тумблера нет.
+Клик по маркеру ставит точку волны — расчёт можно начать до формирования фрактала.
+Пояснение механики — в тултипе нижней статус-строки; отдельной подписи под графиком нет.
 
 ГОРИЗОНТ ПРОЕКЦИИ: +76 баров от точки C (канон Какан). Тот же предел в PNG для Telegram.
 
@@ -138,9 +139,10 @@ MT5_EXEC_MARK = "IG_EXEC"
 TRIG_WATCH_BARS = {"hosoda": 3, "break_b": 17}
 ATR_CHASE_LIMIT = 1.0
 CAND_C_BARS = 3
-CAND_C_COLOR = "#a88a45"
+ACCENT_MUTED = "#a88a45"         # единственный институциональный акцентный тон
+CAND_C_COLOR = ACCENT_MUTED
 CAND_HOVER_BG = "rgba(20, 24, 35, 0.85)"
-CAND_HOVER_BORDER = "#F59E0B"
+CAND_HOVER_BORDER = ACCENT_MUTED
 CAND_HOVER_FONT = "#E8EDF5"
 
 LANGS = {"English": "en", "Русский": "ru"}
@@ -187,11 +189,11 @@ I18N = {
         "chart_time_targets": "Time targets", "hover_high": "High", "hover_low": "Low",
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} bars)", "hover_forecast": "forecast",
         "chart_wave": "Wave A-B-C", "chart_cand_c": "Cand. C",
-        "cand_hover": "<b>Candidate C:</b> %{customdata:.5f}<extra></extra>",
-        "cand_note_compact": "🟡 Amber C: extremum of the last {bars} bars for an early entry. Toggle it in the chart legend.",
+        "cand_full": "Preliminary C",
+        "cand_hover": "<b>Preliminary C:</b> %{customdata:.5f}<extra></extra>",
         "pts_bar": "Points selected: <b>{n}/3</b>",
-        "pts_hint": "🟡 candidate C",
-        "pts_hint_tip": "Preliminary C extremum over the last 3 bars including the live one. Tap it to place a wave point early.",
+        "pts_hint": "cand. C",
+        "pts_hint_tip": "Preliminary C: extremum of the last 3 bars including the live one, for an early entry. Tap the marker to place a wave point before the fractal forms. Toggle the layer in the chart legend.",
         "risk_title": "Trade parameters (calculated)", "risk_buy": "BUY", "risk_sell": "SELL",
         "entry_mode": "Entry point",
         "entry_hosoda": "Hosoda: C reversal", "entry_break_b": "Point B breakout",
@@ -320,11 +322,11 @@ I18N = {
         "chart_time_targets": "Временные цели", "hover_high": "Хай", "hover_low": "Лоу",
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} баров)", "hover_forecast": "прогноз",
         "chart_wave": "Волна A-B-C", "chart_cand_c": "Предв. C",
-        "cand_hover": "<b>Предв. C:</b> %{customdata:.5f}<extra></extra>",
-        "cand_note_compact": "🟡 Янтарная C: экстремум последних {bars} баров для раннего входа. Слой переключается в легенде графика.",
+        "cand_full": "Предварительная C",
+        "cand_hover": "<b>Предварительная C:</b> %{customdata:.5f}<extra></extra>",
         "pts_bar": "Выбрано точек: <b>{n}/3</b>",
-        "pts_hint": "🟡 предв. C",
-        "pts_hint_tip": "Предварительный экстремум C по последним 3 барам, включая текущий. Нажмите точку, чтобы поставить точку волны заранее.",
+        "pts_hint": "предв. C",
+        "pts_hint_tip": "Предварительная C: экстремум последних 3 баров, включая текущий, для раннего входа. Нажмите маркер, чтобы поставить точку волны до формирования фрактала. Слой переключается в легенде графика.",
         "risk_title": "Параметры сделки (расчет)", "risk_buy": "ПОКУПКА", "risk_sell": "ПРОДАЖА",
         "entry_mode": "Точка входа",
         "entry_hosoda": "Хосода: разворот C", "entry_break_b": "Пробой точки B",
@@ -427,8 +429,8 @@ def t(key, **kw):
 
 
 def cand_trace_name():
-    """Имя трейса янтарной точки: используется и в легенде, и в обработчике клика."""
-    return "🟡 " + t("chart_cand_c")
+    """Единый токен слоя Preliminary C: регистрация трейса и детекция клика."""
+    return t("chart_cand_c")
 
 
 def E(code, **kw):
@@ -598,7 +600,7 @@ def chart_ui(mobile):
 
 
 def candidate_c_extreme(df_plot, bars=CAND_C_BARS):
-    """Предварительный экстремум C до формирования фрактала (живой маркер)."""
+    """Preliminary C: экстремум до формирования фрактала (живой маркер)."""
     n = len(df_plot)
     if n < 2:
         return None
@@ -668,7 +670,7 @@ def inject_css(mobile):
         "border: 1px solid #dfe4ea; background: #fbfcfd; border-radius: 2px; padding: 4px 10px; "
         "font-size: 0.8rem; color: #2c3e50; margin: 2px 0 4px 0; }\n"
         ".pts-bar b { font-variant-numeric: tabular-nums; }\n"
-        ".pts-hint { color: #a88a45; white-space: nowrap; cursor: help; }\n"
+        f".pts-hint {{ color: {ACCENT_MUTED}; white-space: nowrap; cursor: help; }}\n"
     )
     teleport_css = (
         ".st-key-teleport_btn { margin: 0.4rem 0 0.2rem 0; }\n"
@@ -1123,7 +1125,7 @@ ALICE_LAG = {"minor": 0, "major": 0}     # ZERO-LAG: вход на баре C, �
 ALICE_MAJOR_RADIUS = 10
 ALICE_SNAP_BARS = 2
 ALICE_MAJOR_TOL_ATR = 0.35
-ALICE_LIGHT_COLORS = {"green": "#3f7d5c", "yellow": "#a88a45", "red": "#9a5252"}
+ALICE_LIGHT_COLORS = {"green": "#3f7d5c", "yellow": ACCENT_MUTED, "red": "#9a5252"}
 ALICE_GREEN_EDGE, ALICE_GREEN_Z, ALICE_GREEN_UPLIFT = 0.05, 2.0, 0.03
 ALICE_RED_EDGE, ALICE_RED_Z = 0.10, 2.0
 ALICE_MIN_RESOLVED = 0.10
@@ -1543,7 +1545,7 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     if pts:
         ax.plot([p_["x"] for p_ in pts], [p_["y"] for p_ in pts], color="#f39c12", marker="o", markersize=5, linewidth=1.6, zorder=6)
         for letter, p_ in zip("ABC", pts):
-            ax.annotate(letter, (p_["x"], p_["y"]), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=10, color="#b9770e")
+            ax.annotate(letter, (p_["x"], p_["y"]), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=10, color=ACCENT_MUTED)
     colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
     for name, val in (targets or {}).items():
         ax.axhline(val, color=colors.get(name, "gray"), linestyle="--", linewidth=1.0, zorder=2)
@@ -2012,7 +2014,7 @@ elif app_mode == "terminal":
                 name=t("chart_time_targets"), showlegend=False, text=tt_text, hovertemplate="%{text}<extra></extra>",
             ))
 
-        # --- Янтарная точка C: слой в легенде Plotly, ховер не экранирует область нажатия ---
+        # --- Preliminary C: слой в нативной легенде Plotly, компактный ховер ---
         if cand:
             fig.add_trace(go.Scatter(
                 x=[cand["x"]], y=[cand["y"]], mode="markers",
@@ -2059,7 +2061,6 @@ elif app_mode == "terminal":
             **WIDE,
         )
 
-        st.caption(t("cand_note_compact", bars=CAND_C_BARS))
         st.markdown(points_bar_html(len(abc)), unsafe_allow_html=True)
         if len(abc) == 3 and len(pts) < 3:
             st.caption(t("points_outside"))
