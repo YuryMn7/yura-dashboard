@@ -10,22 +10,27 @@
 
 ONE-CLICK TELEPORT: выбор строки в таблице Радара -> кнопка переноса в Терминал.
 
-ВХОДЫ ПО ПРОБОЮ (этап 2, единый план trigger_plan):
+ПРЕДВАРИТЕЛЬНАЯ ТОЧКА C (живой маркер на графике): маленькая янтарная точка размером с малый
+фрактал, видна ВСЕГДА — ещё до расстановки A-B-C. Нисходящий тренд (Тенкан < Киджун) — максимум
+High последних 3 свечей, ВКЛЮЧАЯ текущую (возможный пик C для продажи); восходящий — минимум Low
+(возможное дно C для покупки). Отступ от свечи 0.2*ATR, как у малых фракталов. Точка живая:
+окно сдвигается с новыми свечами, экстремум может измениться; в истории остаются только фракталы.
+Клик по точке ставит соответствующую точку волны — расчёт можно начать до формирования фрактала.
+
+ВХОДЫ ПО ПРОБОЮ (trigger_plan):
   * «Хосода: разворот C» — уровень = High/Low свечи точки C; окно 3 свечи после неё.
-  * «Пробой точки B» — уровень = цена точки B; окно 17 свечей после неё; стоп за ОБЛАКОМ ± 0.2*ATR.
+  * «Пробой точки B» — уровень = цена точки B; окно 17 свечей; стоп за ОБЛАКОМ ± 0.2*ATR.
   * Подтверждение = ЗАКРЫТИЕ свечи за уровнем (не касание тенью).
-  * Правило догона: |цена − уровень| <= 1*ATR -> вход по рынку; дальше -> ЛИМИТНЫЙ ордер
-    на самый уровень (BuyLimit ниже рынка / SellLimit выше), чтобы не терять пункты.
-  * Подтверждения ещё нет -> режим наблюдения (watch): советник сам ждёт закрытия свечи.
-  * «По текущей цене» и «Своя цена входа» — рыночный вход, стоп за точкой C ± 0.2*ATR бара C.
-На графике взведённый уровень помечен янтарной точкой на ПОСЛЕДНЕМ баре (в истории не остаётся).
+  * Правило догона: |цена − уровень| <= 1*ATR -> рынок; дальше -> ЛИМИТНЫЙ ордер на самый уровень.
+  * Нет подтверждения -> наблюдение (watch): советник сам ждёт закрытия свечи в окне.
+  * «По текущей цене» и «Своя цена входа» — рынок, стоп за точкой C ± 0.2*ATR бара C.
 
 ЛОТ: pip_value_usd (JPY — 1000 JPY за пипс по курсу USD/JPY; прямые пары — $10; EUR/AUD — 10 AUD
 в USD; золото — $100 за пункт; BTC — $1; индексы — $1), округление ВНИЗ до шага 0.01.
 
 ШЛЮЗ: кнопка «➔ Исполнить приказ в MetaTrader 5» отправляет в Telegram карточку /order {JSON}
 с кнопкой подтверждения. Бот не видит свои сообщения — советник получит приказ только как
-callback_query, то есть после нажатия трейдером. Окончательный лот и комплаенс — на стороне советника.
+callback_query, после нажатия трейдером. Окончательный лот и комплаенс — на стороне советника.
 
 BY DESIGN: точки A-B-C сбрасываются при смене инструмента, ТФ, серверного времени, raw, клиринга,
 кнопкой «Сбросить точки» и при телепорте. Обновление котировок, смена языка и отчёты точки НЕ сбрасывают.
@@ -124,9 +129,10 @@ USDJPY_APPROX = 155.0
 AUDUSD_APPROX = 0.65
 MT5_DEFAULT_TOKEN = "SECRET_ICHIMOKU_TOKEN"
 MT5_EXEC_MARK = "IG_EXEC"
-TRIG_WATCH_BARS = {"hosoda": 3, "break_b": 17}   # окна наблюдения: C — 3 свечи, B — 17
-ATR_CHASE_LIMIT = 1.0                            # уход дальше 1 ATR -> лимит на уровень
-ARMED_COLOR = "#a88a45"
+TRIG_WATCH_BARS = {"hosoda": 3, "break_b": 17}
+ATR_CHASE_LIMIT = 1.0
+CAND_C_BARS = 3                 # окно предварительного экстремума C (включая активную свечу)
+CAND_C_COLOR = "#a88a45"        # приглушённый янтарь из палитры терминала
 
 LANGS = {"English": "en", "Русский": "ru"}
 DEFAULT_LANG = "Русский"
@@ -172,8 +178,11 @@ I18N = {
         "chart_major_high": "Major High", "chart_major_low": "Major Low",
         "chart_time_targets": "Time targets", "hover_high": "High", "hover_low": "Low",
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} bars)", "hover_forecast": "forecast",
-        "chart_wave": "Wave A-B-C", "chart_armed": "Armed trigger",
-        "hover_armed": "{mode}<br>{dec}<br>Level: {lvl}<br>Until: {exp}",
+        "chart_wave": "Wave A-B-C",
+        "chart_cand_c": "Candidate C",
+        "hover_cand_c": "Candidate C · {kind} of last {bars} bars (live, may change)",
+        "cand_high": "highest high", "cand_low": "lowest low",
+        "cand_note": "Amber dot = preliminary C extremum over the last {bars} candles including the live one. It moves as new candles arrive; tap it to place the wave point early.",
         "risk_title": "Trade parameters (calculated)", "risk_buy": "BUY", "risk_sell": "SELL",
         "entry_mode": "Entry point",
         "entry_hosoda": "Hosoda: C reversal", "entry_break_b": "Point B breakout",
@@ -302,8 +311,11 @@ I18N = {
         "chart_major_high": "Главный максимум", "chart_major_low": "Главный минимум",
         "chart_time_targets": "Временные цели", "hover_high": "Хай", "hover_low": "Лоу",
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} баров)", "hover_forecast": "прогноз",
-        "chart_wave": "Волна A-B-C", "chart_armed": "Взведённый уровень",
-        "hover_armed": "{mode}<br>{dec}<br>Уровень: {lvl}<br>До: {exp}",
+        "chart_wave": "Волна A-B-C",
+        "chart_cand_c": "Предварительный C",
+        "hover_cand_c": "Предварительный C · {kind} последних {bars} свечей (живая, может измениться)",
+        "cand_high": "максимум", "cand_low": "минимум",
+        "cand_note": "Янтарная точка — предварительный экстремум C по последним {bars} свечам, включая текущую. Живая: переезжает с новыми свечами. Нажмите её, чтобы поставить точку волны заранее.",
         "risk_title": "Параметры сделки (расчет)", "risk_buy": "ПОКУПКА", "risk_sell": "ПРОДАЖА",
         "entry_mode": "Точка входа",
         "entry_hosoda": "Хосода: разворот C", "entry_break_b": "Пробой точки B",
@@ -561,6 +573,46 @@ def chart_ui(mobile):
                 tick_font=None, y_font=None,
                 legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5),
                 ann_font=10, vlabel_font=9, mark_minor=5, mark_major=10, wave_mark=8)
+
+
+def candidate_c_extreme(df_plot, bars=CAND_C_BARS):
+    """Предварительный экстремум точки C ДО формирования фрактала.
+    Нисходящий тренд (Тенкан < Киджун на последнем закрытом баре) — максимум High последних
+    N свечей, включая активную: возможный пик C для продажи. Восходящий — минимум Low.
+    Маркер живой: окно сдвигается с новыми свечами, экстремум может переехать."""
+    n = len(df_plot)
+    if n < 2:
+        return None
+    lb = max(1, min(int(bars), n))
+    win = df_plot.iloc[n - lb:]
+    ref = df_plot.iloc[-2]
+    tk, kj = float(ref["tenkan"]), float(ref["kijun"])
+    if np.isfinite(tk) and np.isfinite(kj) and tk != kj:
+        down = tk < kj
+    elif np.isfinite(kj):
+        down = float(ref["Close"]) < kj
+    else:
+        down = True
+
+    if down:
+        pos = int(np.argmax(win["High"].to_numpy(dtype=float)))
+        px = float(win["High"].iloc[pos])
+        kind = "high"
+    else:
+        pos = int(np.argmin(win["Low"].to_numpy(dtype=float)))
+        px = float(win["Low"].iloc[pos])
+        kind = "low"
+
+    row = win.iloc[pos]
+    atr = float(row["ATR"])
+    if not np.isfinite(atr) or atr <= 0.0:
+        atr = float((win["High"] - win["Low"]).mean())
+    if not np.isfinite(atr) or atr <= 0.0:
+        atr = abs(px) * 0.0005
+    y = px + STOP_BUFFER_ATR * atr if kind == "high" else px - STOP_BUFFER_ATR * atr
+    x = n - lb + pos
+    return {"x": x, "price": px, "y": y, "kind": kind, "down": down,
+            "t": df_plot.index[x], "bars": lb}
 
 
 def inject_css(mobile):
@@ -964,9 +1016,7 @@ def hosoda_targets(a, b, c):
 
 
 def trigger_plan(df, abc, mode, tf, is_fx, last_close):
-    """Единый план входа по пробою: уровень, окно, стоп и решение рынок/лимит/наблюдение.
-    Подтверждение — ЗАКРЫТИЕ свечи за уровнем. Правило догона: уход <= 1 ATR -> рынок,
-    дальше -> лимитный ордер на самый уровень. Нет подтверждения -> наблюдение в окне N свечей."""
+    """Единый план входа по пробою: уровень, окно, стоп и решение рынок/лимит/наблюдение."""
     if mode not in TRIG_WATCH_BARS or len(abc) != 3 or len(df) < 3:
         return None
     rA, rB, rC = abc
@@ -1001,7 +1051,7 @@ def trigger_plan(df, abc, mode, tf, is_fx, last_close):
 
     conf_t = None
     if rp + 1 < len(df) - 1:
-        seg = df.iloc[rp + 1:-1]                     # только ЗАКРЫТЫЕ бары после опорного
+        seg = df.iloc[rp + 1:-1]
         mask = (seg["Close"] > level) if buy else (seg["Close"] < level)
         hits = np.flatnonzero(mask.to_numpy())
         if len(hits):
@@ -1011,9 +1061,9 @@ def trigger_plan(df, abc, mode, tf, is_fx, last_close):
     step = clock[0] if clock else pd.Timedelta(hours=1)
     now_ts = df.index[-1]
     if conf_t is not None:
-        expire = bar_time_at(df, len(df) - 1 + bars, tf, is_fx, clock)[0]   # окно ордера от постановки
+        expire = bar_time_at(df, len(df) - 1 + bars, tf, is_fx, clock)[0]
     else:
-        expire = bar_time_at(df, rp + bars, tf, is_fx, clock)[0] + step     # окно наблюдения от опорной свечи
+        expire = bar_time_at(df, rp + bars, tf, is_fx, clock)[0] + step
 
     away = abs(last_close - level)
     dist_atr = (away / atr_now) if atr_now > 0 else None
@@ -1475,6 +1525,11 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
             ax.axvline(xk, color="gray", linestyle="--", linewidth=0.8, alpha=0.35, zorder=2)
             vlabel(xk, time_target_label(str(k), ts_, fc_, tf, mobile), "#7f8c8d", 0.78, 7)
 
+    cand = candidate_c_extreme(df_plot)
+    if cand:
+        ax.plot([cand["x"]], [cand["y"]], marker="o", markersize=4,
+                color=CAND_C_COLOR, linestyle="none", zorder=6, clip_on=True)
+
     ax.set_xlim(-1.5, x_right + max(2.0, 0.01 * (x_right + 1.0)))
     step = max(1, len(df_plot) // 10)
     ax.set_xticks(x[::step])
@@ -1860,6 +1915,7 @@ elif app_mode == "terminal":
         abc = st.session_state.abc_points
         mode_now = st.session_state.get("entry_mode", "hosoda")
         armed = trigger_plan(df, abc, mode_now, tf_name, is_fx, last_close) if len(abc) == 3 else None
+        cand = candidate_c_extreme(df_plot)
 
         tt_x, tt_text = [], []
         x_view_right = float(len(df_plot) - 1)
@@ -1904,16 +1960,17 @@ elif app_mode == "terminal":
                 name=t("chart_time_targets"), showlegend=False, text=tt_text, hovertemplate="%{text}<extra></extra>",
             ))
 
-        # --- Янтарная точка взведённого уровня: ТОЛЬКО на последнем баре, в истории не остаётся ---
-        if armed and armed.get("ok") and armed["dec"] != "expired":
+        # --- Предварительный экстремум C: маленькая янтарная точка, видна ДО расстановки A-B-C ---
+        if cand:
             fig.add_trace(go.Scatter(
-                x=[len(df_plot) - 1], y=[armed["level"]], mode="markers",
-                marker=dict(size=10, color=ARMED_COLOR, symbol="circle",
-                            line=dict(width=1, color="#7d6634")),
-                name=t("chart_armed"), showlegend=False,
-                text=[t("hover_armed", mode=t("entry_" + mode_now), dec=t("dec_" + armed["dec"]),
-                        lvl=fmt_price(armed["level"]), exp=f"{armed['expire']:%Y-%m-%d %H:%M}")],
-                hovertemplate="%{text}<extra></extra>",
+                x=[cand["x"]], y=[cand["y"]], mode="markers",
+                marker=dict(size=UIP["mark_minor"], color=CAND_C_COLOR),
+                name=t("chart_cand_c"), showlegend=False,
+                customdata=[cand["price"]], text=[f"{cand['t']:%Y-%m-%d %H:%M}"],
+                hovertemplate=(t("hover_cand_c",
+                                 kind=t("cand_high" if cand["kind"] == "high" else "cand_low"),
+                                 bars=cand["bars"])
+                               + f"<br>%{{customdata:{pfmt}}}<br>%{{text}}<extra></extra>"),
             ))
 
         tick_step = max(1, len(df_plot) // UIP["tick_div"])
@@ -1951,6 +2008,8 @@ elif app_mode == "terminal":
             **WIDE,
         )
 
+        if cand:
+            st.caption(t("cand_note", bars=cand["bars"]))
         if MOBILE and len(st.session_state.abc_points) < 3:
             st.caption(t("points_progress", n=len(st.session_state.abc_points)))
         if len(st.session_state.abc_points) == 3 and len(pts) < 3:
@@ -2176,7 +2235,6 @@ elif app_mode == "terminal":
                 st.caption(t("trig_rule_note", lim=f"{ATR_CHASE_LIMIT:.1f}",
                              atr=fmt_dist(plan["atr_now"]), buf=fmt_dist(buf_show)))
 
-            # --- Карточка приказа в Telegram: исполнение только после нажатия трейдером ---
             if send_clicked:
                 sym_clean = mt5_symbol(asset_name)
                 side_txt = "BUY" if side_buy else "SELL"
@@ -2260,6 +2318,8 @@ elif app_mode == "terminal":
                         price = float(row["High"])
                     elif tname in (t("chart_minor_low"), t("chart_major_low")):
                         price = float(row["Low"])
+                    elif tname == t("chart_cand_c"):
+                        price = float(row["High"]) if (cand and cand["kind"] == "high") else float(row["Low"])
                     elif tname == t("chart_price"):
                         y_val = clicked.get("y")
                         if y_val is None or abs(float(y_val) - row["High"]) <= abs(float(y_val) - row["Low"]):
