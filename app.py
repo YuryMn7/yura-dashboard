@@ -1,49 +1,43 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.45. Стиль: institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.46. Стиль: institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 
-ВЬЮПОРТ В СТИЛЕ MT4: вертикаль всегда автоподгонка под видимые свечи (fit_y_range), масштаб
-меняет ТОЛЬКО горизонталь и заякорен на правой кромке. Обе оси fixedrange=True — ни один
-клиентский жест не может сбить вертикальную рамку; режимные кнопки масштаба/пана убраны.
-Навигация — компактный кластер в верхней полосе холста: ↻ ← → − + ⌂ (котировки, сдвиг, масштаб,
-вид по умолчанию). Перетаскивание по холсту = выделение (им ставятся точки A-B-C).
-Кластер вынут из потока абсолютным позиционированием внутри st.container(key="chart_shell") —
-ноль строк в layout. Если данных нет, ↻ рендерится обычным элементом над предупреждением.
+УПРАВЛЕНИЕ ГРАФИКОМ: родная панель Plotly (камера, рамка-зум, панорамирование, Autoscale,
+родной сброс осей). Инструмент по умолчанию — ПАНОРАМИРОВАНИЕ: тянешь график мышью/пальцем,
+одиночный клик по фракталу ставит точку волны. Убраны: рамка-выделение, лассо, +/−, перекрестье.
+Компактный кластер сверху слева: ↻ (котировки), − + (масштаб горизонтали с вертикальной
+подгонкой), ⌂ (наш вид по умолчанию). Кластер — абсолютный оверлей, ноль строк в потоке.
 
-ЛЕГЕНДА-ХАД: фракталы сведены в группы Plotly — minor (малый максимум + малый минимум) и major
-(главный максимум + главный минимум). Одна плашка на группу, groupclick="togglegroup".
-Облако Кумо работает по той же схеме. Имена трейсов не меняются: ховер и детекция клика прежние.
+ВЬЮПОРТ: правая граница включает вынос Облака Кумо (+26 баров) и проекцию Хосоды (+76 от C),
+поэтому продолжение Облака всегда в кадре. Вертикаль — автоподгонка под видимые свечи
+(fit_y_range) при построении и по нашим кнопкам; yaxis.fixedrange=True — родные жесты
+двигают только горизонталь, как в MT4.
+
+ЛЕГЕНДА-ХАД: фракталы в группах minor/major, одна плашка на группу, groupclick="togglegroup".
+Облако Кумо — по той же схеме. Имена трейсов не меняются: ховер и детекция клика прежние.
 
 РАДАР (Real-Time засада у Киджун): тренд/Облако/линии/Чикоу — по закрытому бару (iloc[-2]);
 зона засады — по активной свече (iloc[-1]) с порогом 0.3*ATR. Колонка «Причина» — диагностика.
 ONE-CLICK TELEPORT: выбор строки в таблице Радара -> перенос в Терминал.
 
-ПРЕДВАРИТЕЛЬНАЯ C (Preliminary C): маркер размером с малый фрактал, виден ДО расстановки A-B-C.
-Нисходящий тренд (Тенкан < Киджун) — максимум High последних 3 свечей включая активную;
-восходящий — минимум Low. Отступ 0.2*ATR. Единственный акцентный тон — приглушённый #a88a45.
-Ховер — одна компактная строка, не экранирует область нажатия. Слой гасится в легенде браузером.
-
-ГОРИЗОНТ ПРОЕКЦИИ: +76 баров от точки C (канон Какан). Тот же предел в PNG для Telegram.
+ПРЕДВАРИТЕЛЬНАЯ C: маркер размером с малый фрактал, виден ДО расстановки A-B-C. Нисходящий тренд
+(Тенкан < Киджун) — максимум High последних 3 свечей включая активную; восходящий — минимум Low.
+Отступ 0.2*ATR, тон #a88a45. Ховер — одна компактная строка. Слой гасится в легенде браузером.
 
 ВХОДЫ ПО ПРОБОЮ (trigger_plan): «Хосода: разворот C» — уровень High/Low свечи C, окно 3 свечи;
 «Пробой точки B» — уровень цены B, окно 17 свечей, стоп за ОБЛАКОМ ± 0.2*ATR.
 Подтверждение = ЗАКРЫТИЕ свечи за уровнем. Правило догона: уход <= 1*ATR -> рынок,
 дальше -> ЛИМИТНЫЙ ордер на самый уровень. Нет подтверждения -> наблюдение (watch).
 
-АЛИСА — ZERO-LAG: лаг подтверждения убран и в обучении, и в инференсе (ALICE_LAG = 0).
-Вход = бар C, все признаки причинны (бары <= C). Statistical Edge и светофор — сразу при выборе C.
-
-РИСК ПОД BLUE GUARDIAN: дефолт 0.5 % на сделку, шаг ввода 0.1 %.
-ЛОТ: pip_value_usd, округление ВНИЗ до шага 0.01.
+АЛИСА — ZERO-LAG: ALICE_LAG = 0 в обучении и инференсе, вход = бар C, признаки причинны.
+РИСК: дефолт 0.5 %, шаг 0.1 %. ЛОТ: pip_value_usd, округление ВНИЗ до шага 0.01.
 ШЛЮЗ: карточка /order {JSON} в Telegram с кнопкой подтверждения; финальный лот и комплаенс —
 на стороне советника.
 
-НИЖНЯЯ ПАНЕЛЬ: статус «Выбрано точек: X/3» и ширина окна в барах; на мобильных зафиксирована
-внизу вьюпорта и не перехватывает касания.
+НИЖНЯЯ ПАНЕЛЬ: «Выбрано точек: X/3» и ширина окна в барах; на мобильных фиксирована внизу.
 
 BY DESIGN: точки A-B-C и вьюпорт сбрасываются при смене инструмента, ТФ, серверного времени,
-raw, клиринга, кнопкой «Сбросить точки» и при телепорте. Обновление котировок, смена языка
-и отчёты точки НЕ сбрасывают.
+raw, клиринга, кнопкой «Сбросить точки» и при телепорте.
 
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опц.).
 Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.).
@@ -78,17 +72,16 @@ st.session_state.setdefault("abc_points", [])
 st.session_state.setdefault("chart_ver", 0)
 
 
+def reset_view():
+    st.session_state["view_zoom"] = 1.0
+    st.session_state["view_pan"] = 0.0
+
+
 def reset_points():
     st.session_state.abc_points = []
     st.session_state.chart_ver += 1
     st.session_state.pop("custom_entry", None)
     reset_view()
-
-
-def reset_view():
-    """Вид по умолчанию: полный горизонт, вертикаль по видимым свечам."""
-    st.session_state["view_zoom"] = 1.0
-    st.session_state["view_pan"] = 0.0
 
 
 ASSET_ROUTER = {
@@ -137,7 +130,8 @@ CRYPTO_HTF_OVERRIDE = {"W1": "MN1", "MN1": "MN1", "MN3": "MN1"}
 MIN_LTF_BARS = 110
 MIN_HTF_BARS = 80
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
-TIME_AXIS_FORWARD_BARS = 76      # горизонт проекции: +76 баров от точки C (канон Какан)
+TIME_AXIS_FORWARD_BARS = 76
+CLOUD_FORWARD_BARS = 26          # вынос Облака Кумо вперёд — всегда в кадре
 MN_MONTHS = {"MN1": 1, "MN3": 3, "MN6": 6, "MN24": 24}
 KIJUN_ZONE_ATR = 0.3
 STOP_BUFFER_ATR = 0.2
@@ -159,18 +153,17 @@ CAND_HOVER_FONT = "#E8EDF5"
 MINOR_COLOR = "#95a5a6"
 MAJOR_COLOR = "#2c3e50"
 
-# --- вьюпорт MT4: масштаб только по горизонтали, вертикаль — автоподгонка ---
 VIEW_ZOOM_STEP = 1.35
 VIEW_ZOOM_MAX = 40.0
-VIEW_PAN_STEP = 0.25
 VIEW_Y_PAD = 0.05
 VIEW_MIN_BARS = 6
 GLYPH_REFRESH = "↻"
-GLYPH_LEFT = "←"
-GLYPH_RIGHT = "→"
 GLYPH_OUT = "−"
 GLYPH_IN = "+"
 GLYPH_HOME = "⌂"
+
+# Родная панель Plotly: убираем только то, что отмечено Архитектором.
+MODEBAR_REMOVE = ["select2d", "lasso2d", "zoomIn2d", "zoomOut2d", "toggleSpikelines"]
 
 LANGS = {"English": "en", "Русский": "ru"}
 DEFAULT_LANG = "Русский"
@@ -190,11 +183,9 @@ I18N = {
         "awaiting": "Awaiting {label}...", "clear_points": "Clear Points",
         "refresh": "↻",
         "refresh_help": "Refresh quotes. Wave A-B-C, price and time targets are preserved.",
-        "view_left_help": "Shift the window left. Vertical scale re-fits automatically.",
-        "view_right_help": "Shift the window right toward the latest bar.",
         "view_out_help": "Zoom out horizontally. Vertical scale re-fits to the visible candles.",
-        "view_in_help": "Zoom in horizontally, anchored at the right edge. Vertical scale re-fits.",
-        "view_home_help": "Default view: full horizon and vertical fit. Use it after any shift.",
+        "view_in_help": "Zoom in horizontally from the right edge. Vertical scale re-fits.",
+        "view_home_help": "Our default view: full horizon including the Kumo projection, vertical fit.",
         "scanner_title": "Global Market Scanner",
         "filter_active": "Show active signals only (hide 'Waiting')",
         "run_scan_all": "Scan all timeframes", "processing_tf": "Processing {asset} / {tf}...",
@@ -214,7 +205,7 @@ I18N = {
         "skipped": "Skipped assets ({n})",
         "stale_scan": "These results are from an earlier scan (the timeframe or data settings have changed since). Run the scan again to refresh them.",
         "no_data": "Market data is currently unavailable.", "reason": "Reason: {detail}",
-        "points_outside": "Some A-B-C points are outside the visible window - press the default-view button or Clear Points.",
+        "points_outside": "Some A-B-C points are outside the visible window - press our default-view button or Clear Points.",
         "chart_price": "Price", "chart_kumo": "Kumo Cloud",
         "chart_minor_high": "Minor High", "chart_minor_low": "Minor Low",
         "chart_major_high": "Major High", "chart_major_low": "Major Low",
@@ -227,7 +218,7 @@ I18N = {
         "pts_bar": "Points selected: <b>{n}/3</b>",
         "pts_window": "{bars} bars",
         "pts_hint": "cand. C",
-        "pts_hint_tip": "Preliminary C: extremum of the last 3 bars including the live one, for an early entry. Tap the marker to place a wave point before the fractal forms. Layers toggle in the legend; the top-left cluster zooms horizontally while the vertical scale always fits the visible candles.",
+        "pts_hint_tip": "Preliminary C: extremum of the last 3 bars including the live one. Drag pans the chart, a single tap on a fractal places a wave point. Layers toggle in the legend; − + zoom horizontally with vertical re-fit, ⌂ restores our default view.",
         "risk_title": "Trade parameters (calculated)", "risk_buy": "BUY", "risk_sell": "SELL",
         "entry_mode": "Entry point",
         "entry_hosoda": "Hosoda: C reversal", "entry_break_b": "Point B breakout",
@@ -330,11 +321,9 @@ I18N = {
         "awaiting": "Ожидается {label}...", "clear_points": "Сбросить точки",
         "refresh": "↻",
         "refresh_help": "Обновить котировки. Волна A-B-C, цели по цене и по времени сохраняются.",
-        "view_left_help": "Сдвинуть окно влево. Вертикаль подстроится сама.",
-        "view_right_help": "Сдвинуть окно вправо, к последнему бару.",
         "view_out_help": "Уменьшить масштаб по горизонтали. Вертикаль подстроится под видимые свечи.",
         "view_in_help": "Увеличить масштаб по горизонтали от правой кромки. Вертикаль подстроится сама.",
-        "view_home_help": "Вид по умолчанию: полный горизонт и вертикальная подгонка. Нажимайте после любого сдвига.",
+        "view_home_help": "Наш вид по умолчанию: полный горизонт вместе с выносом Облака и вертикальная подгонка.",
         "scanner_title": "Глобальный сканер рынка",
         "filter_active": "Показывать только активные сигналы (Скрыть 'Ждем')",
         "run_scan_all": "Сканировать все таймфреймы", "processing_tf": "Обработка: {asset} / {tf}...",
@@ -354,7 +343,7 @@ I18N = {
         "skipped": "Пропущенные активы ({n})",
         "stale_scan": "Эти результаты получены в предыдущем сканировании (с тех пор изменились таймфрейм или настройки данных). Запустите сканирование заново, чтобы обновить их.",
         "no_data": "Рыночные данные сейчас недоступны.", "reason": "Причина: {detail}",
-        "points_outside": "Часть точек A-B-C вне видимого окна — нажмите вид по умолчанию или «Сбросить точки».",
+        "points_outside": "Часть точек A-B-C вне видимого окна — нажмите нашу кнопку вида по умолчанию или «Сбросить точки».",
         "chart_price": "Цена", "chart_kumo": "Облако Кумо",
         "chart_minor_high": "Малый максимум", "chart_minor_low": "Малый минимум",
         "chart_major_high": "Главный максимум", "chart_major_low": "Главный минимум",
@@ -367,7 +356,7 @@ I18N = {
         "pts_bar": "Выбрано точек: <b>{n}/3</b>",
         "pts_window": "{bars} баров",
         "pts_hint": "предв. C",
-        "pts_hint_tip": "Предварительная C: экстремум последних 3 баров, включая текущий, для раннего входа. Нажмите маркер, чтобы поставить точку волны до формирования фрактала. Слои гасятся в легенде; кластер сверху слева масштабирует горизонталь, а вертикаль всегда вписывает видимые свечи.",
+        "pts_hint_tip": "Предварительная C: экстремум последних 3 баров, включая текущий. Перетаскивание двигает график, одиночный клик по фракталу ставит точку волны. Слои гасятся в легенде; − + масштабируют горизонталь с вертикальной подгонкой, ⌂ возвращает наш вид по умолчанию.",
         "risk_title": "Параметры сделки (расчет)", "risk_buy": "ПОКУПКА", "risk_sell": "ПРОДАЖА",
         "entry_mode": "Точка входа",
         "entry_hosoda": "Хосода: разворот C", "entry_break_b": "Пробой точки B",
@@ -470,7 +459,6 @@ def t(key, **kw):
 
 
 def cand_trace_name():
-    """Единый токен слоя Preliminary C: регистрация трейса и детекция клика."""
     return t("chart_cand_c")
 
 
@@ -559,7 +547,6 @@ def _fx_last(sym_yf):
 
 
 def pip_value_usd(asset_key, current_price, psize):
-    """Стоимость 1 пункта/пипса в USD на 1 стандартный лот."""
     route = ASSET_ROUTER.get(asset_key)
     sym = route["sym"] if route else asset_key
     if "BTC" in sym:
@@ -603,7 +590,6 @@ def risk_card_html(head, rows, accent):
 
 
 def points_bar_html(n, bars):
-    """Статус выбора точек + ширина окна; на мобильных фиксируется внизу вьюпорта."""
     return ("<div class='pts-bar'>"
             f"<span class='pts-n'>{t('pts_bar', n=int(n))}</span>"
             f"<span class='pts-win'>{t('pts_window', bars=int(bars))}</span>"
@@ -612,7 +598,7 @@ def points_bar_html(n, bars):
 
 
 def fit_y_range(df_plot, left, right):
-    """Вертикальная рамка строго по видимым свечам — как автоскейл в MT4."""
+    """Вертикальная рамка строго по видимым свечам."""
     n = len(df_plot)
     if n == 0:
         return [0.0, 1.0]
@@ -632,23 +618,21 @@ def fit_y_range(df_plot, left, right):
 
 
 def view_action(kind):
-    """Масштаб только по горизонтали (якорь — правая кромка), сдвиг и вид по умолчанию."""
+    """Масштаб горизонтали (якорь — правая кромка) и наш вид по умолчанию."""
     vz = float(st.session_state.get("view_zoom", 1.0))
-    vp = float(st.session_state.get("view_pan", 0.0))
     full = float(st.session_state.get("_view_full", 1.0))
     if kind == "home":
-        vz, vp = 1.0, 0.0
+        vz = 1.0
     elif kind == "in":
         vz = min(vz * VIEW_ZOOM_STEP, VIEW_ZOOM_MAX)
-    elif kind == "out":
-        vz = max(vz / VIEW_ZOOM_STEP, 1.0)
     else:
-        step = (full / vz) * VIEW_PAN_STEP
-        vp = vp + step if kind == "left" else vp - step
+        vz = max(vz / VIEW_ZOOM_STEP, 1.0)
     vz = min(max(vz, 1.0), VIEW_ZOOM_MAX)
-    vp = max(0.0, min(vp, max(0.0, full - full / vz)))
+    if full > 0 and full / vz < VIEW_MIN_BARS:
+        vz = max(1.0, full / VIEW_MIN_BARS)
     st.session_state["view_zoom"] = vz
-    st.session_state["view_pan"] = vp
+    st.session_state["view_pan"] = 0.0
+    st.session_state.chart_ver += 1     # сброс клиентского выделения/сдвига
     st.rerun()
 
 
@@ -676,16 +660,15 @@ def chart_ui(mobile):
                     tick_font=dict(size=9), y_font=dict(size=9),
                     legend=dict(orientation="h", yanchor="top", y=-0.20, xanchor="center", x=0.5,
                                 font=dict(size=8), groupclick="togglegroup"),
-                    ann_font=8, vlabel_font=8, mark_minor=4, mark_major=8, wave_mark=7, tool_w=28)
+                    ann_font=8, vlabel_font=8, mark_minor=4, mark_major=8, wave_mark=7)
     return dict(height=750, margin=dict(l=20, r=110, t=40, b=120), tick_div=10, tick_angle=45,
                 tick_font=None, y_font=None,
                 legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5,
                             groupclick="togglegroup"),
-                ann_font=10, vlabel_font=9, mark_minor=5, mark_major=10, wave_mark=8, tool_w=30)
+                ann_font=10, vlabel_font=9, mark_minor=5, mark_major=10, wave_mark=8)
 
 
 def candidate_c_extreme(df_plot, bars=CAND_C_BARS):
-    """Preliminary C: экстремум до формирования фрактала (живой маркер)."""
     n = len(df_plot)
     if n < 2:
         return None
@@ -756,7 +739,6 @@ def inject_css(mobile):
         "background: #e3e9ee; border-color: #2c3e50; }\n"
         ".st-key-refresh_term button:focus-visible, .st-key-chart_tools button:focus-visible { "
         "outline: 1px solid #2c3e50; outline-offset: 1px; }\n"
-        # Кластер вьюпорта: абсолютный оверлей в верхней полосе холста, ноль строк в потоке.
         ".st-key-chart_tools { position: absolute; top: 6px; left: 4px; z-index: 7; "
         "display: flex !important; flex-direction: row !important; align-items: center; "
         "gap: 2px !important; width: auto !important; height: 28px; "
@@ -1148,7 +1130,6 @@ def hosoda_targets(a, b, c):
 
 
 def trigger_plan(df, abc, mode, tf, is_fx, last_close):
-    """Единый план входа по пробою: уровень, окно, стоп и решение рынок/лимит/наблюдение."""
     if mode not in TRIG_WATCH_BARS or len(abc) != 3 or len(df) < 3:
         return None
     rA, rB, rC = abc
@@ -1636,8 +1617,8 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     ax.plot(x, df_plot["kijun"].to_numpy(dtype=float), color="#e74c3c", linewidth=1.6, zorder=5)
     ax.plot(x, df_plot["chikou"].to_numpy(dtype=float), color="#1e8449", linewidth=1.0, zorder=5)
     sa, sb = df_plot["raw_senkou_a"].to_numpy(dtype=float), df_plot["raw_senkou_b"].to_numpy(dtype=float)
-    ax.fill_between(x + 26, sa, sb, where=sa >= sb, color="#2ecc71", alpha=0.25, linewidth=0, zorder=1)
-    ax.fill_between(x + 26, sa, sb, where=sa < sb, color="#e74c3c", alpha=0.20, linewidth=0, zorder=1)
+    ax.fill_between(x + CLOUD_FORWARD_BARS, sa, sb, where=sa >= sb, color="#2ecc71", alpha=0.25, linewidth=0, zorder=1)
+    ax.fill_between(x + CLOUD_FORWARD_BARS, sa, sb, where=sa < sb, color="#e74c3c", alpha=0.20, linewidth=0, zorder=1)
     if pts:
         ax.plot([p_["x"] for p_ in pts], [p_["y"] for p_ in pts], color="#f39c12", marker="o", markersize=5, linewidth=1.6, zorder=6)
         for letter, p_ in zip("ABC", pts):
@@ -1647,7 +1628,7 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
         ax.axhline(val, color=colors.get(name, "gray"), linestyle="--", linewidth=1.0, zorder=2)
         ax.text(1.0, val, f" {name} {fmt_price(val)}", transform=ax.get_yaxis_transform(), va="center", fontsize=9, color=colors.get(name, "gray"))
 
-    x_right = float(len(df_plot) - 1)
+    x_right = float(len(df_plot) - 1 + CLOUD_FORWARD_BARS)
     if len(pts) == 3:
         A_, B_, C_ = pts
         cx = float(C_["x"])
@@ -1680,9 +1661,8 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
         ax.plot([cand_["x"]], [cand_["y"]], marker="o", markersize=4,
                 color=CAND_C_COLOR, linestyle="none", zorder=6, clip_on=True)
 
-    # Снапшот повторяет экранный вьюпорт: тот же горизонт и та же вертикальная подгонка.
     v_left = float(st.session_state.get("_view_left", -1.5))
-    v_right = float(st.session_state.get("_view_right", x_right + max(2.0, 0.01 * (x_right + 1.0))))
+    v_right = float(st.session_state.get("_view_right", x_right + 1.5))
     ax.set_xlim(v_left, v_right)
     ax.set_ylim(*fit_y_range(df_plot, v_left, v_right))
     step = max(1, len(df_plot) // 10)
@@ -1729,7 +1709,6 @@ def send_telegram(token, chat_id, text, png):
 
 
 def refresh_button(key):
-    """Компактная иконка ↻: чистит только кэш котировок, точки и цели сохраняет."""
     if st.button(t("refresh"), key=key, help=t("refresh_help")):
         fetch_smart_data.clear()
         fetch_yahoo.clear()
@@ -2054,7 +2033,7 @@ elif app_mode == "terminal":
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["kijun"], line=dict(color="#e74c3c", width=2), name="Kijun-sen"))
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["chikou"], line=dict(color="#1e8449", width=1.2), name="Chikou Span"))
 
-        x_cloud = np.arange(len(df_plot)) + 26
+        x_cloud = np.arange(len(df_plot)) + CLOUD_FORWARD_BARS
         sa, sb = df_plot["raw_senkou_a"].to_numpy(dtype=float), df_plot["raw_senkou_b"].to_numpy(dtype=float)
         fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", fill="toself", fillcolor="rgba(128,128,128,0.3)", line=dict(width=0), name=t("chart_kumo"), legendgroup="cloud", showlegend=True, hoverinfo="skip"))
 
@@ -2086,7 +2065,8 @@ elif app_mode == "terminal":
         cand = candidate_c_extreme(df_plot)
 
         tt_x, tt_text = [], []
-        x_view_right = float(len(df_plot) - 1)
+        # Правая граница ВСЕГДА включает вынос Облака (+26), а при трёх точках — и проекцию +76.
+        x_view_right = float(len(df_plot) - 1 + CLOUD_FORWARD_BARS)
         if len(pts) == 3:
             A, B, C = pts
             tg = hosoda_targets(A["y"], B["y"], C["y"])
@@ -2096,7 +2076,7 @@ elif app_mode == "terminal":
                 fig.add_hline(y=val, line_dash="dash", line_color=colors[name], annotation_text=f"{name} {fmt_price(val)}", annotation_position="right", annotation_font_size=UIP["ann_font"], annotation_font_color=colors[name])
             time_ab, time_ac = abs(B["x"] - A["x"]), abs(C["x"] - A["x"])
             clock = _forecast_clock(df_plot, tf_name, is_fx)
-            x_view_right = float(max(len(df_plot) - 1, C["x"] + TIME_AXIS_FORWARD_BARS))
+            x_view_right = float(max(x_view_right, C["x"] + TIME_AXIS_FORWARD_BARS))
 
             def vlabel(x, text, color, y):
                 fig.add_annotation(
@@ -2139,22 +2119,20 @@ elif app_mode == "terminal":
                                 font=dict(size=11, color=CAND_HOVER_FONT), namelength=0),
             ))
 
-        # --- Вьюпорт MT4: горизонталь из состояния, вертикаль — по видимым свечам ---
         if st.session_state.get("_view_abc") != len(abc):
             st.session_state["_view_abc"] = len(abc)
             reset_view()
         max_right = x_view_right + 1.5
         min_left = -0.5
-        full_span = max(0.0, max_right - min_left)
+        full_span = max(1.0, max_right - min_left)
         vz = min(max(float(st.session_state.get("view_zoom", 1.0)), 1.0), VIEW_ZOOM_MAX)
         if full_span / vz < VIEW_MIN_BARS:
             vz = max(1.0, full_span / VIEW_MIN_BARS)
         span = full_span / vz
-        vp = max(0.0, min(float(st.session_state.get("view_pan", 0.0)), max(0.0, full_span - span)))
-        v_right = max_right - vp
+        v_right = max_right
         v_left = v_right - span
         st.session_state["view_zoom"] = vz
-        st.session_state["view_pan"] = vp
+        st.session_state["view_pan"] = 0.0
         st.session_state["_view_full"] = full_span
         st.session_state["_view_left"] = v_left
         st.session_state["_view_right"] = v_right
@@ -2163,11 +2141,12 @@ elif app_mode == "terminal":
 
         tick_step = max(1, len(df_plot) // UIP["tick_div"])
         time_fmt = axis_time_fmt(tf_name) if MOBILE else "%Y-%m-%d %H:%M"
+        # Вертикаль фиксирована для жестов (MT4), горизонталь свободна для родного пана/зума.
         yaxis = dict(side="right", tickformat=tick_fmt(last_close), showgrid=True, gridcolor="#f0f0f0",
                      range=y_fit, autorange=False, fixedrange=True)
         xaxis = dict(tickmode="array", tickvals=df_plot["x_idx"].to_numpy()[::tick_step],
                      ticktext=df_plot.index.strftime(time_fmt)[::tick_step], showgrid=True, gridcolor="#f0f0f0",
-                     tickangle=UIP["tick_angle"], range=[v_left, v_right], autorange=False, fixedrange=True)
+                     tickangle=UIP["tick_angle"], range=[v_left, v_right], autorange=False, fixedrange=False)
         if UIP["y_font"]:
             yaxis["tickfont"] = UIP["y_font"]
         if UIP["tick_font"]:
@@ -2178,7 +2157,7 @@ elif app_mode == "terminal":
             plot_bgcolor="#ffffff", paper_bgcolor="#ffffff",
             margin=UIP["margin"],
             yaxis=yaxis, xaxis=xaxis,
-            hovermode="closest", clickmode="event+select", dragmode="select",
+            hovermode="closest", clickmode="event+select", dragmode="pan",
             font=dict(color="#2c3e50"),
             legend=UIP["legend"],
             modebar=dict(bgcolor="rgba(255,255,255,0.9)", color="#2c3e50", activecolor="#e74c3c"),
@@ -2187,10 +2166,6 @@ elif app_mode == "terminal":
         with st.container(key="chart_shell"):
             with st.container(key="chart_tools"):
                 refresh_button("refresh_term")
-                if st.button(GLYPH_LEFT, key="view_left", help=t("view_left_help")):
-                    view_action("left")
-                if st.button(GLYPH_RIGHT, key="view_right", help=t("view_right_help")):
-                    view_action("right")
                 if st.button(GLYPH_OUT, key="view_out", help=t("view_out_help")):
                     view_action("out")
                 if st.button(GLYPH_IN, key="view_in", help=t("view_in_help")):
@@ -2203,9 +2178,8 @@ elif app_mode == "terminal":
                 on_select="rerun",
                 selection_mode=("points", "box", "lasso"),
                 config={"scrollZoom": False, "displayModeBar": True, "displaylogo": False,
-                        "modeBarButtonsToAdd": ["toggleSpikelines"],
-                        "modeBarButtonsToRemove": ["zoom2d", "pan2d", "zoomIn2d", "zoomOut2d",
-                                                   "autoScale2d", "resetScale2d", "select2d"]},
+                        "modeBarButtonsToAdd": [],
+                        "modeBarButtonsToRemove": MODEBAR_REMOVE},
                 theme=None,
                 **WIDE,
             )
