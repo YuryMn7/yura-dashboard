@@ -1,17 +1,19 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.46. Стиль: institutional minimalist, zero-clutter, zero-emoji на холсте.
-Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
+SPEC v1.47. Стиль: institutional minimalist, zero-clutter, zero-emoji на холсте.
 
-УПРАВЛЕНИЕ ГРАФИКОМ: родная панель Plotly (камера, рамка-зум, панорамирование, Autoscale,
-родной сброс осей). Инструмент по умолчанию — ПАНОРАМИРОВАНИЕ: тянешь график мышью/пальцем,
-одиночный клик по фракталу ставит точку волны. Убраны: рамка-выделение, лассо, +/−, перекрестье.
-Компактный кластер сверху слева: ↻ (котировки), − + (масштаб горизонтали с вертикальной
-подгонкой), ⌂ (наш вид по умолчанию). Кластер — абсолютный оверлей, ноль строк в потоке.
+ЕДИНАЯ ПАНЕЛЬ ИНСТРУМЕНТОВ: наш кластер (↻ − + ⌂) и родная панель Plotly сведены в ОДНУ строку
+на верхней полосе холста, все чипы одной геометрии 30×28 (28×28 на мобильном), одинаковые рамка,
+фон, радиус и ховер. Инструмент по умолчанию — панорамирование: тянешь график, одиночный клик
+по фракталу ставит точку волны. Убраны: рамка-выделение, лассо, родные +/−, перекрестье.
 
-ВЬЮПОРТ: правая граница включает вынос Облака Кумо (+26 баров) и проекцию Хосоды (+76 от C),
-поэтому продолжение Облака всегда в кадре. Вертикаль — автоподгонка под видимые свечи
-(fit_y_range) при построении и по нашим кнопкам; yaxis.fixedrange=True — родные жесты
-двигают только горизонталь, как в MT4.
+ЗУМ НЕ СБРАСЫВАЕТСЯ: диапазоны осей пишутся в layout ТОЛЬКО когда вид меняется осознанно
+(кнопки −/+/⌂, сброс точек, открытие горизонта +76 при третьей точке). При тапе по фракталу
+диапазоны не передаются вовсе — Plotly.react сохраняет клиентский зум и пан пользователя.
+yaxis.fixedrange=True — родные жесты двигают только горизонталь, как в MT4; вертикаль
+подгоняется нашими кнопками (fit_y_range по видимым свечам).
+
+ГОРИЗОНТ: правая граница всегда включает вынос Облака Кумо (+26 баров), при трёх точках —
+проекцию Хосоды (+76 от C). Продолжение Облака всегда в кадре.
 
 ЛЕГЕНДА-ХАД: фракталы в группах minor/major, одна плашка на группу, groupclick="togglegroup".
 Облако Кумо — по той же схеме. Имена трейсов не меняются: ховер и детекция клика прежние.
@@ -36,7 +38,7 @@ ONE-CLICK TELEPORT: выбор строки в таблице Радара -> п
 
 НИЖНЯЯ ПАНЕЛЬ: «Выбрано точек: X/3» и ширина окна в барах; на мобильных фиксирована внизу.
 
-BY DESIGN: точки A-B-C и вьюпорт сбрасываются при смене инструмента, ТФ, серверного времени,
+BY DESIGN: точки A-B-C и вид сбрасываются при смене инструмента, ТФ, серверного времени,
 raw, клиринга, кнопкой «Сбросить точки» и при телепорте.
 
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опц.).
@@ -73,8 +75,9 @@ st.session_state.setdefault("chart_ver", 0)
 
 
 def reset_view():
+    """Вид по умолчанию: полный горизонт + вертикальная подгонка (применится один раз)."""
     st.session_state["view_zoom"] = 1.0
-    st.session_state["view_pan"] = 0.0
+    st.session_state["_view_apply"] = True
 
 
 def reset_points():
@@ -131,7 +134,7 @@ MIN_LTF_BARS = 110
 MIN_HTF_BARS = 80
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
 TIME_AXIS_FORWARD_BARS = 76
-CLOUD_FORWARD_BARS = 26          # вынос Облака Кумо вперёд — всегда в кадре
+CLOUD_FORWARD_BARS = 26
 MN_MONTHS = {"MN1": 1, "MN3": 3, "MN6": 6, "MN24": 24}
 KIJUN_ZONE_ATR = 0.3
 STOP_BUFFER_ATR = 0.2
@@ -152,6 +155,11 @@ CAND_HOVER_BORDER = ACCENT_MUTED
 CAND_HOVER_FONT = "#E8EDF5"
 MINOR_COLOR = "#95a5a6"
 MAJOR_COLOR = "#2c3e50"
+CHIP_BORDER = "#dfe4ea"
+CHIP_BG = "rgba(255,255,255,0.92)"
+CHIP_HOVER = "#eef2f5"
+INK = "#2c3e50"
+ACTIVE_INK = "#e74c3c"
 
 VIEW_ZOOM_STEP = 1.35
 VIEW_ZOOM_MAX = 40.0
@@ -162,7 +170,6 @@ GLYPH_OUT = "−"
 GLYPH_IN = "+"
 GLYPH_HOME = "⌂"
 
-# Родная панель Plotly: убираем только то, что отмечено Архитектором.
 MODEBAR_REMOVE = ["select2d", "lasso2d", "zoomIn2d", "zoomOut2d", "toggleSpikelines"]
 
 LANGS = {"English": "en", "Русский": "ru"}
@@ -185,7 +192,7 @@ I18N = {
         "refresh_help": "Refresh quotes. Wave A-B-C, price and time targets are preserved.",
         "view_out_help": "Zoom out horizontally. Vertical scale re-fits to the visible candles.",
         "view_in_help": "Zoom in horizontally from the right edge. Vertical scale re-fits.",
-        "view_home_help": "Our default view: full horizon including the Kumo projection, vertical fit.",
+        "view_home_help": "Default view: full horizon including the Kumo projection, vertical fit.",
         "scanner_title": "Global Market Scanner",
         "filter_active": "Show active signals only (hide 'Waiting')",
         "run_scan_all": "Scan all timeframes", "processing_tf": "Processing {asset} / {tf}...",
@@ -205,7 +212,7 @@ I18N = {
         "skipped": "Skipped assets ({n})",
         "stale_scan": "These results are from an earlier scan (the timeframe or data settings have changed since). Run the scan again to refresh them.",
         "no_data": "Market data is currently unavailable.", "reason": "Reason: {detail}",
-        "points_outside": "Some A-B-C points are outside the visible window - press our default-view button or Clear Points.",
+        "points_outside": "Some A-B-C points are outside the visible window - press the default-view button or Clear Points.",
         "chart_price": "Price", "chart_kumo": "Kumo Cloud",
         "chart_minor_high": "Minor High", "chart_minor_low": "Minor Low",
         "chart_major_high": "Major High", "chart_major_low": "Major Low",
@@ -218,7 +225,7 @@ I18N = {
         "pts_bar": "Points selected: <b>{n}/3</b>",
         "pts_window": "{bars} bars",
         "pts_hint": "cand. C",
-        "pts_hint_tip": "Preliminary C: extremum of the last 3 bars including the live one. Drag pans the chart, a single tap on a fractal places a wave point. Layers toggle in the legend; − + zoom horizontally with vertical re-fit, ⌂ restores our default view.",
+        "pts_hint_tip": "Preliminary C: extremum of the last 3 bars including the live one. Drag pans the chart, a single tap on a fractal places a wave point and keeps your zoom. Layers toggle in the legend; − + zoom horizontally with vertical re-fit, ⌂ restores the default view.",
         "risk_title": "Trade parameters (calculated)", "risk_buy": "BUY", "risk_sell": "SELL",
         "entry_mode": "Entry point",
         "entry_hosoda": "Hosoda: C reversal", "entry_break_b": "Point B breakout",
@@ -323,7 +330,7 @@ I18N = {
         "refresh_help": "Обновить котировки. Волна A-B-C, цели по цене и по времени сохраняются.",
         "view_out_help": "Уменьшить масштаб по горизонтали. Вертикаль подстроится под видимые свечи.",
         "view_in_help": "Увеличить масштаб по горизонтали от правой кромки. Вертикаль подстроится сама.",
-        "view_home_help": "Наш вид по умолчанию: полный горизонт вместе с выносом Облака и вертикальная подгонка.",
+        "view_home_help": "Вид по умолчанию: полный горизонт вместе с выносом Облака и вертикальная подгонка.",
         "scanner_title": "Глобальный сканер рынка",
         "filter_active": "Показывать только активные сигналы (Скрыть 'Ждем')",
         "run_scan_all": "Сканировать все таймфреймы", "processing_tf": "Обработка: {asset} / {tf}...",
@@ -343,7 +350,7 @@ I18N = {
         "skipped": "Пропущенные активы ({n})",
         "stale_scan": "Эти результаты получены в предыдущем сканировании (с тех пор изменились таймфрейм или настройки данных). Запустите сканирование заново, чтобы обновить их.",
         "no_data": "Рыночные данные сейчас недоступны.", "reason": "Причина: {detail}",
-        "points_outside": "Часть точек A-B-C вне видимого окна — нажмите нашу кнопку вида по умолчанию или «Сбросить точки».",
+        "points_outside": "Часть точек A-B-C вне видимого окна — нажмите вид по умолчанию или «Сбросить точки».",
         "chart_price": "Цена", "chart_kumo": "Облако Кумо",
         "chart_minor_high": "Малый максимум", "chart_minor_low": "Малый минимум",
         "chart_major_high": "Главный максимум", "chart_major_low": "Главный минимум",
@@ -356,7 +363,7 @@ I18N = {
         "pts_bar": "Выбрано точек: <b>{n}/3</b>",
         "pts_window": "{bars} баров",
         "pts_hint": "предв. C",
-        "pts_hint_tip": "Предварительная C: экстремум последних 3 баров, включая текущий. Перетаскивание двигает график, одиночный клик по фракталу ставит точку волны. Слои гасятся в легенде; − + масштабируют горизонталь с вертикальной подгонкой, ⌂ возвращает наш вид по умолчанию.",
+        "pts_hint_tip": "Предварительная C: экстремум последних 3 баров, включая текущий. Перетаскивание двигает график, одиночный тап по фракталу ставит точку волны и сохраняет ваш масштаб. Слои гасятся в легенде; − + масштабируют горизонталь с вертикальной подгонкой, ⌂ возвращает вид по умолчанию.",
         "risk_title": "Параметры сделки (расчет)", "risk_buy": "ПОКУПКА", "risk_sell": "ПРОДАЖА",
         "entry_mode": "Точка входа",
         "entry_hosoda": "Хосода: разворот C", "entry_break_b": "Пробой точки B",
@@ -598,7 +605,6 @@ def points_bar_html(n, bars):
 
 
 def fit_y_range(df_plot, left, right):
-    """Вертикальная рамка строго по видимым свечам."""
     n = len(df_plot)
     if n == 0:
         return [0.0, 1.0]
@@ -618,7 +624,7 @@ def fit_y_range(df_plot, left, right):
 
 
 def view_action(kind):
-    """Масштаб горизонтали (якорь — правая кромка) и наш вид по умолчанию."""
+    """Осознанная смена вида: только здесь диапазоны уходят в layout."""
     vz = float(st.session_state.get("view_zoom", 1.0))
     full = float(st.session_state.get("_view_full", 1.0))
     if kind == "home":
@@ -631,8 +637,7 @@ def view_action(kind):
     if full > 0 and full / vz < VIEW_MIN_BARS:
         vz = max(1.0, full / VIEW_MIN_BARS)
     st.session_state["view_zoom"] = vz
-    st.session_state["view_pan"] = 0.0
-    st.session_state.chart_ver += 1     # сброс клиентского выделения/сдвига
+    st.session_state["_view_apply"] = True
     st.rerun()
 
 
@@ -656,7 +661,7 @@ def detect_mobile_ua():
 
 def chart_ui(mobile):
     if mobile:
-        return dict(height=560, margin=dict(l=8, r=58, t=48, b=64), tick_div=5, tick_angle=0,
+        return dict(height=560, margin=dict(l=8, r=58, t=44, b=64), tick_div=5, tick_angle=0,
                     tick_font=dict(size=9), y_font=dict(size=9),
                     legend=dict(orientation="h", yanchor="top", y=-0.20, xanchor="center", x=0.5,
                                 font=dict(size=8), groupclick="togglegroup"),
@@ -705,52 +710,80 @@ def candidate_c_extreme(df_plot, bars=CAND_C_BARS):
 
 
 def inject_css(mobile):
-    tw = 28 if mobile else 30
+    cw = 28 if mobile else 30      # ширина чипа
+    ch = 28                        # высота чипа — единая для обеих панелей
+    icon = 13 if mobile else 14
     mobile_rules = (
         ".block-container { padding-top: 3.2rem !important; padding-left: 0.6rem !important; "
         "padding-right: 0.6rem !important; padding-bottom: 3.4rem !important; }\n"
         "h1, h2, h3 { margin-top: 0.2rem !important; line-height: 1.25 !important; overflow-wrap: anywhere; }\n"
         "h2 { font-size: clamp(1.05rem, 4.5vw, 1.75rem) !important; }\n"
-        ".modebar-btn { padding: 3px 5px !important; }\n"
         ".risk-tb td { font-size: 0.8rem; }\n"
         ".lot-line { font-size: 0.88rem; }\n"
         ".pts-bar { position: fixed; left: 0.6rem; right: 0.6rem; bottom: 0.4rem; z-index: 60; "
         "background: rgba(251,252,253,0.97); box-shadow: 0 -1px 6px rgba(44,62,80,0.10); "
         "pointer-events: none; }\n"
-        ".st-key-chart_tools { top: 5px; left: 2px; }\n"
         '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
     )
-    tool_css = (
+    # ЕДИНАЯ ПАНЕЛЬ: наш кластер и modebar Plotly — одна строка, одна геометрия чипов.
+    unified = (
         ".st-key-chart_shell { position: relative; }\n"
-        ".st-key-refresh_term { display: flex; justify-content: flex-end; margin: 0 0 0.25rem 0; }\n"
-        ".st-key-refresh_term button, .st-key-chart_tools button { "
-        f"height: 28px; width: {tw}px; min-height: 0 !important; min-width: 0 !important; "
-        "display: inline-flex; align-items: center; justify-content: center; "
-        "padding: 0 !important; margin: 0; border: 1px solid #dfe4ea; border-radius: 2px; "
-        "background: rgba(255,255,255,0.92); color: #2c3e50; box-shadow: none; "
-        "transition: background-color .15s ease, border-color .15s ease; }\n"
-        ".st-key-refresh_term button p, .st-key-refresh_term button span, "
-        ".st-key-chart_tools button p, .st-key-chart_tools button span { "
-        "font-size: 14px !important; line-height: 1 !important; margin: 0 !important; color: #2c3e50; "
-        'font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif; }\n'
-        ".st-key-refresh_term button:hover, .st-key-chart_tools button:hover { "
-        "background: #eef2f5; border-color: #2c3e50; color: #2c3e50; }\n"
-        ".st-key-refresh_term button:active, .st-key-chart_tools button:active { "
-        "background: #e3e9ee; border-color: #2c3e50; }\n"
-        ".st-key-refresh_term button:focus-visible, .st-key-chart_tools button:focus-visible { "
-        "outline: 1px solid #2c3e50; outline-offset: 1px; }\n"
-        ".st-key-chart_tools { position: absolute; top: 6px; left: 4px; z-index: 7; "
+        ".st-key-chart_tools { position: absolute; top: 0; left: 0; z-index: 8; "
         "display: flex !important; flex-direction: row !important; align-items: center; "
-        "gap: 2px !important; width: auto !important; height: 28px; "
+        f"gap: 2px !important; height: {ch}px; width: auto !important; "
         "margin: 0 !important; padding: 0 !important; pointer-events: none; }\n"
         f".st-key-chart_tools > div, .st-key-chart_tools [data-testid='stElementContainer'] {{ "
-        f"flex: 0 0 {tw}px; width: {tw}px; min-width: 0 !important; "
+        f"flex: 0 0 {cw}px; width: {cw}px; min-width: 0 !important; height: {ch}px; "
         "margin: 0 !important; padding: 0 !important; pointer-events: auto; }\n"
+        f".st-key-chart_tools button, .st-key-refresh_term button {{ "
+        f"width: {cw}px; height: {ch}px; min-height: 0 !important; min-width: 0 !important; "
+        "display: inline-flex; align-items: center; justify-content: center; "
+        f"padding: 0 !important; margin: 0; border: 1px solid {CHIP_BORDER}; border-radius: 2px; "
+        f"background: {CHIP_BG}; color: {INK}; box-shadow: none; box-sizing: border-box; "
+        "transition: background-color .15s ease, border-color .15s ease; }\n"
+        ".st-key-chart_tools button p, .st-key-chart_tools button span, "
+        ".st-key-refresh_term button p, .st-key-refresh_term button span { "
+        f"font-size: {icon}px !important; line-height: 1 !important; margin: 0 !important; color: {INK}; "
+        'font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif; }\n'
+        f".st-key-chart_tools button:hover, .st-key-refresh_term button:hover {{ "
+        f"background: {CHIP_HOVER}; border-color: {INK}; color: {INK}; }}\n"
+        ".st-key-chart_tools button:active, .st-key-refresh_term button:active { "
+        f"background: #e3e9ee; border-color: {INK}; }}\n"
+        f".st-key-chart_tools button:focus-visible, .st-key-refresh_term button:focus-visible {{ "
+        f"outline: 1px solid {INK}; outline-offset: 1px; }}\n"
+        ".st-key-refresh_term { display: flex; justify-content: flex-end; margin: 0 0 0.25rem 0; }\n"
+        # --- modebar Plotly в ту же строку и в те же чипы ---
+        ".st-key-chart_shell .modebar-container { top: 0 !important; }\n"
+        ".st-key-chart_shell .modebar { top: 0 !important; display: flex !important; "
+        "align-items: center; gap: 4px !important; background: transparent !important; "
+        f"height: {ch}px; }}\n"
+        ".st-key-chart_shell .modebar-group { float: none !important; display: flex !important; "
+        "align-items: center; gap: 2px; padding: 0 !important; margin: 0 !important; }\n"
+        f".st-key-chart_shell .modebar-btn {{ width: {cw}px; height: {ch}px; padding: 0 !important; "
+        "margin: 0 !important; display: inline-flex !important; align-items: center; "
+        f"justify-content: center; border: 1px solid {CHIP_BORDER}; border-radius: 2px; "
+        f"background: {CHIP_BG}; box-sizing: border-box; "
+        "transition: background-color .15s ease, border-color .15s ease; }\n"
+        f".st-key-chart_shell .modebar-btn svg {{ width: {icon}px; height: {icon}px; "
+        "position: static !important; top: auto !important; }\n"
+        f".st-key-chart_shell .modebar-btn path {{ fill: {INK} !important; }}\n"
+        f".st-key-chart_shell .modebar-btn:hover {{ background: {CHIP_HOVER}; border-color: {INK}; }}\n"
+        f".st-key-chart_shell .modebar-btn:hover path, .st-key-chart_shell .modebar-btn.active path {{ "
+        f"fill: {ACTIVE_INK} !important; }}\n"
+        f".st-key-chart_shell .modebar-btn.active {{ border-color: {ACTIVE_INK}; }}\n"
+        # --- тулбар Streamlit (fullscreen) — в ту же строку ---
+        f".st-key-chart_shell [data-testid='stElementToolbar'] {{ top: 0 !important; }}\n"
+        f".st-key-chart_shell [data-testid='stElementToolbar'] button {{ "
+        f"width: {cw}px; height: {ch}px; min-height: 0 !important; padding: 0 !important; "
+        f"border: 1px solid {CHIP_BORDER}; border-radius: 2px; background: {CHIP_BG}; "
+        "display: inline-flex; align-items: center; justify-content: center; }\n"
+        f".st-key-chart_shell [data-testid='stElementToolbar'] svg {{ width: {icon}px; height: {icon}px; "
+        f"color: {INK}; }}\n"
     )
     status_css = (
         ".pts-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; "
-        "border: 1px solid #dfe4ea; background: #fbfcfd; border-radius: 2px; padding: 4px 10px; "
-        "font-size: 0.8rem; color: #2c3e50; margin: 2px 0 4px 0; }\n"
+        f"border: 1px solid {CHIP_BORDER}; background: #fbfcfd; border-radius: 2px; padding: 4px 10px; "
+        f"font-size: 0.8rem; color: {INK}; margin: 2px 0 4px 0; }}\n"
         ".pts-bar b { font-variant-numeric: tabular-nums; }\n"
         ".pts-win { color: #7f8c8d; font-variant-numeric: tabular-nums; white-space: nowrap; }\n"
         f".pts-hint {{ color: {ACCENT_MUTED}; white-space: nowrap; cursor: help; }}\n"
@@ -758,7 +791,7 @@ def inject_css(mobile):
     teleport_css = (
         ".st-key-teleport_btn { margin: 0.4rem 0 0.2rem 0; }\n"
         ".st-key-teleport_btn button { width: 100%; min-height: 44px; padding: 0.5rem 1rem !important; "
-        "background: #2c3e50; color: #ffffff; border: 1px solid #2c3e50; border-radius: 2px; "
+        f"background: {INK}; color: #ffffff; border: 1px solid {INK}; border-radius: 2px; "
         "font-weight: 600; letter-spacing: 0.01em; box-shadow: none; "
         "transition: background-color .15s ease, border-color .15s ease; }\n"
         ".st-key-teleport_btn button p, .st-key-teleport_btn button span { "
@@ -770,7 +803,7 @@ def inject_css(mobile):
     exec_css = (
         ".st-key-mt5_send_order { margin: 0.4rem 0 0.2rem 0; }\n"
         ".st-key-mt5_send_order button { width: 100%; min-height: 44px; padding: 0.5rem 1rem !important; "
-        "background: #2c3e50; color: #ffffff; border: 1px solid #1b2a38; border-radius: 2px; "
+        f"background: {INK}; color: #ffffff; border: 1px solid #1b2a38; border-radius: 2px; "
         "font-weight: 600; letter-spacing: 0.01em; box-shadow: none; "
         "transition: background-color .15s ease, border-color .15s ease; }\n"
         ".st-key-mt5_send_order button p, .st-key-mt5_send_order button span { "
@@ -778,13 +811,13 @@ def inject_css(mobile):
         ".st-key-mt5_send_order button:hover { background: #34495e; border-color: #1b2a38; color: #ffffff; }\n"
         ".st-key-mt5_send_order button:active { background: #22303d; border-color: #1b2a38; color: #ffffff; }\n"
         ".st-key-mt5_send_order button:focus-visible { outline: 2px solid #2980b9; outline-offset: 2px; }\n"
-        ".st-key-mt5_send_order button:disabled { background: #eef1f4; border-color: #dfe4ea; "
+        f".st-key-mt5_send_order button:disabled {{ background: {CHIP_HOVER}; border-color: {CHIP_BORDER}; "
         "color: #9aa7b2; cursor: not-allowed; }\n"
         ".st-key-mt5_send_order button:disabled p, .st-key-mt5_send_order button:disabled span { "
         "color: #9aa7b2 !important; }\n"
     )
     risk_css = (
-        ".risk-card { border: 1px solid #dfe4ea; border-left: 3px solid #2c3e50; background: #fbfcfd; "
+        f".risk-card {{ border: 1px solid {CHIP_BORDER}; border-left: 3px solid {INK}; background: #fbfcfd; "
         "padding: 8px 12px; margin: 0.2rem 0 0.5rem 0; border-radius: 2px; }\n"
         ".risk-hd { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; "
         "color: #7f8c8d; margin-bottom: 4px; }\n"
@@ -792,18 +825,18 @@ def inject_css(mobile):
         ".risk-tb td { padding: 2px 0; font-size: 0.86rem; border-bottom: 1px solid #eef1f4; }\n"
         ".risk-tb tr:last-child td { border-bottom: none; }\n"
         ".risk-tb td.rl { color: #7f8c8d; white-space: nowrap; padding-right: 10px; }\n"
-        ".risk-tb td.rv { color: #2c3e50; text-align: right; font-weight: 600; }\n"
-        ".lot-line { border-top: 1px solid #dfe4ea; margin: 2px 0 4px 0; padding-top: 6px; "
-        "font-size: 0.95rem; color: #2c3e50; font-variant-numeric: tabular-nums; }\n"
+        f".risk-tb td.rv {{ color: {INK}; text-align: right; font-weight: 600; }}\n"
+        f".lot-line {{ border-top: 1px solid {CHIP_BORDER}; margin: 2px 0 4px 0; padding-top: 6px; "
+        f"font-size: 0.95rem; color: {INK}; font-variant-numeric: tabular-nums; }}\n"
         ".lot-line b { font-size: 1.08rem; letter-spacing: 0.01em; }\n"
     )
     css = (
         "<style>\n"
         ".block-container { padding-top: 4rem; padding-bottom: 2rem; max-width: 100%; }\n"
-        ".app-title { color: #2c3e50; font-size: clamp(1.05rem, 4.5vw, 1.75rem); line-height: 1.25; "
+        f".app-title {{ color: {INK}; font-size: clamp(1.05rem, 4.5vw, 1.75rem); line-height: 1.25; "
         "margin-top: 0.2rem; overflow-wrap: anywhere; white-space: normal; }\n"
         ".stPlotlyChart .modebar { opacity: 1; }\n"
-        + tool_css + status_css + teleport_css + exec_css + risk_css +
+        + unified + status_css + teleport_css + exec_css + risk_css +
         "@media (max-width: 768px) {\n" + mobile_rules + "}\n"
         "@media (hover: none) {\n"
         ".stPlotlyChart .modebar { opacity: 1 !important; }\n"
@@ -1610,9 +1643,9 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     x = np.arange(len(df_plot))
     o, h, l, c = (df_plot[k].to_numpy(dtype=float) for k in ("Open", "High", "Low", "Close"))
     fig_, ax = plt.subplots(figsize=(14, 7.5), dpi=130)
-    ax.vlines(x, l, h, color="#2c3e50", linewidth=0.8, zorder=3)
-    ax.bar(x, np.abs(c - o), bottom=np.minimum(o, c), width=0.6, color=np.where(c >= o, "white", "#2c3e50"),
-           edgecolor="#2c3e50", linewidth=0.8, zorder=4)
+    ax.vlines(x, l, h, color=INK, linewidth=0.8, zorder=3)
+    ax.bar(x, np.abs(c - o), bottom=np.minimum(o, c), width=0.6, color=np.where(c >= o, "white", INK),
+           edgecolor=INK, linewidth=0.8, zorder=4)
     ax.plot(x, df_plot["tenkan"].to_numpy(dtype=float), color="#2980b9", linewidth=1.2, zorder=5)
     ax.plot(x, df_plot["kijun"].to_numpy(dtype=float), color="#e74c3c", linewidth=1.6, zorder=5)
     ax.plot(x, df_plot["chikou"].to_numpy(dtype=float), color="#1e8449", linewidth=1.0, zorder=5)
@@ -1669,7 +1702,7 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     ax.set_xticks(x[::step])
     ax.set_xticklabels(df_plot.index.strftime("%Y-%m-%d %H:%M")[::step], rotation=45, ha="right", fontsize=8)
     ax.yaxis.tick_right()
-    ax.set_title(title, loc="left", fontsize=11, color="#2c3e50")
+    ax.set_title(title, loc="left", fontsize=11, color=INK)
     ax.grid(True, color="#f0f0f0")
     for side in ("top", "left"):
         ax.spines[side].set_visible(False)
@@ -1737,7 +1770,7 @@ st.session_state.setdefault("risk_pct", RISK_PCT_DEFAULT)
 st.session_state.setdefault("account_deposit", 10000.0)
 st.session_state.setdefault("entry_mode", "hosoda")
 st.session_state.setdefault("view_zoom", 1.0)
-st.session_state.setdefault("view_pan", 0.0)
+st.session_state.setdefault("_view_apply", True)
 
 _teleport = st.session_state.pop("_teleport", None)
 if _teleport:
@@ -1990,8 +2023,8 @@ elif app_mode == "terminal":
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
             x=df_plot["x_idx"], open=df_plot["Open"], high=df_plot["High"], low=df_plot["Low"], close=df_plot["Close"],
-            increasing_line_color="#2c3e50", increasing_fillcolor="white", increasing_line_width=1,
-            decreasing_line_color="#2c3e50", decreasing_fillcolor="#2c3e50", decreasing_line_width=1, name=t("chart_price"),
+            increasing_line_color=INK, increasing_fillcolor="white", increasing_line_width=1,
+            decreasing_line_color=INK, decreasing_fillcolor=INK, decreasing_line_width=1, name=t("chart_price"),
         ))
 
         last_close = float(df_plot["Close"].iloc[-1])
@@ -2065,7 +2098,6 @@ elif app_mode == "terminal":
         cand = candidate_c_extreme(df_plot)
 
         tt_x, tt_text = [], []
-        # Правая граница ВСЕГДА включает вынос Облака (+26), а при трёх точках — и проекцию +76.
         x_view_right = float(len(df_plot) - 1 + CLOUD_FORWARD_BARS)
         if len(pts) == 3:
             A, B, C = pts
@@ -2119,9 +2151,12 @@ elif app_mode == "terminal":
                                 font=dict(size=11, color=CAND_HOVER_FONT), namelength=0),
             ))
 
+        # Третья точка открывает горизонт проекции — единственная автоматическая смена вида.
         if st.session_state.get("_view_abc") != len(abc):
             st.session_state["_view_abc"] = len(abc)
-            reset_view()
+            if len(abc) == 3:
+                st.session_state["_view_apply"] = True
+
         max_right = x_view_right + 1.5
         min_left = -0.5
         full_span = max(1.0, max_right - min_left)
@@ -2132,21 +2167,27 @@ elif app_mode == "terminal":
         v_right = max_right
         v_left = v_right - span
         st.session_state["view_zoom"] = vz
-        st.session_state["view_pan"] = 0.0
         st.session_state["_view_full"] = full_span
         st.session_state["_view_left"] = v_left
         st.session_state["_view_right"] = v_right
         vis_bars = max(0, min(len(df_plot) - 1, int(np.floor(v_right))) - max(0, int(np.ceil(v_left))) + 1)
         y_fit = fit_y_range(df_plot, v_left, v_right)
+        apply_view = bool(st.session_state.get("_view_apply", True))
 
         tick_step = max(1, len(df_plot) // UIP["tick_div"])
         time_fmt = axis_time_fmt(tf_name) if MOBILE else "%Y-%m-%d %H:%M"
-        # Вертикаль фиксирована для жестов (MT4), горизонталь свободна для родного пана/зума.
         yaxis = dict(side="right", tickformat=tick_fmt(last_close), showgrid=True, gridcolor="#f0f0f0",
-                     range=y_fit, autorange=False, fixedrange=True)
+                     fixedrange=True)
         xaxis = dict(tickmode="array", tickvals=df_plot["x_idx"].to_numpy()[::tick_step],
                      ticktext=df_plot.index.strftime(time_fmt)[::tick_step], showgrid=True, gridcolor="#f0f0f0",
-                     tickangle=UIP["tick_angle"], range=[v_left, v_right], autorange=False, fixedrange=False)
+                     tickangle=UIP["tick_angle"], fixedrange=False)
+        # Диапазоны пишем ТОЛЬКО при осознанной смене вида — иначе Plotly хранит зум пользователя.
+        if apply_view:
+            xaxis["range"] = [v_left, v_right]
+            xaxis["autorange"] = False
+            yaxis["range"] = y_fit
+            yaxis["autorange"] = False
+            st.session_state["_view_apply"] = False
         if UIP["y_font"]:
             yaxis["tickfont"] = UIP["y_font"]
         if UIP["tick_font"]:
@@ -2158,9 +2199,9 @@ elif app_mode == "terminal":
             margin=UIP["margin"],
             yaxis=yaxis, xaxis=xaxis,
             hovermode="closest", clickmode="event+select", dragmode="pan",
-            font=dict(color="#2c3e50"),
+            font=dict(color=INK),
             legend=UIP["legend"],
-            modebar=dict(bgcolor="rgba(255,255,255,0.9)", color="#2c3e50", activecolor="#e74c3c"),
+            modebar=dict(bgcolor="rgba(255,255,255,0)", color=INK, activecolor=ACTIVE_INK),
         )
 
         with st.container(key="chart_shell"):
