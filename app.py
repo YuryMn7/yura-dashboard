@@ -1,36 +1,37 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-Текущее состояние: кнопки сканера и Telegram на главном экране; десктопный график как раньше
-(height=750, margin 20/110/40/120, легенда снизу, tickangle=45); панель Plotly всегда видна.
-Режим экрана — автоматически по User-Agent; язык первой загрузки — по Accept-Language.
-Крипта: BTC W1/MN1/MN3 -> старший MN1. Временные цели Kihon/Taiyosuu с датами, окно Kihon 129.
-Обновление котировок — иконка ↻; точки и цели не сбрасываются.
+SPEC v1.4. Стиль: institutional minimalist, zero-clutter.
+Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
+Крипта: BTC W1/MN1/MN3 -> старший MN1. Обновление котировок — иконка ↻, точки не сбрасываются.
 
 РАДАР (Real-Time засада у Киджун): тренд/Облако/линии/Чикоу — по закрытому бару (iloc[-2]);
 зона засады — по активной свече (iloc[-1]) с порогом 0.3*ATR. Колонка «Причина» — диагностика.
+ONE-CLICK TELEPORT: выбор строки в таблице Радара -> перенос в Терминал.
 
-ONE-CLICK TELEPORT: выбор строки в таблице Радара -> кнопка переноса в Терминал.
+ПРЕДВАРИТЕЛЬНАЯ ТОЧКА C: маленькая янтарная точка размером с малый фрактал, видна ДО расстановки
+A-B-C. Нисходящий тренд (Тенкан < Киджун) — максимум High последних 3 свечей включая активную;
+восходящий — минимум Low. Отступ 0.2*ATR. Ховер — одна компактная строка (тёмная плашка,
+янтарная рамка, 11px), не экранирует область нажатия. Слой отключается тумблером под графиком.
+Клик по точке ставит точку волны — расчёт можно начать до формирования фрактала.
 
-ПРЕДВАРИТЕЛЬНАЯ ТОЧКА C (живой маркер на графике): маленькая янтарная точка размером с малый
-фрактал, видна ВСЕГДА — ещё до расстановки A-B-C. Нисходящий тренд (Тенкан < Киджун) — максимум
-High последних 3 свечей, ВКЛЮЧАЯ текущую (возможный пик C для продажи); восходящий — минимум Low
-(возможное дно C для покупки). Отступ от свечи 0.2*ATR, как у малых фракталов. Точка живая:
-окно сдвигается с новыми свечами, экстремум может измениться; в истории остаются только фракталы.
-Клик по точке ставит соответствующую точку волны — расчёт можно начать до формирования фрактала.
+ГОРИЗОНТ ПРОЕКЦИИ: +76 баров от точки C (канон Какан). Тот же предел в PNG для Telegram.
 
-ВХОДЫ ПО ПРОБОЮ (trigger_plan):
-  * «Хосода: разворот C» — уровень = High/Low свечи точки C; окно 3 свечи после неё.
-  * «Пробой точки B» — уровень = цена точки B; окно 17 свечей; стоп за ОБЛАКОМ ± 0.2*ATR.
-  * Подтверждение = ЗАКРЫТИЕ свечи за уровнем (не касание тенью).
-  * Правило догона: |цена − уровень| <= 1*ATR -> рынок; дальше -> ЛИМИТНЫЙ ордер на самый уровень.
-  * Нет подтверждения -> наблюдение (watch): советник сам ждёт закрытия свечи в окне.
-  * «По текущей цене» и «Своя цена входа» — рынок, стоп за точкой C ± 0.2*ATR бара C.
+ВХОДЫ ПО ПРОБОЮ (trigger_plan): «Хосода: разворот C» — уровень High/Low свечи C, окно 3 свечи;
+«Пробой точки B» — уровень цены B, окно 17 свечей, стоп за ОБЛАКОМ ± 0.2*ATR.
+Подтверждение = ЗАКРЫТИЕ свечи за уровнем. Правило догона: уход <= 1*ATR -> рынок,
+дальше -> ЛИМИТНЫЙ ордер на самый уровень. Нет подтверждения -> наблюдение (watch).
+
+АЛИСА — ZERO-LAG: лаг подтверждения убран и в обучении, и в инференсе (ALICE_LAG = 0).
+Вход = бар C, все признаки причинны (бары <= C). Признаки: Kumo/Киджун/Тенкан-Киджун/ATR/HTF
++ наклон AB (ATR на бар) + доля теней свечи C + геометрия (откат, риск, цель) + классы фракталов.
+Statistical Edge, вероятности исходов и светофор выдаются сразу при выборе точки C.
 
 ЛОТ: pip_value_usd (JPY — 1000 JPY за пипс по курсу USD/JPY; прямые пары — $10; EUR/AUD — 10 AUD
 в USD; золото — $100 за пункт; BTC — $1; индексы — $1), округление ВНИЗ до шага 0.01.
+ШЛЮЗ: карточка /order {JSON} в Telegram с кнопкой подтверждения; советник получает приказ
+только как callback_query после нажатия трейдером. Финальный лот и комплаенс — на стороне советника.
 
-ШЛЮЗ: кнопка «➔ Исполнить приказ в MetaTrader 5» отправляет в Telegram карточку /order {JSON}
-с кнопкой подтверждения. Бот не видит свои сообщения — советник получит приказ только как
-callback_query, после нажатия трейдером. Окончательный лот и комплаенс — на стороне советника.
+НИЖНЯЯ ПАНЕЛЬ: статус «Выбрано точек: X/3» под графиком; на мобильных зафиксирован внизу
+вьюпорта и не перехватывает касания.
 
 BY DESIGN: точки A-B-C сбрасываются при смене инструмента, ТФ, серверного времени, raw, клиринга,
 кнопкой «Сбросить точки» и при телепорте. Обновление котировок, смена языка и отчёты точки НЕ сбрасывают.
@@ -120,7 +121,7 @@ CRYPTO_HTF_OVERRIDE = {"W1": "MN1", "MN1": "MN1", "MN3": "MN1"}
 MIN_LTF_BARS = 110
 MIN_HTF_BARS = 80
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
-TIME_AXIS_KIHON_CAP = 129
+TIME_AXIS_FORWARD_BARS = 76      # горизонт проекции: +76 баров от точки C (канон Какан)
 MN_MONTHS = {"MN1": 1, "MN3": 3, "MN6": 6, "MN24": 24}
 KIJUN_ZONE_ATR = 0.3
 STOP_BUFFER_ATR = 0.2
@@ -131,8 +132,11 @@ MT5_DEFAULT_TOKEN = "SECRET_ICHIMOKU_TOKEN"
 MT5_EXEC_MARK = "IG_EXEC"
 TRIG_WATCH_BARS = {"hosoda": 3, "break_b": 17}
 ATR_CHASE_LIMIT = 1.0
-CAND_C_BARS = 3                 # окно предварительного экстремума C (включая активную свечу)
-CAND_C_COLOR = "#a88a45"        # приглушённый янтарь из палитры терминала
+CAND_C_BARS = 3
+CAND_C_COLOR = "#a88a45"
+CAND_HOVER_BG = "rgba(20, 24, 35, 0.85)"
+CAND_HOVER_BORDER = "#F59E0B"
+CAND_HOVER_FONT = "#E8EDF5"
 
 LANGS = {"English": "en", "Русский": "ru"}
 DEFAULT_LANG = "Русский"
@@ -150,7 +154,6 @@ I18N = {
         "terminal_settings": "Terminal Settings", "symbol": "Symbol:", "timeframe": "Timeframe:",
         "wave_points": "Wave Points (A-B-C)", "pt_a": "A (Start)", "pt_b": "B (Peak/Trough)", "pt_c": "C (Retracement)",
         "awaiting": "Awaiting {label}...", "clear_points": "Clear Points",
-        "points_progress": "Points: {n}/3 - tap a candle or a fractal marker on the chart.",
         "refresh": "↻",
         "refresh_help": "Refresh quotes. Wave A-B-C, price and time targets are preserved.",
         "scanner_title": "Global Market Scanner",
@@ -178,11 +181,13 @@ I18N = {
         "chart_major_high": "Major High", "chart_major_low": "Major Low",
         "chart_time_targets": "Time targets", "hover_high": "High", "hover_low": "Low",
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} bars)", "hover_forecast": "forecast",
-        "chart_wave": "Wave A-B-C",
-        "chart_cand_c": "Candidate C",
-        "hover_cand_c": "Candidate C · {kind} of last {bars} bars (live, may change)",
-        "cand_high": "highest high", "cand_low": "lowest low",
-        "cand_note": "Amber dot = preliminary C extremum over the last {bars} candles including the live one. It moves as new candles arrive; tap it to place the wave point early.",
+        "chart_wave": "Wave A-B-C", "chart_cand_c": "Candidate C",
+        "cand_hover": "<b>Candidate C:</b> %{customdata:.5f}<extra></extra>",
+        "toggle_amber": "🟡 Amber point C",
+        "cand_note_compact": "🟡 Amber C: extremum of the last {bars} bars for an early entry.",
+        "pts_bar": "Points selected: <b>{n}/3</b>",
+        "pts_hint": "🟡 candidate C",
+        "pts_hint_tip": "Preliminary C extremum over the last 3 bars including the live one. Tap it to place a wave point early.",
         "risk_title": "Trade parameters (calculated)", "risk_buy": "BUY", "risk_sell": "SELL",
         "entry_mode": "Entry point",
         "entry_hosoda": "Hosoda: C reversal", "entry_break_b": "Point B breakout",
@@ -204,7 +209,7 @@ I18N = {
         "trig_no_cloud": "Kumo is not ready yet - the stop for a B breakout cannot be calculated.",
         "trig_ref_missing": "Reference candle not found in history - pick the point again.",
         "trig_expired_note": "Watch window expired ({bars} bars after the reference candle). Pick a fresher point or use At market.",
-        "trig_rule_note": "Chase rule: distance from level <= {lim} ATR ({atr}) - market entry; beyond that - a limit order at the level itself, to avoid losing pips. Stop buffer 0.2 ATR = {buf}.",
+        "trig_rule_note": "Chase rule: distance from level <= {lim} ATR ({atr}) - market entry; beyond that - a limit order at the level itself. Stop buffer 0.2 ATR = {buf}.",
         "risk_pct_label": "Risk per trade, %",
         "risk_pct_help": "Share of equity lost if the stop is hit. The EA applies its own hard cap on top of this.",
         "deposit_label": "Deposit, $",
@@ -243,8 +248,8 @@ I18N = {
         "ai_d_probs": "Outcome probabilities: target {pt}% | stop {ps}% | timeout {p0}%",
         "ai_d_fair": "Fair target probability (target vs stop): {pf}% | Break-even: {be}% (Risk : Reward = 1 : {rr})",
         "ai_d_edge": "Statistical Edge: {edge}% (s.e. +/-{se}%, {neff} distinct waves). Timeouts are excluded; spread and commissions are not included.",
-        "ai_det_target": "Target {target} was already crossed during the confirmation lag: the outcome is known (target reached).",
-        "ai_det_stop": "Level C was already broken by the entry bar: the outcome is known (stop).",
+        "ai_det_target": "Target {target} was already crossed at the C bar close: the outcome is known (target reached).",
+        "ai_det_stop": "Level C was already broken at the C bar close: the outcome is known (stop).",
         "tg_button": "Send report to Telegram", "tg_sending": "Sending report...", "tg_sent": "Report sent to Telegram.",
         "tg_sent_text": "Chart image is unavailable (install kaleido or matplotlib); a text-only report was sent.",
         "tg_err": "Telegram error: {detail}",
@@ -254,19 +259,19 @@ I18N = {
         "ai_stats": "Samples: {n} ({neff} distinct waves) | Historical outcomes: target {ft}% / stop {fs}% / timeout {f0}% | Holdout AUC: {auc}",
         "ai_fractals": "Fractals: A - {a}, B - {b}, C - {c}",
         "ai_fr_major": "Major", "ai_fr_minor": "Minor", "ai_fr_pending": "Pending (too recent for Major confirmation)",
-        "ai_setup": "Model class: B {ab} / C {cls} | Entry: bar C + {lag} | Horizon, bars: {h} (A-C time, min {hmin})",
+        "ai_setup": "Zero-lag inference: entry on bar C (lag {lag}) | Horizon, bars: {h} (A-C time, min {hmin}) | Class B {ab} / C {cls}",
         "ai_cls_major": "major", "ai_cls_minor": "minor",
         "ai_pooled": "Too few waves of this exact class: the model was trained on waves of all fractal classes (scale-free distances).",
         "ai_live": "Point C is recent: its fractal class is not final yet, so the model was trained in real-time mode.",
         "ai_freq_only": "Too few rare outcomes to train a model ({k} of {n} similar waves reached the target, or nearly all did); showing the historical frequency.",
         "ai_na": "n/a",
-        "ai_uplift": "Ichimoku-feature uplift (AUC vs distance-only model): {v}",
+        "ai_uplift": "Ichimoku-feature uplift (AUC vs wave-geometry-only model): {v}",
         "ai_rel_high": "Model confidence: high", "ai_rel_mod": "Model confidence: moderate",
         "ai_rel_low": "Model confidence: low - the estimate mostly reflects wave geometry, Ichimoku features add little",
-        "ai_disclaimer": "Statistical estimate from this instrument's own history. Training uses only waves that were resolved before the entry. Not a trading signal.",
+        "ai_disclaimer": "Statistical estimate from this instrument's own history, zero-lag: features use bars up to C only. Not a trading signal.",
         "ai_htf_missing": "Higher-timeframe trend is unavailable; a neutral value was used.",
         "ai_err_sklearn": "scikit-learn is not installed. Add it to requirements.txt.",
-        "ai_err_fresh": "Point C is too recent: at least {lag} bars after C are required.",
+        "ai_err_fresh": "Point C is outside the loaded history.",
         "ai_err_geom": "Invalid wave geometry: point C must lie between A and B.",
         "ai_err_nan": "Indicators are not ready at point C (not enough history).",
         "ai_err_samples": "Not enough comparable historical waves ({n} found, at least {min} required).",
@@ -283,7 +288,6 @@ I18N = {
         "terminal_settings": "Настройки терминала", "symbol": "Инструмент:", "timeframe": "Таймфрейм:",
         "wave_points": "Точки волны (A-B-C)", "pt_a": "A (начало)", "pt_b": "B (пик/впадина)", "pt_c": "C (откат)",
         "awaiting": "Ожидается {label}...", "clear_points": "Сбросить точки",
-        "points_progress": "Точки: {n}/3 — нажмите на свечу или маркер фрактала на графике.",
         "refresh": "↻",
         "refresh_help": "Обновить котировки. Волна A-B-C, цели по цене и по времени сохраняются.",
         "scanner_title": "Глобальный сканер рынка",
@@ -311,11 +315,13 @@ I18N = {
         "chart_major_high": "Главный максимум", "chart_major_low": "Главный минимум",
         "chart_time_targets": "Временные цели", "hover_high": "Хай", "hover_low": "Лоу",
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} баров)", "hover_forecast": "прогноз",
-        "chart_wave": "Волна A-B-C",
-        "chart_cand_c": "Предварительный C",
-        "hover_cand_c": "Предварительный C · {kind} последних {bars} свечей (живая, может измениться)",
-        "cand_high": "максимум", "cand_low": "минимум",
-        "cand_note": "Янтарная точка — предварительный экстремум C по последним {bars} свечам, включая текущую. Живая: переезжает с новыми свечами. Нажмите её, чтобы поставить точку волны заранее.",
+        "chart_wave": "Волна A-B-C", "chart_cand_c": "Предварительный C",
+        "cand_hover": "<b>Предв. C:</b> %{customdata:.5f}<extra></extra>",
+        "toggle_amber": "🟡 Янтарная точка C",
+        "cand_note_compact": "🟡 Янтарная C: экстремум последних {bars} баров для раннего входа.",
+        "pts_bar": "Выбрано точек: <b>{n}/3</b>",
+        "pts_hint": "🟡 предв. C",
+        "pts_hint_tip": "Предварительный экстремум C по последним 3 барам, включая текущий. Нажмите точку, чтобы поставить точку волны заранее.",
         "risk_title": "Параметры сделки (расчет)", "risk_buy": "ПОКУПКА", "risk_sell": "ПРОДАЖА",
         "entry_mode": "Точка входа",
         "entry_hosoda": "Хосода: разворот C", "entry_break_b": "Пробой точки B",
@@ -337,7 +343,7 @@ I18N = {
         "trig_no_cloud": "Облако ещё не готово — стоп для пробоя B рассчитать нельзя.",
         "trig_ref_missing": "Опорная свеча не найдена в истории — выберите точку заново.",
         "trig_expired_note": "Окно наблюдения истекло ({bars} свечей после опорной свечи). Возьмите более свежую точку или режим «По текущей цене».",
-        "trig_rule_note": "Правило догона: уход от уровня ≤ {lim}·ATR ({atr}) — вход по рынку; дальше — лимитный ордер на самый уровень, чтобы не терять пункты. Буфер стопа 0.2·ATR = {buf}.",
+        "trig_rule_note": "Правило догона: уход от уровня ≤ {lim}·ATR ({atr}) — вход по рынку; дальше — лимитный ордер на самый уровень. Буфер стопа 0.2·ATR = {buf}.",
         "risk_pct_label": "Риск на сделку, %",
         "risk_pct_help": "Доля депозита, теряемая при срабатывании стопа. Советник дополнительно применит свой жесткий потолок риска.",
         "deposit_label": "Депозит, $",
@@ -376,8 +382,8 @@ I18N = {
         "ai_d_probs": "Вероятности исходов: цель {pt}% | стоп {ps}% | таймаут {p0}%",
         "ai_d_fair": "Честная вероятность цели (цель против стопа): {pf}% | Безубыточная: {be}% (риск : прибыль = 1 : {rr})",
         "ai_d_edge": "Statistical Edge: {edge}% (s.e. +/-{se}%, {neff} различных волн). Таймауты исключены; спред и комиссии не учтены.",
-        "ai_det_target": "Цель {target} уже пересечена за лаг подтверждения фрактала: исход известен (цель достигнута).",
-        "ai_det_stop": "Уровень C уже пробит к бару входа: исход известен (стоп).",
+        "ai_det_target": "Цель {target} уже пересечена на закрытии бара C: исход известен (цель достигнута).",
+        "ai_det_stop": "Уровень C уже пробит на закрытии бара C: исход известен (стоп).",
         "tg_button": "Отправить отчет в Telegram", "tg_sending": "Отправка отчета...", "tg_sent": "Отчет отправлен в Telegram.",
         "tg_sent_text": "Изображение графика недоступно (установите kaleido или matplotlib); отправлен только текстовый отчет.",
         "tg_err": "Ошибка Telegram: {detail}",
@@ -387,19 +393,19 @@ I18N = {
         "ai_stats": "Выборка: {n} ({neff} различных волн) | Исторические исходы: цель {ft}% / стоп {fs}% / таймаут {f0}% | AUC на отложенной выборке: {auc}",
         "ai_fractals": "Фракталы: A — {a}, B — {b}, C — {c}",
         "ai_fr_major": "Главный", "ai_fr_minor": "Малый", "ai_fr_pending": "Pending (слишком свежая точка для подтверждения Major)",
-        "ai_setup": "Класс модели: B {ab} / C {cls} | Вход: бар C + {lag} | Горизонт, баров: {h} (время A-C, минимум {hmin})",
+        "ai_setup": "Zero-lag: вход на баре C (лаг {lag}) | Горизонт, баров: {h} (время A-C, минимум {hmin}) | Класс B {ab} / C {cls}",
         "ai_cls_major": "главный", "ai_cls_minor": "малый",
         "ai_pooled": "Волн именно этого класса слишком мало: модель обучена на волнах всех классов фракталов (безразмерные дистанции).",
         "ai_live": "Точка C свежая: её класс фрактала ещё не окончателен, поэтому модель обучена в режиме реального времени.",
         "ai_freq_only": "Редких исходов слишком мало для обучения модели ({k} из {n} похожих волн дошли до цели, либо почти все); показана историческая частота.",
         "ai_na": "н/д",
-        "ai_uplift": "Вклад признаков Ишимоку (AUC против модели только по дистанции): {v}",
+        "ai_uplift": "Вклад признаков Ишимоку (AUC против модели только по геометрии волны): {v}",
         "ai_rel_high": "Уверенность модели: высокая", "ai_rel_mod": "Уверенность модели: умеренная",
         "ai_rel_low": "Уверенность модели: низкая — оценка в основном отражает геометрию волны, признаки Ишимоку добавляют мало",
-        "ai_disclaimer": "Статистическая оценка по собственной истории инструмента. Обучение использует только волны, исход которых был известен до входа. Не торговый сигнал.",
+        "ai_disclaimer": "Статистическая оценка по собственной истории инструмента, zero-lag: признаки только по барам до C включительно. Не торговый сигнал.",
         "ai_htf_missing": "Тренд старшего таймфрейма недоступен, использовано нейтральное значение.",
         "ai_err_sklearn": "Библиотека scikit-learn не установлена. Добавьте её в requirements.txt.",
-        "ai_err_fresh": "Точка C слишком свежая: после C нужно минимум {lag} бара.",
+        "ai_err_fresh": "Точка C вне загруженной истории.",
         "ai_err_geom": "Некорректная геометрия волны: точка C должна лежать между A и B.",
         "ai_err_nan": "На точке C индикаторы ещё не готовы (мало истории).",
         "ai_err_samples": "Недостаточно похожих исторических волн (найдено {n}, нужно минимум {min}).",
@@ -545,6 +551,14 @@ def risk_card_html(head, rows, accent):
             f"<div class='risk-hd'>{head}</div><table class='risk-tb'>{body}</table></div>")
 
 
+def points_bar_html(n):
+    """Компактная статусная строка выбора точек; на мобильных фиксируется внизу вьюпорта."""
+    return ("<div class='pts-bar'>"
+            f"<span class='pts-n'>{t('pts_bar', n=int(n))}</span>"
+            f"<span class='pts-hint' title=\"{t('pts_hint_tip')}\">{t('pts_hint')}</span>"
+            "</div>")
+
+
 def detect_default_lang():
     try:
         al = st.context.headers.get("Accept-Language", "").lower()
@@ -565,7 +579,7 @@ def detect_mobile_ua():
 
 def chart_ui(mobile):
     if mobile:
-        return dict(height=580, margin=dict(l=8, r=58, t=48, b=76), tick_div=5, tick_angle=0,
+        return dict(height=560, margin=dict(l=8, r=58, t=48, b=64), tick_div=5, tick_angle=0,
                     tick_font=dict(size=9), y_font=dict(size=9),
                     legend=dict(orientation="h", yanchor="top", y=-0.20, xanchor="center", x=0.5, font=dict(size=8)),
                     ann_font=8, vlabel_font=8, mark_minor=4, mark_major=8, wave_mark=7)
@@ -576,10 +590,7 @@ def chart_ui(mobile):
 
 
 def candidate_c_extreme(df_plot, bars=CAND_C_BARS):
-    """Предварительный экстремум точки C ДО формирования фрактала.
-    Нисходящий тренд (Тенкан < Киджун на последнем закрытом баре) — максимум High последних
-    N свечей, включая активную: возможный пик C для продажи. Восходящий — минимум Low.
-    Маркер живой: окно сдвигается с новыми свечами, экстремум может переехать."""
+    """Предварительный экстремум C до формирования фрактала (живой маркер)."""
     n = len(df_plot)
     if n < 2:
         return None
@@ -618,12 +629,15 @@ def candidate_c_extreme(df_plot, bars=CAND_C_BARS):
 def inject_css(mobile):
     mobile_rules = (
         ".block-container { padding-top: 3.2rem !important; padding-left: 0.6rem !important; "
-        "padding-right: 0.6rem !important; padding-bottom: 1rem !important; }\n"
+        "padding-right: 0.6rem !important; padding-bottom: 3.4rem !important; }\n"
         "h1, h2, h3 { margin-top: 0.2rem !important; line-height: 1.25 !important; overflow-wrap: anywhere; }\n"
         "h2 { font-size: clamp(1.05rem, 4.5vw, 1.75rem) !important; }\n"
         ".modebar-btn { padding: 3px 5px !important; }\n"
         ".risk-tb td { font-size: 0.8rem; }\n"
         ".lot-line { font-size: 0.88rem; }\n"
+        ".pts-bar { position: fixed; left: 0.6rem; right: 0.6rem; bottom: 0.4rem; z-index: 60; "
+        "background: rgba(251,252,253,0.97); box-shadow: 0 -1px 6px rgba(44,62,80,0.10); "
+        "pointer-events: none; }\n"
         '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
     )
     tool_css = (
@@ -640,6 +654,18 @@ def inject_css(mobile):
         ".st-key-refresh_term button:hover { background: #eef2f5; border-color: #2c3e50; color: #2c3e50; }\n"
         ".st-key-refresh_term button:active { background: #e3e9ee; border-color: #2c3e50; }\n"
         ".st-key-refresh_term button:focus-visible { outline: 1px solid #2c3e50; outline-offset: 1px; }\n"
+    )
+    layer_css = (
+        ".st-key-toggle_amber_c { margin: 0.1rem 0 0.1rem 0; }\n"
+        ".st-key-toggle_amber_c label p { font-size: 0.84rem !important; color: #2c3e50; }\n"
+        ".st-key-toggle_amber_c [data-baseweb='checkbox'] > div:first-child { "
+        "background-color: #dfe4ea !important; }\n"
+        ".st-key-toggle_amber_c [aria-checked='true'] { background-color: #a88a45 !important; }\n"
+        ".pts-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; "
+        "border: 1px solid #dfe4ea; background: #fbfcfd; border-radius: 2px; padding: 4px 10px; "
+        "font-size: 0.8rem; color: #2c3e50; margin: 2px 0 4px 0; }\n"
+        ".pts-bar b { font-variant-numeric: tabular-nums; }\n"
+        ".pts-hint { color: #a88a45; white-space: nowrap; cursor: help; }\n"
     )
     teleport_css = (
         ".st-key-teleport_btn { margin: 0.4rem 0 0.2rem 0; }\n"
@@ -689,7 +715,7 @@ def inject_css(mobile):
         ".app-title { color: #2c3e50; font-size: clamp(1.05rem, 4.5vw, 1.75rem); line-height: 1.25; "
         "margin-top: 0.2rem; overflow-wrap: anywhere; white-space: normal; }\n"
         ".stPlotlyChart .modebar { opacity: 1; }\n"
-        + tool_css + teleport_css + exec_css + risk_css +
+        + tool_css + layer_css + teleport_css + exec_css + risk_css +
         "@media (max-width: 768px) {\n" + mobile_rules + "}\n"
         "@media (hover: none) {\n"
         ".stPlotlyChart .modebar { opacity: 1 !important; }\n"
@@ -1090,7 +1116,7 @@ def trigger_plan(df, abc, mode, tf, is_fx, last_close):
 ALICE_TARGETS = ("N",)
 ALICE_HORIZON = 50
 ALICE_HORIZON_MAX = 300
-ALICE_LAG = {"minor": 2, "major": 10}
+ALICE_LAG = {"minor": 0, "major": 0}     # ZERO-LAG: вход на баре C, без ожидания подтверждений
 ALICE_MAJOR_RADIUS = 10
 ALICE_SNAP_BARS = 2
 ALICE_MAJOR_TOL_ATR = 0.35
@@ -1105,6 +1131,7 @@ ALICE_MIN_CLASS = 10
 ALICE_MAX_SAMPLES = 500
 ALICE_USE_GEOMETRY = True
 ALICE_BASE_FEATURES = ["kumo_w", "dist_kijun", "tk_spread", "atr_rel", "htf"]
+ALICE_WAVE_FEATURES = ["ab_slope", "c_wick"]
 ALICE_GEOM_FEATURES = ["retr", "risk_z", "reward_z"]
 ALICE_CLASSES = [("minor", "minor"), ("major", "major"), ("major", "minor"), ("minor", "major")]
 
@@ -1121,14 +1148,15 @@ def htf_trend_series(df_htf, ltf_index):
 
 
 def _alice_arrays(df, htf):
-    cols = {"hi": "High", "lo": "Low", "cl": "Close", "atr": "ATR", "tk": "tenkan", "kj": "kijun",
-            "sa": "senkou_a", "sb": "senkou_b"}
+    cols = {"hi": "High", "lo": "Low", "op": "Open", "cl": "Close", "atr": "ATR",
+            "tk": "tenkan", "kj": "kijun", "sa": "senkou_a", "sb": "senkou_b"}
     ar = {k: df[c].to_numpy(dtype=float) for k, c in cols.items()}
     ar["htf"] = np.asarray(htf, dtype=float)
     return ar
 
 
 def _alice_base(ar, e, d):
+    """Признаки Ишимоку на баре e — строго причинно (бары <= e)."""
     atr, cl = ar["atr"][e], ar["cl"][e]
     if not (np.isfinite(atr) and atr > 0 and np.isfinite(cl) and cl > 0):
         return None
@@ -1140,6 +1168,22 @@ def _alice_base(ar, e, d):
         ar["htf"][e] * d,
     ]
     return v if np.all(np.isfinite(v)) else None
+
+
+def _alice_wave(ar, a, b, c, Ap, Bp, atr):
+    """Причинные признаки формы волны: наклон AB (ATR на бар) и доля теней свечи C."""
+    bars = max(1, b - a)
+    slope = (Bp - Ap) / bars / atr if atr > 0.0 else 0.0
+    hi, lo = ar["hi"][c], ar["lo"][c]
+    op, cl = ar["op"][c], ar["cl"][c]
+    rng = hi - lo
+    body = abs(cl - op)
+    wick = (rng - body) / rng if rng > 0.0 else 0.0
+    if not np.isfinite(slope):
+        slope = 0.0
+    if not np.isfinite(wick):
+        wick = 0.0
+    return [float(slope), float(min(max(wick, 0.0), 1.0))]
 
 
 def _alice_horizon(c, a):
@@ -1172,6 +1216,7 @@ def _alice_pivots(df, d, cls, strict=False):
 
 
 def alice_build_samples(df, htf, targets, ab_cls, c_cls, strict=True, strict_ab=None):
+    """Исторические волны; ZERO-LAG: вход на закрытии бара C, исход — строго после C."""
     strict_ab = strict if strict_ab is None else strict_ab
     ar = _alice_arrays(df, htf)
     n, lag = len(df), ALICE_LAG[c_cls]
@@ -1210,10 +1255,12 @@ def alice_build_samples(df, htf, targets, ab_cls, c_cls, strict=True, strict_ab=
                 base, entry = _alice_base(ar, e, d), cl_m[e]
                 if base is None:
                     continue
+                wave = _alice_wave(ar, a, b, c, Ap, Bp, atr)
                 tg = hosoda_targets(Ap, Bp, Cp)
                 row = {"c": c, "b": b, "e": e, "h": H, "d": d,
                        "ab_major": 1.0 if ab_cls == "major" else 0.0, "c_major": 1.0 if c_cls == "major" else 0.0}
                 row.update(zip(ALICE_BASE_FEATURES, base))
+                row.update(zip(ALICE_WAVE_FEATURES, wave))
                 for name in targets:
                     T = tg[name]
                     geom = _alice_geom(entry, atr, H, Ap, Bp, Cp, T)
@@ -1251,7 +1298,9 @@ def _alice_train_rows(samples, name, e):
 
 
 def _alice_matrix(tr, name):
+    """Ишимоку + форма волны + геометрия + классы. Порядок совпадает с вектором инференса."""
     X = tr[ALICE_BASE_FEATURES].to_numpy(dtype=float)
+    X = np.column_stack([X, tr[ALICE_WAVE_FEATURES].to_numpy(dtype=float)])
     if ALICE_USE_GEOMETRY:
         X = np.column_stack([X, tr[["retr", "risk_z", "reward_z_" + name]].to_numpy(dtype=float)])
     return np.column_stack([X, tr[["ab_major", "c_major"]].to_numpy(dtype=float)])
@@ -1338,6 +1387,7 @@ def alice_verdict(r):
 
 
 def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
+    """ZERO-LAG инференс: вход на баре C, признаки по барам <= C. Отдаёт Edge мгновенно."""
     if not SKLEARN_OK:
         return {"status": "sklearn"}
     n = len(df)
@@ -1354,9 +1404,7 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
     ab_cls = "major" if b_st == "major" else "minor"
     c_cls = "major" if c_st == "major" else "minor"
     lag = ALICE_LAG[c_cls]
-    e = c + lag
-    if e >= n:
-        return {"status": "fresh", "kw": {"lag": lag}}
+    e = min(c + lag, n - 1)
     Ap, Bp, Cp = d * a_y, d * b_y, d * c_y
     if not (Ap < Cp < Bp):
         return {"status": "geom"}
@@ -1365,10 +1413,12 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
     base = _alice_base(ar, e, d)
     if base is None:
         return {"status": "nan"}
+    wave = _alice_wave(ar, a, b, c, Ap, Bp, atr)
     H = _alice_horizon(c, a)
     tg = hosoda_targets(Ap, Bp, Cp)
     strict_c, strict_ab = c_st != "pending", b_st != "pending"
-    meta = {"h": H, "lag": lag, "cls": c_cls, "ab": ab_cls, "strict": strict_c, "a_st": a_st, "b_st": b_st, "c_st": c_st}
+    meta = {"h": H, "lag": lag, "cls": c_cls, "ab": ab_cls, "strict": strict_c,
+            "a_st": a_st, "b_st": b_st, "c_st": c_st}
     own = pool = None
     out = {}
     for name in targets:
@@ -1407,7 +1457,7 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
             out[name] = _alice_result(meta, P, m, cnt, None, None, pooled, True, n_eff, entry, Cp, T)
             continue
         X = _alice_matrix(tr, name)
-        x = np.asarray(base, dtype=float)
+        x = np.asarray(base + wave, dtype=float)
         if ALICE_USE_GEOMETRY:
             x = np.append(x, _alice_geom(entry, atr, H, Ap, Bp, Cp, T))
         x = np.append(x, [1.0 if ab_cls == "major" else 0.0, 1.0 if c_cls == "major" else 0.0])
@@ -1422,7 +1472,7 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
                 Xv = X[val_i][res_v]
                 auc = float(roc_auc_score(yv[res_v] == 1, _alice_fair(_alice_proba3(_alice_fit(X[fit_i], yf), Xv))))
                 if ALICE_USE_GEOMETRY:
-                    gcols = slice(len(ALICE_BASE_FEATURES), None)
+                    gcols = slice(len(ALICE_BASE_FEATURES), None)   # база без признаков Ишимоку
                     auc_geom = float(roc_auc_score(
                         yv[res_v] == 1, _alice_fair(_alice_proba3(_alice_fit(X[fit_i][:, gcols], yf), Xv[:, gcols]))))
                     uplift = auc - auc_geom
@@ -1451,7 +1501,6 @@ def _mt5_secret():
 
 
 def send_mt5_order(payload, confirm_label):
-    """Карточка приказа в Telegram с кнопкой подтверждения. Возвращает (ok, error)."""
     token, chat_id = _tg_credentials()
     if not token or not chat_id:
         return False, t("mt5_no_secrets")
@@ -1476,6 +1525,7 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
+    show_cand = bool(st.session_state.get("toggle_amber_c", True))
     x = np.arange(len(df_plot))
     o, h, l, c = (df_plot[k].to_numpy(dtype=float) for k in ("Open", "High", "Low", "Close"))
     fig_, ax = plt.subplots(figsize=(14, 7.5), dpi=130)
@@ -1501,7 +1551,7 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     if len(pts) == 3:
         A_, B_, C_ = pts
         cx = float(C_["x"])
-        x_right = max(x_right, cx + TIME_AXIS_KIHON_CAP - 1)
+        x_right = max(x_right, cx + TIME_AXIS_FORWARD_BARS)
         time_ab, time_ac = abs(B_["x"] - A_["x"]), abs(C_["x"] - A_["x"])
         clock = _forecast_clock(df_plot, tf, is_fx)
 
@@ -1525,10 +1575,11 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
             ax.axvline(xk, color="gray", linestyle="--", linewidth=0.8, alpha=0.35, zorder=2)
             vlabel(xk, time_target_label(str(k), ts_, fc_, tf, mobile), "#7f8c8d", 0.78, 7)
 
-    cand = candidate_c_extreme(df_plot)
-    if cand:
-        ax.plot([cand["x"]], [cand["y"]], marker="o", markersize=4,
-                color=CAND_C_COLOR, linestyle="none", zorder=6, clip_on=True)
+    if show_cand:
+        cand_ = candidate_c_extreme(df_plot)
+        if cand_:
+            ax.plot([cand_["x"]], [cand_["y"]], marker="o", markersize=4,
+                    color=CAND_C_COLOR, linestyle="none", zorder=6, clip_on=True)
 
     ax.set_xlim(-1.5, x_right + max(2.0, 0.01 * (x_right + 1.0)))
     step = max(1, len(df_plot) // 10)
@@ -1582,7 +1633,7 @@ def refresh_button(key):
 
 
 PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active",
-                "risk_pct", "account_deposit", "entry_mode", "custom_entry"]
+                "risk_pct", "account_deposit", "entry_mode", "custom_entry", "toggle_amber_c"]
 
 
 def _on_lang_change():
@@ -1602,6 +1653,7 @@ st.session_state.setdefault("w_radar_active", True)
 st.session_state.setdefault("risk_pct", 1.0)
 st.session_state.setdefault("account_deposit", 10000.0)
 st.session_state.setdefault("entry_mode", "hosoda")
+st.session_state.setdefault("toggle_amber_c", True)
 
 _teleport = st.session_state.pop("_teleport", None)
 if _teleport:
@@ -1643,7 +1695,6 @@ if app_mode == "radar":
         return df, None
 
     def scan_one(asset_name, route, tf):
-        """Тренд/Облако/линии/Чикоу — по закрытому бару; зона засады — по активному."""
         try:
             if is_crypto_asset(route) and tf == "MN3":
                 return None, E("crypto_hist", tf=tf)
@@ -1852,6 +1903,7 @@ elif app_mode == "terminal":
         df_plot = df.tail(250).copy()
         df_plot["x_idx"] = np.arange(len(df_plot))
         UIP = chart_ui(MOBILE)
+        show_amber = bool(st.session_state.get("toggle_amber_c", True))
 
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
@@ -1915,7 +1967,7 @@ elif app_mode == "terminal":
         abc = st.session_state.abc_points
         mode_now = st.session_state.get("entry_mode", "hosoda")
         armed = trigger_plan(df, abc, mode_now, tf_name, is_fx, last_close) if len(abc) == 3 else None
-        cand = candidate_c_extreme(df_plot)
+        cand = candidate_c_extreme(df_plot) if show_amber else None
 
         tt_x, tt_text = [], []
         x_view_right = float(len(df_plot) - 1)
@@ -1928,7 +1980,8 @@ elif app_mode == "terminal":
                 fig.add_hline(y=val, line_dash="dash", line_color=colors[name], annotation_text=f"{name} {fmt_price(val)}", annotation_position="right", annotation_font_size=UIP["ann_font"], annotation_font_color=colors[name])
             time_ab, time_ac = abs(B["x"] - A["x"]), abs(C["x"] - A["x"])
             clock = _forecast_clock(df_plot, tf_name, is_fx)
-            x_view_right = float(max(len(df_plot) - 1, C["x"] + TIME_AXIS_KIHON_CAP - 1))
+            # горизонт проекции: строго +76 баров от точки C (канон Какан)
+            x_view_right = float(max(len(df_plot) - 1, C["x"] + TIME_AXIS_FORWARD_BARS))
 
             def vlabel(x, text, color, y):
                 fig.add_annotation(
@@ -1960,17 +2013,16 @@ elif app_mode == "terminal":
                 name=t("chart_time_targets"), showlegend=False, text=tt_text, hovertemplate="%{text}<extra></extra>",
             ))
 
-        # --- Предварительный экстремум C: маленькая янтарная точка, видна ДО расстановки A-B-C ---
+        # --- Янтарная точка C: ультра-компактный ховер, не экранирует область нажатия ---
         if cand:
             fig.add_trace(go.Scatter(
                 x=[cand["x"]], y=[cand["y"]], mode="markers",
                 marker=dict(size=UIP["mark_minor"], color=CAND_C_COLOR),
                 name=t("chart_cand_c"), showlegend=False,
-                customdata=[cand["price"]], text=[f"{cand['t']:%Y-%m-%d %H:%M}"],
-                hovertemplate=(t("hover_cand_c",
-                                 kind=t("cand_high" if cand["kind"] == "high" else "cand_low"),
-                                 bars=cand["bars"])
-                               + f"<br>%{{customdata:{pfmt}}}<br>%{{text}}<extra></extra>"),
+                customdata=[cand["price"]],
+                hovertemplate=t("cand_hover"),
+                hoverlabel=dict(bgcolor=CAND_HOVER_BG, bordercolor=CAND_HOVER_BORDER,
+                                font=dict(size=11, color=CAND_HOVER_FONT), namelength=0),
             ))
 
         tick_step = max(1, len(df_plot) // UIP["tick_div"])
@@ -2008,12 +2060,18 @@ elif app_mode == "terminal":
             **WIDE,
         )
 
-        if cand:
-            st.caption(t("cand_note", bars=cand["bars"]))
-        if MOBILE and len(st.session_state.abc_points) < 3:
-            st.caption(t("points_progress", n=len(st.session_state.abc_points)))
-        if len(st.session_state.abc_points) == 3 and len(pts) < 3:
-            st.info(t("points_outside"))
+        # --- панель слоёв: компактный тумблер янтарного слоя ---
+        if MOBILE:
+            st.toggle(t("toggle_amber"), key="toggle_amber_c")
+        else:
+            lc1, _lc2 = st.columns([1, 3])
+            with lc1:
+                st.toggle(t("toggle_amber"), key="toggle_amber_c")
+
+        st.caption(t("cand_note_compact", bars=CAND_C_BARS))
+        st.markdown(points_bar_html(len(abc)), unsafe_allow_html=True)
+        if len(abc) == 3 and len(pts) < 3:
+            st.caption(t("points_outside"))
 
         _htf_memo = {}
 
@@ -2079,8 +2137,8 @@ elif app_mode == "terminal":
                                              fs=pc(r["freq"]["stop"]), f0=pc(r["freq"]["timeout"]), auc=auc_txt))
                             st.caption(t("ai_fractals", a=t("ai_fr_" + r["a_st"]), b=t("ai_fr_" + r["b_st"]),
                                          c=t("ai_fr_" + r["c_st"])))
-                            st.caption(t("ai_setup", ab=t("ai_cls_" + r["ab"]), cls=t("ai_cls_" + r["cls"]), lag=r["lag"],
-                                         h=r["h"], hmin=ALICE_HORIZON))
+                            st.caption(t("ai_setup", lag=r["lag"], h=r["h"], hmin=ALICE_HORIZON,
+                                         ab=t("ai_cls_" + r["ab"]), cls=t("ai_cls_" + r["cls"])))
                             if r["freq_only"]:
                                 st.caption(t("ai_freq_only", k=int(round(r["freq"]["target"] * r["n"])), n=r["n"]))
                             if r["pooled"]:
@@ -2092,7 +2150,7 @@ elif app_mode == "terminal":
                             st.caption(t("ai_rel_" + r["reliability"]))
                         st.caption(t("ai_disclaimer"))
 
-        # ---- Карточка сделки: план входа, стоп, лот, пусковой механизм ----
+        # ---- Карточка сделки ----
         if len(abc) == 3:
             rA, rB, rC = abc
             side_buy = rB["y"] > rA["y"]
