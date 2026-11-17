@@ -1,5 +1,5 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.4. Стиль: institutional minimalist, zero-clutter.
+SPEC v1.41. Стиль: institutional minimalist, zero-clutter.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 Крипта: BTC W1/MN1/MN3 -> старший MN1. Обновление котировок — иконка ↻, точки не сбрасываются.
 
@@ -10,7 +10,9 @@ ONE-CLICK TELEPORT: выбор строки в таблице Радара -> п
 ПРЕДВАРИТЕЛЬНАЯ ТОЧКА C: маленькая янтарная точка размером с малый фрактал, видна ДО расстановки
 A-B-C. Нисходящий тренд (Тенкан < Киджун) — максимум High последних 3 свечей включая активную;
 восходящий — минимум Low. Отступ 0.2*ATR. Ховер — одна компактная строка (тёмная плашка,
-янтарная рамка, 11px), не экранирует область нажатия. Слой отключается тумблером под графиком.
+янтарная рамка, 11px), не экранирует область нажатия.
+СЛОЙ ПЕРЕКЛЮЧАЕТСЯ В ЛЕГЕНДЕ PLOTLY (native legend HUD): плашка «🟡 Предв. C» скрывает и возвращает
+точку силами браузера, без серверной перерисовки. Отдельного виджета-тумблера нет.
 Клик по точке ставит точку волны — расчёт можно начать до формирования фрактала.
 
 ГОРИЗОНТ ПРОЕКЦИИ: +76 баров от точки C (канон Какан). Тот же предел в PNG для Telegram.
@@ -25,6 +27,7 @@ A-B-C. Нисходящий тренд (Тенкан < Киджун) — мак�
 + наклон AB (ATR на бар) + доля теней свечи C + геометрия (откат, риск, цель) + классы фракталов.
 Statistical Edge, вероятности исходов и светофор выдаются сразу при выборе точки C.
 
+РИСК ПОД BLUE GUARDIAN: дефолт 0.5 % на сделку, шаг ввода 0.1 %.
 ЛОТ: pip_value_usd (JPY — 1000 JPY за пипс по курсу USD/JPY; прямые пары — $10; EUR/AUD — 10 AUD
 в USD; золото — $100 за пункт; BTC — $1; индексы — $1), округление ВНИЗ до шага 0.01.
 ШЛЮЗ: карточка /order {JSON} в Telegram с кнопкой подтверждения; советник получает приказ
@@ -126,6 +129,8 @@ MN_MONTHS = {"MN1": 1, "MN3": 3, "MN6": 6, "MN24": 24}
 KIJUN_ZONE_ATR = 0.3
 STOP_BUFFER_ATR = 0.2
 LOT_STEP = 0.01
+RISK_PCT_DEFAULT = 0.5           # Blue Guardian: дефолт риска на сделку, %
+RISK_PCT_STEP = 0.1              # шаг ввода риска, %
 USDJPY_APPROX = 155.0
 AUDUSD_APPROX = 0.65
 MT5_DEFAULT_TOKEN = "SECRET_ICHIMOKU_TOKEN"
@@ -181,10 +186,9 @@ I18N = {
         "chart_major_high": "Major High", "chart_major_low": "Major Low",
         "chart_time_targets": "Time targets", "hover_high": "High", "hover_low": "Low",
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} bars)", "hover_forecast": "forecast",
-        "chart_wave": "Wave A-B-C", "chart_cand_c": "Candidate C",
+        "chart_wave": "Wave A-B-C", "chart_cand_c": "Cand. C",
         "cand_hover": "<b>Candidate C:</b> %{customdata:.5f}<extra></extra>",
-        "toggle_amber": "🟡 Amber point C",
-        "cand_note_compact": "🟡 Amber C: extremum of the last {bars} bars for an early entry.",
+        "cand_note_compact": "🟡 Amber C: extremum of the last {bars} bars for an early entry. Toggle it in the chart legend.",
         "pts_bar": "Points selected: <b>{n}/3</b>",
         "pts_hint": "🟡 candidate C",
         "pts_hint_tip": "Preliminary C extremum over the last 3 bars including the live one. Tap it to place a wave point early.",
@@ -211,7 +215,7 @@ I18N = {
         "trig_expired_note": "Watch window expired ({bars} bars after the reference candle). Pick a fresher point or use At market.",
         "trig_rule_note": "Chase rule: distance from level <= {lim} ATR ({atr}) - market entry; beyond that - a limit order at the level itself. Stop buffer 0.2 ATR = {buf}.",
         "risk_pct_label": "Risk per trade, %",
-        "risk_pct_help": "Share of equity lost if the stop is hit. The EA applies its own hard cap on top of this.",
+        "risk_pct_help": "Share of equity lost if the stop is hit. Blue Guardian default 0.5 %, step 0.1 %. The EA applies its own hard cap on top of this.",
         "deposit_label": "Deposit, $",
         "deposit_help": "Account equity in USD used to convert the risk percentage into money risk.",
         "lot_line": "Recommended lot: <b>{lots}</b> (Risk: -{risk} | Target N: +{gain})",
@@ -315,10 +319,9 @@ I18N = {
         "chart_major_high": "Главный максимум", "chart_major_low": "Главный минимум",
         "chart_time_targets": "Временные цели", "hover_high": "Хай", "hover_low": "Лоу",
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} баров)", "hover_forecast": "прогноз",
-        "chart_wave": "Волна A-B-C", "chart_cand_c": "Предварительный C",
+        "chart_wave": "Волна A-B-C", "chart_cand_c": "Предв. C",
         "cand_hover": "<b>Предв. C:</b> %{customdata:.5f}<extra></extra>",
-        "toggle_amber": "🟡 Янтарная точка C",
-        "cand_note_compact": "🟡 Янтарная C: экстремум последних {bars} баров для раннего входа.",
+        "cand_note_compact": "🟡 Янтарная C: экстремум последних {bars} баров для раннего входа. Слой переключается в легенде графика.",
         "pts_bar": "Выбрано точек: <b>{n}/3</b>",
         "pts_hint": "🟡 предв. C",
         "pts_hint_tip": "Предварительный экстремум C по последним 3 барам, включая текущий. Нажмите точку, чтобы поставить точку волны заранее.",
@@ -345,7 +348,7 @@ I18N = {
         "trig_expired_note": "Окно наблюдения истекло ({bars} свечей после опорной свечи). Возьмите более свежую точку или режим «По текущей цене».",
         "trig_rule_note": "Правило догона: уход от уровня ≤ {lim}·ATR ({atr}) — вход по рынку; дальше — лимитный ордер на самый уровень. Буфер стопа 0.2·ATR = {buf}.",
         "risk_pct_label": "Риск на сделку, %",
-        "risk_pct_help": "Доля депозита, теряемая при срабатывании стопа. Советник дополнительно применит свой жесткий потолок риска.",
+        "risk_pct_help": "Доля депозита, теряемая при срабатывании стопа. Дефолт Blue Guardian 0.5 %, шаг 0.1 %. Советник дополнительно применит свой жесткий потолок риска.",
         "deposit_label": "Депозит, $",
         "deposit_help": "Размер счета в USD для перевода процента риска в денежный риск.",
         "lot_line": "Рекомендуемый лот: <b>{lots}</b> (Риск: −{risk} | Цель N: +{gain})",
@@ -421,6 +424,11 @@ def asset_label(name):
 def t(key, **kw):
     text = I18N.get(LANG, {}).get(key) or I18N["en"].get(key, key)
     return text.format(**kw) if kw else text
+
+
+def cand_trace_name():
+    """Имя трейса янтарной точки: используется и в легенде, и в обработчике клика."""
+    return "🟡 " + t("chart_cand_c")
 
 
 def E(code, **kw):
@@ -655,12 +663,7 @@ def inject_css(mobile):
         ".st-key-refresh_term button:active { background: #e3e9ee; border-color: #2c3e50; }\n"
         ".st-key-refresh_term button:focus-visible { outline: 1px solid #2c3e50; outline-offset: 1px; }\n"
     )
-    layer_css = (
-        ".st-key-toggle_amber_c { margin: 0.1rem 0 0.1rem 0; }\n"
-        ".st-key-toggle_amber_c label p { font-size: 0.84rem !important; color: #2c3e50; }\n"
-        ".st-key-toggle_amber_c [data-baseweb='checkbox'] > div:first-child { "
-        "background-color: #dfe4ea !important; }\n"
-        ".st-key-toggle_amber_c [aria-checked='true'] { background-color: #a88a45 !important; }\n"
+    status_css = (
         ".pts-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; "
         "border: 1px solid #dfe4ea; background: #fbfcfd; border-radius: 2px; padding: 4px 10px; "
         "font-size: 0.8rem; color: #2c3e50; margin: 2px 0 4px 0; }\n"
@@ -715,7 +718,7 @@ def inject_css(mobile):
         ".app-title { color: #2c3e50; font-size: clamp(1.05rem, 4.5vw, 1.75rem); line-height: 1.25; "
         "margin-top: 0.2rem; overflow-wrap: anywhere; white-space: normal; }\n"
         ".stPlotlyChart .modebar { opacity: 1; }\n"
-        + tool_css + layer_css + teleport_css + exec_css + risk_css +
+        + tool_css + status_css + teleport_css + exec_css + risk_css +
         "@media (max-width: 768px) {\n" + mobile_rules + "}\n"
         "@media (hover: none) {\n"
         ".stPlotlyChart .modebar { opacity: 1 !important; }\n"
@@ -1525,7 +1528,6 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    show_cand = bool(st.session_state.get("toggle_amber_c", True))
     x = np.arange(len(df_plot))
     o, h, l, c = (df_plot[k].to_numpy(dtype=float) for k in ("Open", "High", "Low", "Close"))
     fig_, ax = plt.subplots(figsize=(14, 7.5), dpi=130)
@@ -1575,11 +1577,10 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
             ax.axvline(xk, color="gray", linestyle="--", linewidth=0.8, alpha=0.35, zorder=2)
             vlabel(xk, time_target_label(str(k), ts_, fc_, tf, mobile), "#7f8c8d", 0.78, 7)
 
-    if show_cand:
-        cand_ = candidate_c_extreme(df_plot)
-        if cand_:
-            ax.plot([cand_["x"]], [cand_["y"]], marker="o", markersize=4,
-                    color=CAND_C_COLOR, linestyle="none", zorder=6, clip_on=True)
+    cand_ = candidate_c_extreme(df_plot)
+    if cand_:
+        ax.plot([cand_["x"]], [cand_["y"]], marker="o", markersize=4,
+                color=CAND_C_COLOR, linestyle="none", zorder=6, clip_on=True)
 
     ax.set_xlim(-1.5, x_right + max(2.0, 0.01 * (x_right + 1.0)))
     step = max(1, len(df_plot) // 10)
@@ -1633,7 +1634,7 @@ def refresh_button(key):
 
 
 PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active",
-                "risk_pct", "account_deposit", "entry_mode", "custom_entry", "toggle_amber_c"]
+                "risk_pct", "account_deposit", "entry_mode", "custom_entry"]
 
 
 def _on_lang_change():
@@ -1650,10 +1651,9 @@ if "lang" not in st.session_state:
 st.session_state.setdefault("w_tf", "H1")
 st.session_state.setdefault("w_radar_tf", "D1")
 st.session_state.setdefault("w_radar_active", True)
-st.session_state.setdefault("risk_pct", 1.0)
+st.session_state.setdefault("risk_pct", RISK_PCT_DEFAULT)   # Blue Guardian: 0.5 %
 st.session_state.setdefault("account_deposit", 10000.0)
 st.session_state.setdefault("entry_mode", "hosoda")
-st.session_state.setdefault("toggle_amber_c", True)
 
 _teleport = st.session_state.pop("_teleport", None)
 if _teleport:
@@ -1903,7 +1903,6 @@ elif app_mode == "terminal":
         df_plot = df.tail(250).copy()
         df_plot["x_idx"] = np.arange(len(df_plot))
         UIP = chart_ui(MOBILE)
-        show_amber = bool(st.session_state.get("toggle_amber_c", True))
 
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
@@ -1967,7 +1966,7 @@ elif app_mode == "terminal":
         abc = st.session_state.abc_points
         mode_now = st.session_state.get("entry_mode", "hosoda")
         armed = trigger_plan(df, abc, mode_now, tf_name, is_fx, last_close) if len(abc) == 3 else None
-        cand = candidate_c_extreme(df_plot) if show_amber else None
+        cand = candidate_c_extreme(df_plot)
 
         tt_x, tt_text = [], []
         x_view_right = float(len(df_plot) - 1)
@@ -2013,12 +2012,12 @@ elif app_mode == "terminal":
                 name=t("chart_time_targets"), showlegend=False, text=tt_text, hovertemplate="%{text}<extra></extra>",
             ))
 
-        # --- Янтарная точка C: ультра-компактный ховер, не экранирует область нажатия ---
+        # --- Янтарная точка C: слой в легенде Plotly, ховер не экранирует область нажатия ---
         if cand:
             fig.add_trace(go.Scatter(
                 x=[cand["x"]], y=[cand["y"]], mode="markers",
                 marker=dict(size=UIP["mark_minor"], color=CAND_C_COLOR),
-                name=t("chart_cand_c"), showlegend=False,
+                name=cand_trace_name(), showlegend=True,
                 customdata=[cand["price"]],
                 hovertemplate=t("cand_hover"),
                 hoverlabel=dict(bgcolor=CAND_HOVER_BG, bordercolor=CAND_HOVER_BORDER,
@@ -2059,14 +2058,6 @@ elif app_mode == "terminal":
             theme=None,
             **WIDE,
         )
-
-        # --- панель слоёв: компактный тумблер янтарного слоя ---
-        if MOBILE:
-            st.toggle(t("toggle_amber"), key="toggle_amber_c")
-        else:
-            lc1, _lc2 = st.columns([1, 3])
-            with lc1:
-                st.toggle(t("toggle_amber"), key="toggle_amber_c")
 
         st.caption(t("cand_note_compact", bars=CAND_C_BARS))
         st.markdown(points_bar_html(len(abc)), unsafe_allow_html=True)
@@ -2245,14 +2236,16 @@ elif app_mode == "terminal":
 
             if MOBILE:
                 risk_pct = st.number_input(t("risk_pct_label"), min_value=0.1, max_value=100.0,
-                                           step=0.5, format="%.1f", key="risk_pct", help=t("risk_pct_help"))
+                                           step=RISK_PCT_STEP, format="%.1f", key="risk_pct",
+                                           help=t("risk_pct_help"))
                 deposit = st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9,
                                           step=1000.0, format="%.0f", key="account_deposit", help=t("deposit_help"))
             else:
                 rc1, rc2, _rc3 = st.columns([1, 1, 2])
                 with rc1:
                     risk_pct = st.number_input(t("risk_pct_label"), min_value=0.1, max_value=100.0,
-                                               step=0.5, format="%.1f", key="risk_pct", help=t("risk_pct_help"))
+                                               step=RISK_PCT_STEP, format="%.1f", key="risk_pct",
+                                               help=t("risk_pct_help"))
                 with rc2:
                     deposit = st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9,
                                               step=1000.0, format="%.0f", key="account_deposit", help=t("deposit_help"))
@@ -2376,7 +2369,7 @@ elif app_mode == "terminal":
                         price = float(row["High"])
                     elif tname in (t("chart_minor_low"), t("chart_major_low")):
                         price = float(row["Low"])
-                    elif tname == t("chart_cand_c"):
+                    elif tname == cand_trace_name():
                         price = float(row["High"]) if (cand and cand["kind"] == "high") else float(row["Low"])
                     elif tname == t("chart_price"):
                         y_val = clicked.get("y")
