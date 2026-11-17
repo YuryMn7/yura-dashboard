@@ -1,48 +1,37 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
 Текущее состояние: кнопки сканера и Telegram на главном экране; десктопный график как раньше
-(height=750, margin 20/110/40/120, легенда снизу, tickangle=45); панель Plotly всегда видна
-(displayModeBar=True, selection_mode points/box/lasso, перекрестье, fullscreen).
-Режим экрана определяется АВТОМАТИЧЕСКИ по User-Agent, переключателя в интерфейсе нет.
-Язык при первой загрузке сессии определяется по Accept-Language (ru -> Русский, иначе English);
-ручной переключатель в сайдбаре сохраняет приоритет.
-Крипта: BTC W1/MN1/MN3 -> старший MN1, на MN3 — понятная причина пропуска.
-Временные цели Kihon/Taiyosuu: у каждой линии подпись с датой и временем в одну строку (прогноз «≈»),
-дальние 172/226/257 проявляются при zoom out; масштаб по умолчанию ограничен Kihon 129 от точки C.
-Обновление котировок — монохромная иконка ↻ в стиле панели графика; точки и цели не сбрасываются.
+(height=750, margin 20/110/40/120, легенда снизу, tickangle=45); панель Plotly всегда видна.
+Режим экрана — автоматически по User-Agent; язык первой загрузки — по Accept-Language.
+Крипта: BTC W1/MN1/MN3 -> старший MN1. Временные цели Kihon/Taiyosuu с датами, окно Kihon 129.
+Обновление котировок — иконка ↻; точки и цели не сбрасываются.
 
-РАДАР (Real-Time засада у Киджун): тренд HTF, Облако, Тенкан/Киджун и Чикоу подтверждаются
-по последней ЗАКРЫТОЙ свече (iloc[-2]); триггер зоны проверяется по АКТИВНОЙ свече (iloc[-1]) —
-цена и тени против Киджун закрытого бара с порогом 0.3*ATR. Колонка «Причина» показывает расстояние
-до Киджун и недостающие подтверждения. Источник данных Радара — Yahoo (золото = GC=F, индексы).
+РАДАР (Real-Time засада у Киджун): тренд/Облако/линии/Чикоу — по закрытому бару (iloc[-2]);
+зона засады — по активной свече (iloc[-1]) с порогом 0.3*ATR. Колонка «Причина» — диагностика.
 
-ONE-CLICK TELEPORT: выбор одной строки в таблице Радара (on_select="rerun", single-row);
-системный тулбар таблицы (CSV/поиск/fullscreen) остаётся активным. Кнопка «➔ Открыть ... в Терминале»
-переносит asset/tf в w_mode/w_symbol/w_tf, сбрасывает разметку волны и делает st.rerun().
+ONE-CLICK TELEPORT: выбор строки в таблице Радара -> кнопка переноса в Терминал.
 
-РИСК-МЕНЕДЖМЕНТ: под ИИ-блоком при трёх точках A-B-C — карточка сделки.
-Точка входа: «Хосода: разворот C» (первый ЗАКРЫТЫЙ бар после C с Close за High_C/Low_C),
-«Пробой точки B», «По текущей цене», «Своя цена входа». Стоп = экстремум C ∓ 0.2*ATR(бар C).
-Таблица — чистая геометрия: уровни, пипсы/пункты, R:R. Деньги — в блоке депозита и строке лота.
-Лот: pip_value_usd (JPY — 1000 JPY за пипс по курсу USD/JPY; прямые пары — $10; EUR/AUD — 10 AUD
+ВХОДЫ ПО ПРОБОЮ (этап 2, единый план trigger_plan):
+  * «Хосода: разворот C» — уровень = High/Low свечи точки C; окно 3 свечи после неё.
+  * «Пробой точки B» — уровень = цена точки B; окно 17 свечей после неё; стоп за ОБЛАКОМ ± 0.2*ATR.
+  * Подтверждение = ЗАКРЫТИЕ свечи за уровнем (не касание тенью).
+  * Правило догона: |цена − уровень| <= 1*ATR -> вход по рынку; дальше -> ЛИМИТНЫЙ ордер
+    на самый уровень (BuyLimit ниже рынка / SellLimit выше), чтобы не терять пункты.
+  * Подтверждения ещё нет -> режим наблюдения (watch): советник сам ждёт закрытия свечи.
+  * «По текущей цене» и «Своя цена входа» — рыночный вход, стоп за точкой C ± 0.2*ATR бара C.
+На графике взведённый уровень помечен янтарной точкой на ПОСЛЕДНЕМ баре (в истории не остаётся).
+
+ЛОТ: pip_value_usd (JPY — 1000 JPY за пипс по курсу USD/JPY; прямые пары — $10; EUR/AUD — 10 AUD
 в USD; золото — $100 за пункт; BTC — $1; индексы — $1), округление ВНИЗ до шага 0.01.
 
-ЭТАП 2 — TELEGRAM CONFIRM BRIDGE: кнопка «➔ Исполнить приказ в MetaTrader 5» отправляет в чат
-карточку /order {JSON} с inline-кнопкой подтверждения (callback_data = IG_EXEC).
-ВАЖНО: Telegram не доставляет боту его собственные сообщения, поэтому советник увидит приказ
-ТОЛЬКО как callback_query — то есть после нажатия кнопки трейдером. JSON живет в тексте сообщения
-(в callback_data помещается лишь 64 байта), советник берет его оттуда. Один тап = один приказ;
-повторный тап отсекается дедупликацией по id на стороне советника.
-Окончательный расчет лота и контроль риска — на стороне советника по спецификации брокера.
+ШЛЮЗ: кнопка «➔ Исполнить приказ в MetaTrader 5» отправляет в Telegram карточку /order {JSON}
+с кнопкой подтверждения. Бот не видит свои сообщения — советник получит приказ только как
+callback_query, то есть после нажатия трейдером. Окончательный лот и комплаенс — на стороне советника.
 
-TELEGRAM PNG: в matplotlib-рендере рисуются только вертикали и метки внутри x_right (clip_on=True).
+BY DESIGN: точки A-B-C сбрасываются при смене инструмента, ТФ, серверного времени, raw, клиринга,
+кнопкой «Сбросить точки» и при телепорте. Обновление котировок, смена языка и отчёты точки НЕ сбрасывают.
 
-BY DESIGN (штатная защита): точки A-B-C сбрасываются при смене инструмента, таймфрейма, серверного
-времени, режимов raw и клиринга, кнопкой «Сбросить точки» и при телепорте; вместе с ними очищается
-своя цена входа. Обновление котировок, смена языка, зум/панорама и отчёты точки НЕ сбрасывают.
-
-Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опционально).
+Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опц.).
 Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.).
-Все секреты вырезаются из текстов ошибок через safe_err.
 """
 import gc
 import io
@@ -77,7 +66,7 @@ st.session_state.setdefault("chart_ver", 0)
 def reset_points():
     st.session_state.abc_points = []
     st.session_state.chart_ver += 1
-    st.session_state.pop("custom_entry", None)   # своя цена входа привязана к инструменту/ТФ
+    st.session_state.pop("custom_entry", None)
 
 
 ASSET_ROUTER = {
@@ -128,13 +117,16 @@ MIN_HTF_BARS = 80
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
 TIME_AXIS_KIHON_CAP = 129
 MN_MONTHS = {"MN1": 1, "MN3": 3, "MN6": 6, "MN24": 24}
-KIJUN_ZONE_ATR = 0.3   # порог засады у Киджун (неизменен)
-STOP_BUFFER_ATR = 0.2  # защитный буфер стопа от экстремума точки C
-LOT_STEP = 0.01        # шаг лота для округления вниз
-USDJPY_APPROX = 155.0  # резервный курс USD/JPY для JPY-кроссов
-AUDUSD_APPROX = 0.65   # резервный курс AUD/USD для EUR/AUD
+KIJUN_ZONE_ATR = 0.3
+STOP_BUFFER_ATR = 0.2
+LOT_STEP = 0.01
+USDJPY_APPROX = 155.0
+AUDUSD_APPROX = 0.65
 MT5_DEFAULT_TOKEN = "SECRET_ICHIMOKU_TOKEN"
-MT5_EXEC_MARK = "IG_EXEC"   # метка кнопки подтверждения (callback_data, лимит 64 байта)
+MT5_EXEC_MARK = "IG_EXEC"
+TRIG_WATCH_BARS = {"hosoda": 3, "break_b": 17}   # окна наблюдения: C — 3 свечи, B — 17
+ATR_CHASE_LIMIT = 1.0                            # уход дальше 1 ATR -> лимит на уровень
+ARMED_COLOR = "#a88a45"
 
 LANGS = {"English": "en", "Русский": "ru"}
 DEFAULT_LANG = "Русский"
@@ -180,17 +172,30 @@ I18N = {
         "chart_major_high": "Major High", "chart_major_low": "Major Low",
         "chart_time_targets": "Time targets", "hover_high": "High", "hover_low": "Low",
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} bars)", "hover_forecast": "forecast",
-        "chart_wave": "Wave A-B-C",
+        "chart_wave": "Wave A-B-C", "chart_armed": "Armed trigger",
+        "hover_armed": "{mode}<br>{dec}<br>Level: {lvl}<br>Until: {exp}",
         "risk_title": "Trade parameters (calculated)", "risk_buy": "BUY", "risk_sell": "SELL",
         "entry_mode": "Entry point",
         "entry_hosoda": "Hosoda: C reversal", "entry_break_b": "Point B breakout",
         "entry_market": "At market", "entry_custom": "Custom entry price",
         "entry_custom_label": "Entry price", "entry_custom_hint": "Enter the exact sniper entry price.",
+        "trig_level": "Trigger level", "trig_decision": "Decision",
+        "dec_market": "Market now", "dec_limit": "Limit at level", "dec_watch": "Wait for close",
+        "dec_expired": "Window expired", "dec_invalid": "Not calculated",
+        "trig_window": "Window, bars", "trig_expire": "Valid until",
+        "trig_confirm": "Confirmation", "trig_confirm_wait": "pending",
+        "trig_dist": "Distance from level",
         "risk_confirm_level": "Confirmation level", "risk_entry_time": "Confirmation bar",
-        "risk_wait": "Waiting for C confirmation: a close {dir} {level} is required.",
+        "risk_wait": "Waiting for confirmation: a bar close {dir} {level} is required.",
         "risk_wait_above": "above", "risk_wait_below": "below",
-        "risk_entry": "Entry", "risk_stop_buy": "Stop (C - 0.2 ATR)", "risk_stop_sell": "Stop (C + 0.2 ATR)",
+        "risk_entry": "Entry", "risk_entry_plan": "Entry (planned)",
+        "risk_stop_buy": "Stop (C − 0.2 ATR)", "risk_stop_sell": "Stop (C + 0.2 ATR)",
+        "risk_stop_cloud_buy": "Stop (Kumo − 0.2 ATR)", "risk_stop_cloud_sell": "Stop (Kumo + 0.2 ATR)",
         "risk_target": "Target N", "risk_risk": "Risk", "risk_reward": "Reward", "risk_rr": "Risk : Reward",
+        "trig_no_cloud": "Kumo is not ready yet - the stop for a B breakout cannot be calculated.",
+        "trig_ref_missing": "Reference candle not found in history - pick the point again.",
+        "trig_expired_note": "Watch window expired ({bars} bars after the reference candle). Pick a fresher point or use At market.",
+        "trig_rule_note": "Chase rule: distance from level <= {lim} ATR ({atr}) - market entry; beyond that - a limit order at the level itself, to avoid losing pips. Stop buffer 0.2 ATR = {buf}.",
         "risk_pct_label": "Risk per trade, %",
         "risk_pct_help": "Share of equity lost if the stop is hit. The EA applies its own hard cap on top of this.",
         "deposit_label": "Deposit, $",
@@ -199,16 +204,18 @@ I18N = {
         "lot_too_small": "Calculated size is below 0.01 lot - the EA will reject this order. Reduce the risk distance or increase the deposit.",
         "lot_no_value": "Point value in USD is unavailable for this instrument - lot size cannot be calculated.",
         "risk_outcome": "At {pct}% risk: stop -{loss}% of equity, target +{gain}% of equity. Break-even win rate: {be}%.",
-        "risk_units": "Units: Forex - pip 0.0001 (JPY 0.01), others - 1.0 price unit. Point value per 1 lot ~ {pv} USD. ATR of bar C = {atr}; stop buffer 0.2 x ATR = {buf}.",
+        "risk_units": "Units: Forex - pip 0.0001 (JPY 0.01), others - 1.0 price unit. Point value per 1 lot ~ {pv} USD. ATR used = {atr}.",
         "risk_geom_bad": "Geometry is inverted: the entry is already beyond the stop or the target - distances are shown as absolute values.",
         "risk_zero": "Stop equals the entry price - Risk : Reward and lot size are undefined.",
         "mt5_exec_btn": "➔ Execute order in MetaTrader 5",
-        "mt5_need_entry": "Entry is not confirmed - the order button is locked. Wait for a close beyond the C extreme, or switch the entry mode.",
+        "mt5_need_entry": "Entry is not defined - the order button is locked. Pick a fresher point or another entry mode.",
         "mt5_no_secrets": "Add TELEGRAM_TOKEN and TELEGRAM_CHAT_ID to the app secrets.",
         "mt5_sending": "Sending the order card to Telegram...",
-        "mt5_sent": "Order card sent to Telegram. Tap the confirmation button in the chat - the EA executes only after your tap.",
-        "mt5_sent_id": "Order {oid} · {sym} {side} · {lots} lots · risk {risk}%",
+        "mt5_sent": "Order card sent to Telegram. Tap the confirmation button in the chat - the EA acts only after your tap.",
+        "mt5_sent_id": "Order {oid} · {sym} {side} · {dec} · {lots} lots · risk {risk}%",
         "mt5_confirm_note": "Telegram never delivers a bot its own messages: without your tap there will be no trade. A second tap on the same card will not open a second position.",
+        "mt5_after_watch": "After confirmation the EA arms a watch and enters on a bar close beyond the level.",
+        "mt5_after_limit": "After confirmation the EA places a limit order at the level and waits for price to return.",
         "tg_confirm_btn": "✅ Confirm: {sym} {side} {lots} lots",
         "mt5_err": "Gateway error: {detail}",
         "pt_pip": "pips", "pt_point": "pts",
@@ -295,17 +302,30 @@ I18N = {
         "chart_major_high": "Главный максимум", "chart_major_low": "Главный минимум",
         "chart_time_targets": "Временные цели", "hover_high": "Хай", "hover_low": "Лоу",
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} баров)", "hover_forecast": "прогноз",
-        "chart_wave": "Волна A-B-C",
+        "chart_wave": "Волна A-B-C", "chart_armed": "Взведённый уровень",
+        "hover_armed": "{mode}<br>{dec}<br>Уровень: {lvl}<br>До: {exp}",
         "risk_title": "Параметры сделки (расчет)", "risk_buy": "ПОКУПКА", "risk_sell": "ПРОДАЖА",
         "entry_mode": "Точка входа",
         "entry_hosoda": "Хосода: разворот C", "entry_break_b": "Пробой точки B",
         "entry_market": "По текущей цене", "entry_custom": "Своя цена входа",
         "entry_custom_label": "Цена входа", "entry_custom_hint": "Введите точную цену снайперского входа.",
+        "trig_level": "Уровень пробоя", "trig_decision": "Решение",
+        "dec_market": "Рынок сейчас", "dec_limit": "Лимит на уровень", "dec_watch": "Ждём закрытия",
+        "dec_expired": "Окно истекло", "dec_invalid": "Не рассчитано",
+        "trig_window": "Окно, свечей", "trig_expire": "Действует до",
+        "trig_confirm": "Подтверждение", "trig_confirm_wait": "ожидается",
+        "trig_dist": "Уход от уровня",
         "risk_confirm_level": "Уровень подтверждения", "risk_entry_time": "Бар подтверждения",
-        "risk_wait": "Ожидание подтверждения C: ждём закрытия {dir} {level}.",
+        "risk_wait": "Ожидание подтверждения: нужно закрытие свечи {dir} {level}.",
         "risk_wait_above": "выше", "risk_wait_below": "ниже",
-        "risk_entry": "Вход", "risk_stop_buy": "Стоп (C − 0.2·ATR)", "risk_stop_sell": "Стоп (C + 0.2·ATR)",
+        "risk_entry": "Вход", "risk_entry_plan": "Вход (ориентир)",
+        "risk_stop_buy": "Стоп (C − 0.2·ATR)", "risk_stop_sell": "Стоп (C + 0.2·ATR)",
+        "risk_stop_cloud_buy": "Стоп (Облако − 0.2·ATR)", "risk_stop_cloud_sell": "Стоп (Облако + 0.2·ATR)",
         "risk_target": "Цель N", "risk_risk": "Риск", "risk_reward": "Прибыль", "risk_rr": "Риск : Прибыль",
+        "trig_no_cloud": "Облако ещё не готово — стоп для пробоя B рассчитать нельзя.",
+        "trig_ref_missing": "Опорная свеча не найдена в истории — выберите точку заново.",
+        "trig_expired_note": "Окно наблюдения истекло ({bars} свечей после опорной свечи). Возьмите более свежую точку или режим «По текущей цене».",
+        "trig_rule_note": "Правило догона: уход от уровня ≤ {lim}·ATR ({atr}) — вход по рынку; дальше — лимитный ордер на самый уровень, чтобы не терять пункты. Буфер стопа 0.2·ATR = {buf}.",
         "risk_pct_label": "Риск на сделку, %",
         "risk_pct_help": "Доля депозита, теряемая при срабатывании стопа. Советник дополнительно применит свой жесткий потолок риска.",
         "deposit_label": "Депозит, $",
@@ -314,16 +334,18 @@ I18N = {
         "lot_too_small": "Расчетный объем меньше 0.01 лота — советник отклонит приказ. Уменьшите дистанцию риска или увеличьте депозит.",
         "lot_no_value": "Стоимость пункта в USD для этого инструмента недоступна — лот рассчитать нельзя.",
         "risk_outcome": "При риске {pct}%: стоп −{loss}% депозита, цель +{gain}% депозита. Безубыточная доля прибыльных: {be}%.",
-        "risk_units": "Пункты: Форекс — пипс 0.0001 (JPY 0.01), прочие — 1.0 ед. цены. Стоимость пункта на 1 лот ≈ {pv} USD. ATR бара C = {atr}; буфер стопа 0.2·ATR = {buf}.",
+        "risk_units": "Пункты: Форекс — пипс 0.0001 (JPY 0.01), прочие — 1.0 ед. цены. Стоимость пункта на 1 лот ≈ {pv} USD. Использованный ATR = {atr}.",
         "risk_geom_bad": "Геометрия вывернута: вход уже за стопом или за целью — дистанции показаны по модулю.",
         "risk_zero": "Стоп совпадает с ценой входа — соотношение R:R и объем не определены.",
         "mt5_exec_btn": "➔ Исполнить приказ в MetaTrader 5",
-        "mt5_need_entry": "Вход не подтверждён — кнопка приказа заблокирована. Дождитесь закрытия за экстремумом C или смените режим входа.",
+        "mt5_need_entry": "Вход не определён — кнопка приказа заблокирована. Возьмите более свежую точку или другой режим входа.",
         "mt5_no_secrets": "Добавьте TELEGRAM_TOKEN и TELEGRAM_CHAT_ID в секреты приложения.",
         "mt5_sending": "Передача карточки приказа в Telegram...",
-        "mt5_sent": "Карточка приказа отправлена в Telegram. Нажмите кнопку подтверждения в чате — советник исполнит приказ только после вашего нажатия.",
-        "mt5_sent_id": "Приказ {oid} · {sym} {side} · {lots} лота · риск {risk}%",
+        "mt5_sent": "Карточка приказа отправлена в Telegram. Нажмите кнопку подтверждения в чате — советник действует только после вашего нажатия.",
+        "mt5_sent_id": "Приказ {oid} · {sym} {side} · {dec} · {lots} лота · риск {risk}%",
         "mt5_confirm_note": "Telegram не доставляет боту его собственные сообщения: без вашего нажатия сделки не будет. Повторное нажатие той же карточки не откроет вторую позицию.",
+        "mt5_after_watch": "После подтверждения советник взведёт наблюдение и войдёт по закрытию свечи за уровнем.",
+        "mt5_after_limit": "После подтверждения советник выставит лимитный ордер на уровень и будет ждать возврата цены.",
         "tg_confirm_btn": "✅ Подтвердить: {sym} {side} {lots} лота",
         "mt5_err": "Ошибка шлюза: {detail}",
         "pt_pip": "пипс", "pt_point": "п.",
@@ -394,7 +416,6 @@ def fmt_err(err):
 
 
 def _secret_values():
-    """Все известные секреты — для вырезания из текстов ошибок."""
     vals = [API_KEY]
     for k in ("TELEGRAM_TOKEN", "MT5_SECRET_TOKEN"):
         try:
@@ -407,7 +428,6 @@ def _secret_values():
 
 
 def safe_err(e):
-    """Текст ошибки без секретов: ключ TwelveData, токен бота, токен MT5."""
     txt = e if isinstance(e, str) else f"{type(e).__name__}: {e}"
     for s in _secret_values():
         txt = txt.replace(s, "***")
@@ -415,9 +435,6 @@ def safe_err(e):
 
 
 def mt5_symbol(asset_key):
-    """Тикер под спецификацию MetaTrader 5: без скобок, слэшей и пробелов.
-    EUR/USD -> EURUSD, XAU/USD (Gold) -> XAUUSD, GER40 (DAX) -> GER40, SPX500 -> SPX500.
-    Для инструментов с не-латинским именем берётся тикер провайдера (DXY)."""
     base = re.sub(r"\(.*?\)", "", asset_key)
     base = re.sub(r"[\s/]+", "", base).strip().upper()
     if not base or not base.isascii():
@@ -428,7 +445,6 @@ def mt5_symbol(asset_key):
 
 
 def price_digits(price):
-    """Знаков после запятой для цены инструмента (как в fmt_price)."""
     if price >= 1000:
         return 2
     if price >= 10:
@@ -437,7 +453,6 @@ def price_digits(price):
 
 
 def fmt_dist(v):
-    """Дистанция до Киджун: крупный масштаб — 1 знак, средний — 2, форекс — 5."""
     if v >= 100:
         return f"{v:.1f}"
     if v >= 1:
@@ -446,7 +461,6 @@ def fmt_dist(v):
 
 
 def fmt_diag(d):
-    """Диагностика засады: код + параметры -> текст на текущем языке."""
     if not d:
         return ""
     kind, kw = d
@@ -458,7 +472,6 @@ def fmt_diag(d):
 
 
 def point_size(route):
-    """(размер пункта, ключ подписи): Форекс — пипс, остальные — 1.0 единицы цены."""
     sym = route["sym"]
     if "/" in sym and "BTC" not in sym and "XAU" not in sym:
         return (0.01, "pt_pip") if sym.endswith("JPY") else (0.0001, "pt_pip")
@@ -466,7 +479,6 @@ def point_size(route):
 
 
 def _fx_last(sym_yf):
-    """Последняя цена кросс-курса с Yahoo (кэш 5 мин) для пересчета в USD; None при неудаче."""
     try:
         dfx, errx = fetch_yahoo(sym_yf, "M15")
         if errx or dfx.empty:
@@ -478,10 +490,7 @@ def _fx_last(sym_yf):
 
 
 def pip_value_usd(asset_key, current_price, psize):
-    """Стоимость 1 пункта/пипса в USD на 1 стандартный лот.
-    Форекс: 100 000 базовой валюты -> 100000*psize в валюте котировки, далее пересчет в USD.
-    JPY: 1000 JPY / курс USD/JPY. Прямые пары: строго $10 за пипс. EUR/AUD: 10 AUD по AUD/USD.
-    Золото: 100 унций -> $100 за пункт. BTC: 1 BTC -> $1. Индексы: 1 контракт -> $1."""
+    """Стоимость 1 пункта/пипса в USD на 1 стандартный лот."""
     route = ASSET_ROUTER.get(asset_key)
     sym = route["sym"] if route else asset_key
     if "BTC" in sym:
@@ -489,11 +498,11 @@ def pip_value_usd(asset_key, current_price, psize):
     if "XAU" in sym:
         return 100.0 * psize
     if "/" not in sym:
-        return 1.0 * psize                      # индексы и DXY: 1 пункт = $1 на 1 контракт
-    amount = 100000.0 * psize                   # сумма в валюте котировки на 1 лот
+        return 1.0 * psize
+    amount = 100000.0 * psize
     quote = sym.split("/")[1]
     if quote == "USD":
-        return amount                           # 0.0001 * 100000 = $10.00
+        return amount
     if quote == "JPY":
         if "USD/JPY" in sym and current_price > 0.0:
             rate = current_price
@@ -508,7 +517,6 @@ def pip_value_usd(asset_key, current_price, psize):
 
 
 def fmt_money(v, ccy):
-    """Денежная сумма для нижнего блока депозита (в таблице сделки валюты нет)."""
     s = f"{v:,.2f}".replace(",", " ")
     return f"{s} {ccy}" if ccy else s
 
@@ -520,14 +528,12 @@ def fmt_points(v, size):
 
 
 def risk_card_html(head, rows, accent):
-    """Компактная институциональная карточка параметров сделки (только наши строки и числа)."""
     body = "".join(f"<tr><td class='rl'>{k}</td><td class='rv'>{v}</td></tr>" for k, v in rows)
     return (f"<div class='risk-card' style='border-left-color:{accent}'>"
             f"<div class='risk-hd'>{head}</div><table class='risk-tb'>{body}</table></div>")
 
 
 def detect_default_lang():
-    """Язык первой загрузки по Accept-Language браузера (ru -> Русский, иначе English)."""
     try:
         al = st.context.headers.get("Accept-Language", "").lower()
         return "Русский" if "ru" in al else "English"
@@ -536,7 +542,6 @@ def detect_default_lang():
 
 
 def detect_mobile_ua():
-    """Автоматическое определение телефона по User-Agent; планшеты считаются десктопом."""
     try:
         ua = st.context.headers.get("User-Agent", "") or ""
     except Exception:
@@ -958,6 +963,80 @@ def hosoda_targets(a, b, c):
     return {"V": b - (c - b), "N": c - (a - b), "E": b - (a - b), "NT": c - (a - c)}
 
 
+def trigger_plan(df, abc, mode, tf, is_fx, last_close):
+    """Единый план входа по пробою: уровень, окно, стоп и решение рынок/лимит/наблюдение.
+    Подтверждение — ЗАКРЫТИЕ свечи за уровнем. Правило догона: уход <= 1 ATR -> рынок,
+    дальше -> лимитный ордер на самый уровень. Нет подтверждения -> наблюдение в окне N свечей."""
+    if mode not in TRIG_WATCH_BARS or len(abc) != 3 or len(df) < 3:
+        return None
+    rA, rB, rC = abc
+    buy = rB["y"] > rA["y"]
+    bars = TRIG_WATCH_BARS[mode]
+    ref_t = rC["t"] if mode == "hosoda" else rB["t"]
+    if ref_t not in df.index:
+        return {"ok": False, "why": "ref_missing"}
+    rp = int(df.index.get_loc(ref_t))
+    rb = df.iloc[rp]
+
+    atr_last = float(df["ATR"].iloc[-2])
+    if not np.isfinite(atr_last):
+        atr_last = float(df["ATR"].iloc[-1])
+    atr_now = atr_last if np.isfinite(atr_last) else 0.0
+    atr_ref = float(rb["ATR"]) if np.isfinite(rb["ATR"]) else atr_now
+
+    if mode == "hosoda":
+        level = float(rb["High"]) if buy else float(rb["Low"])
+        buf = STOP_BUFFER_ATR * atr_ref
+        stop = float(rC["y"]) - buf if buy else float(rC["y"]) + buf
+        stop_src = "c"
+    else:
+        level = float(rB["y"])
+        cb = df.iloc[-2]
+        sa_v, sb_v = float(cb["senkou_a"]), float(cb["senkou_b"])
+        if not (np.isfinite(sa_v) and np.isfinite(sb_v)):
+            return {"ok": False, "why": "no_cloud"}
+        buf = STOP_BUFFER_ATR * atr_now
+        stop = min(sa_v, sb_v) - buf if buy else max(sa_v, sb_v) + buf
+        stop_src = "cloud"
+
+    conf_t = None
+    if rp + 1 < len(df) - 1:
+        seg = df.iloc[rp + 1:-1]                     # только ЗАКРЫТЫЕ бары после опорного
+        mask = (seg["Close"] > level) if buy else (seg["Close"] < level)
+        hits = np.flatnonzero(mask.to_numpy())
+        if len(hits):
+            conf_t = df.index[rp + 1 + int(hits[0])]
+
+    clock = _forecast_clock(df, tf, is_fx)
+    step = clock[0] if clock else pd.Timedelta(hours=1)
+    now_ts = df.index[-1]
+    if conf_t is not None:
+        expire = bar_time_at(df, len(df) - 1 + bars, tf, is_fx, clock)[0]   # окно ордера от постановки
+    else:
+        expire = bar_time_at(df, rp + bars, tf, is_fx, clock)[0] + step     # окно наблюдения от опорной свечи
+
+    away = abs(last_close - level)
+    dist_atr = (away / atr_now) if atr_now > 0 else None
+    at_or_better = (last_close <= level) if buy else (last_close >= level)
+
+    if conf_t is not None:
+        if at_or_better or (atr_now > 0 and away <= ATR_CHASE_LIMIT * atr_now):
+            dec, entry_eff = "market", last_close
+        else:
+            dec, entry_eff = "limit", level
+    else:
+        if expire > now_ts:
+            dec, entry_eff = "watch", level
+        else:
+            dec, entry_eff = "expired", level
+
+    return {"ok": True, "buy": buy, "level": level, "stop": stop, "stop_src": stop_src,
+            "ref_t": ref_t, "bars": bars, "expire": expire, "conf_t": conf_t,
+            "atr_now": atr_now, "atr_ref": atr_ref, "buf": buf,
+            "dec": dec, "entry": entry_eff, "away": away, "dist_atr": dist_atr,
+            "target": float(hosoda_targets(rA["y"], rB["y"], rC["y"])["N"])}
+
+
 ALICE_TARGETS = ("N",)
 ALICE_HORIZON = 50
 ALICE_HORIZON_MAX = 300
@@ -1315,7 +1394,6 @@ def _tg_credentials():
 
 
 def _mt5_secret():
-    """Секретный токен авторизации для советника IchimokuGuardian."""
     try:
         return str(st.secrets.get("MT5_SECRET_TOKEN", MT5_DEFAULT_TOKEN))
     except Exception:
@@ -1323,9 +1401,7 @@ def _mt5_secret():
 
 
 def send_mt5_order(payload, confirm_label):
-    """Карточка приказа в Telegram с кнопкой подтверждения.
-    Бот не видит свои сообщения, поэтому советник получит приказ только как callback_query —
-    после нажатия кнопки трейдером. JSON остается в тексте сообщения. Возвращает (ok, error)."""
+    """Карточка приказа в Telegram с кнопкой подтверждения. Возвращает (ok, error)."""
     token, chat_id = _tg_credentials()
     if not token or not chat_id:
         return False, t("mt5_no_secrets")
@@ -1444,7 +1520,6 @@ def send_telegram(token, chat_id, text, png):
 
 
 def refresh_button(key):
-    """Монохромная иконка ↻ в стиле панели графика: чистит только кэш котировок, точки и цели сохраняет."""
     if st.button(t("refresh"), key=key, help=t("refresh_help")):
         fetch_smart_data.clear()
         fetch_yahoo.clear()
@@ -1465,7 +1540,7 @@ if _keep:
         st.session_state[_k] = _v
 
 if "lang" not in st.session_state:
-    st.session_state["lang"] = detect_default_lang()   # GEO / Accept-Language при первой загрузке
+    st.session_state["lang"] = detect_default_lang()
 st.session_state.setdefault("w_tf", "H1")
 st.session_state.setdefault("w_radar_tf", "D1")
 st.session_state.setdefault("w_radar_active", True)
@@ -1473,7 +1548,6 @@ st.session_state.setdefault("risk_pct", 1.0)
 st.session_state.setdefault("account_deposit", 10000.0)
 st.session_state.setdefault("entry_mode", "hosoda")
 
-# --- ONE-CLICK TELEPORT: применяем ДО создания виджетов (требование Streamlit) ---
 _teleport = st.session_state.pop("_teleport", None)
 if _teleport:
     if _teleport.get("asset") in ASSET_ROUTER:
@@ -1514,7 +1588,7 @@ if app_mode == "radar":
         return df, None
 
     def scan_one(asset_name, route, tf):
-        """Тренд/Облако/линии/Чикоу — по закрытому бару (iloc[-2]); зона засады — по активному (iloc[-1])."""
+        """Тренд/Облако/линии/Чикоу — по закрытому бару; зона засады — по активному."""
         try:
             if is_crypto_asset(route) and tf == "MN3":
                 return None, E("crypto_hist", tf=tf)
@@ -1538,14 +1612,12 @@ if app_mode == "radar":
             if h_v.isna().any() or l_v.isna().any() or p_v.isna().any() or c_v.isna().any():
                 return None, E("nan")
 
-            # --- СТАРШИЙ ТРЕНД (закрытый бар) ---
             h_kumo_top = max(h_v["senkou_a"], h_v["senkou_b"])
             h_kumo_bot = min(h_v["senkou_a"], h_v["senkou_b"])
             htf_bullish = h_v["Close"] > h_kumo_top and h_v["tenkan"] >= h_v["kijun"]
             htf_bearish = h_v["Close"] < h_kumo_bot and h_v["tenkan"] <= h_v["kijun"]
             trend_code = "up" if htf_bullish else ("down" if htf_bearish else "flat")
 
-            # --- ПОДТВЕРЖДЕНИЯ (закрытый бар младшего ТФ) ---
             pr, kijun = l_v["Close"], l_v["kijun"]
             zone = l_v["ATR"] * KIJUN_ZONE_ATR
             l_kumo_top = max(l_v["senkou_a"], l_v["senkou_b"])
@@ -1557,7 +1629,6 @@ if app_mode == "radar":
             bullish = l_v["tenkan"] > kijun and pr > l_kumo_top and chikou_buy
             bearish = l_v["tenkan"] < kijun and pr < l_kumo_bot and chikou_sell
 
-            # --- ТРИГГЕР ЗАСАДЫ (активная свеча): цена или тень в зоне Киджун ---
             pr_live, high_live, low_live = float(c_v["Close"]), float(c_v["High"]), float(c_v["Low"])
             in_zone = abs(pr_live - kijun) <= zone
             near_buy = in_zone or (low_live <= kijun + zone and pr_live >= kijun - zone)
@@ -1569,7 +1640,6 @@ if app_mode == "radar":
             elif bearish and near_sell:
                 sig = "strong_sell" if htf_bearish else "local_sell"
 
-            # --- ДИАГНОСТИКА для строк «Ждем» ---
             diag = None
             if sig == "wait":
                 dist = abs(pr_live - kijun)
@@ -1787,6 +1857,10 @@ elif app_mode == "terminal":
             if p["t"] in df_plot.index:
                 pts.append({"x": int(df_plot.index.get_loc(p["t"])), "y": p["y"]})
 
+        abc = st.session_state.abc_points
+        mode_now = st.session_state.get("entry_mode", "hosoda")
+        armed = trigger_plan(df, abc, mode_now, tf_name, is_fx, last_close) if len(abc) == 3 else None
+
         tt_x, tt_text = [], []
         x_view_right = float(len(df_plot) - 1)
         if len(pts) == 3:
@@ -1828,6 +1902,18 @@ elif app_mode == "terminal":
             fig.add_trace(go.Scatter(
                 x=tt_x, y=[y_top] * len(tt_x), mode="markers", marker=dict(size=16, color="rgba(0,0,0,0)"),
                 name=t("chart_time_targets"), showlegend=False, text=tt_text, hovertemplate="%{text}<extra></extra>",
+            ))
+
+        # --- Янтарная точка взведённого уровня: ТОЛЬКО на последнем баре, в истории не остаётся ---
+        if armed and armed.get("ok") and armed["dec"] != "expired":
+            fig.add_trace(go.Scatter(
+                x=[len(df_plot) - 1], y=[armed["level"]], mode="markers",
+                marker=dict(size=10, color=ARMED_COLOR, symbol="circle",
+                            line=dict(width=1, color="#7d6634")),
+                name=t("chart_armed"), showlegend=False,
+                text=[t("hover_armed", mode=t("entry_" + mode_now), dec=t("dec_" + armed["dec"]),
+                        lvl=fmt_price(armed["level"]), exp=f"{armed['expire']:%Y-%m-%d %H:%M}")],
+                hovertemplate="%{text}<extra></extra>",
             ))
 
         tick_step = max(1, len(df_plot) // UIP["tick_div"])
@@ -1885,7 +1971,6 @@ elif app_mode == "terminal":
             return _htf_memo["v"]
 
         st.markdown(f"#### {t('ai_title')}")
-        abc = st.session_state.abc_points
         ai_light = None
         if len(abc) < 3:
             st.caption(t("ai_hint"))
@@ -1948,7 +2033,7 @@ elif app_mode == "terminal":
                             st.caption(t("ai_rel_" + r["reliability"]))
                         st.caption(t("ai_disclaimer"))
 
-        # ---- Риск-менеджмент + пусковой механизм Этапа 2 ----
+        # ---- Карточка сделки: план входа, стоп, лот, пусковой механизм ----
         if len(abc) == 3:
             rA, rB, rC = abc
             side_buy = rB["y"] > rA["y"]
@@ -1959,61 +2044,77 @@ elif app_mode == "terminal":
             unit = t(pkey)
             pval = pip_value_usd(asset_name, last_close, psize)
 
-            # Бар точки C: экстремумы для подтверждения и ATR для буфера стопа
-            high_c = low_c = float(rC["y"])
             atr_last = float(df["ATR"].iloc[-1])
             atr_c = atr_last if np.isfinite(atr_last) else 0.0
-            c_pos = None
             if rC["t"] in df.index:
-                c_pos = int(df.index.get_loc(rC["t"]))
-                cb = df.iloc[c_pos]
-                high_c, low_c = float(cb["High"]), float(cb["Low"])
+                cb = df.loc[rC["t"]]
                 if np.isfinite(cb["ATR"]):
                     atr_c = float(cb["ATR"])
             stop_buf = STOP_BUFFER_ATR * atr_c
-            stop_px = float(rC["y"]) - stop_buf if side_buy else float(rC["y"]) + stop_buf
+            stop_c = float(rC["y"]) - stop_buf if side_buy else float(rC["y"]) + stop_buf
 
             entry_mode = st.selectbox(t("entry_mode"), ["hosoda", "break_b", "market", "custom"],
                                       format_func=lambda k: t("entry_" + k), key="entry_mode")
-            entry_px, conf_txt, wait_level = None, None, None
-            if entry_mode == "hosoda":
-                wait_level = high_c if side_buy else low_c
-                if c_pos is not None and c_pos + 1 < len(df) - 1:
-                    seg = df.iloc[c_pos + 1:-1]          # только ЗАКРЫТЫЕ бары после C
-                    mask = (seg["Close"] > wait_level) if side_buy else (seg["Close"] < wait_level)
-                    hits = np.flatnonzero(mask.to_numpy())
-                    if len(hits):
-                        j = c_pos + 1 + int(hits[0])
-                        entry_px = float(df["Close"].iloc[j])
-                        conf_txt = f"{df.index[j]:%Y-%m-%d %H:%M}"
-            elif entry_mode == "break_b":
-                entry_px = float(rB["y"])
+
+            plan = armed if entry_mode == mode_now else trigger_plan(df, abc, entry_mode, tf_name, is_fx, last_close)
+            entry_px, stop_px, dec, conf_txt, expire_ts, bars_n, level_px = None, stop_c, "market", None, None, 0, None
+            atr_show, buf_show, stop_src = atr_c, stop_buf, "c"
+
+            if entry_mode in TRIG_WATCH_BARS:
+                if plan is None or not plan.get("ok"):
+                    why = (plan or {}).get("why", "ref_missing")
+                    st.caption(t("trig_no_cloud") if why == "no_cloud" else t("trig_ref_missing"))
+                    dec = "invalid"
+                else:
+                    dec = plan["dec"]
+                    level_px, stop_px = plan["level"], plan["stop"]
+                    expire_ts, bars_n = plan["expire"], plan["bars"]
+                    atr_show, buf_show, stop_src = plan["atr_now"], plan["buf"], plan["stop_src"]
+                    if plan["conf_t"] is not None:
+                        conf_txt = f"{plan['conf_t']:%Y-%m-%d %H:%M}"
+                    if dec == "expired":
+                        st.caption(t("trig_expired_note", bars=bars_n))
+                    else:
+                        entry_px = plan["entry"]
             elif entry_mode == "market":
                 entry_px = last_close
             else:
                 st.session_state.setdefault("custom_entry", float(last_close))
-                dec = price_digits(last_close)
+                dec_c = price_digits(last_close)
                 entry_px = float(st.number_input(t("entry_custom_label"), min_value=0.0,
-                                                 step=10.0 ** (-dec), format=f"%.{dec}f", key="custom_entry"))
+                                                 step=10.0 ** (-dec_c), format=f"%.{dec_c}f", key="custom_entry"))
                 if entry_px <= 0:
                     entry_px = None
                     st.caption(t("entry_custom_hint"))
 
-            risk_dist = abs(entry_px - stop_px) if entry_px is not None else None
+            risk_dist = abs(entry_px - stop_px) if (entry_px is not None and stop_px is not None) else None
             reward_dist = abs(target_px - entry_px) if entry_px is not None else None
             rr = (reward_dist / risk_dist) if (risk_dist is not None and risk_dist > 0) else None
 
-            # Таблица — чистая геометрия: уровни, пипсы/пункты, R:R. Валюты здесь нет.
             risk_rows = []
+            if level_px is not None:
+                risk_rows.append((t("trig_level"), fmt_price(level_px)))
+                risk_rows.append((t("trig_decision"), t("dec_" + dec)))
+                if plan and plan.get("ok") and plan["dist_atr"] is not None:
+                    risk_rows.append((t("trig_dist"), f"{plan['dist_atr']:.2f} ATR"))
             if entry_px is not None:
-                risk_rows.append((t("risk_entry"), fmt_price(entry_px)))
-                if conf_txt:
-                    risk_rows.append((t("risk_entry_time"), conf_txt))
-            elif wait_level is not None:
-                risk_rows.append((t("risk_confirm_level"), fmt_price(wait_level)))
-            risk_rows.append((t("risk_stop_buy" if side_buy else "risk_stop_sell"), fmt_price(stop_px)))
+                lbl = t("risk_entry_plan") if dec in ("limit", "watch") else t("risk_entry")
+                risk_rows.append((lbl, fmt_price(entry_px)))
+            if conf_txt:
+                risk_rows.append((t("trig_confirm"), conf_txt))
+            elif dec == "watch":
+                risk_rows.append((t("trig_confirm"), t("trig_confirm_wait")))
+            if stop_px is not None:
+                if stop_src == "cloud":
+                    sl_lbl = t("risk_stop_cloud_buy" if side_buy else "risk_stop_cloud_sell")
+                else:
+                    sl_lbl = t("risk_stop_buy" if side_buy else "risk_stop_sell")
+                risk_rows.append((sl_lbl, fmt_price(stop_px)))
             risk_rows.append((t("risk_target"), fmt_price(target_px)))
-            if entry_px is not None:
+            if expire_ts is not None:
+                risk_rows.append((t("trig_window"), str(bars_n)))
+                risk_rows.append((t("trig_expire"), f"{expire_ts:%Y-%m-%d %H:%M}"))
+            if entry_px is not None and risk_dist is not None:
                 risk_rows.append((t("risk_risk"), f"{fmt_points(risk_dist, psize)} {unit}"))
                 risk_rows.append((t("risk_reward"), f"{fmt_points(reward_dist, psize)} {unit}"))
                 risk_rows.append((t("risk_rr"), f"1 : {rr:.2f}" if rr is not None else t("ai_na")))
@@ -2021,9 +2122,9 @@ elif app_mode == "terminal":
             head = t("risk_title") + " · " + t("risk_buy" if side_buy else "risk_sell")
             st.markdown(risk_card_html(head, risk_rows, accent), unsafe_allow_html=True)
 
-            if entry_px is None and wait_level is not None:
+            if dec == "watch" and level_px is not None:
                 st.info(t("risk_wait", dir=t("risk_wait_above" if side_buy else "risk_wait_below"),
-                          level=fmt_price(wait_level)))
+                          level=fmt_price(level_px)))
 
             if MOBILE:
                 risk_pct = st.number_input(t("risk_pct_label"), min_value=0.1, max_value=100.0,
@@ -2039,7 +2140,6 @@ elif app_mode == "terminal":
                     deposit = st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9,
                                               step=1000.0, format="%.0f", key="account_deposit", help=t("deposit_help"))
 
-            # --- Деньги: лот через стоимость пункта в USD, затем строго под ним боевая кнопка ---
             lot_ready = (entry_px is not None and rr is not None and pval > 0.0)
             lots, risk_usd, gain_usd = 0.0, 0.0, 0.0
             if lot_ready:
@@ -2048,7 +2148,7 @@ elif app_mode == "terminal":
                 pips_reward = reward_dist / psize
                 loss_per_lot = pips_risk * pval
                 raw_lots = (risk_usd / loss_per_lot) if loss_per_lot > 0.0 else 0.0
-                lots = float(np.floor(raw_lots / LOT_STEP) * LOT_STEP)   # округление ВНИЗ, шаг 0.01
+                lots = float(np.floor(raw_lots / LOT_STEP) * LOT_STEP)
                 gain_usd = lots * pips_reward * pval
                 st.markdown(
                     "<div class='lot-line'>" + t("lot_line", lots=f"{lots:.2f}",
@@ -2060,7 +2160,7 @@ elif app_mode == "terminal":
 
             send_clicked = st.button(t("mt5_exec_btn"), key="mt5_send_order",
                                      disabled=(not lot_ready), **WIDE)
-            if not lot_ready:
+            if not lot_ready and dec not in ("expired", "invalid"):
                 st.caption(t("mt5_need_entry"))
 
             if lot_ready:
@@ -2071,32 +2171,48 @@ elif app_mode == "terminal":
                 if not ((stop_px < entry_px < target_px) if side_buy else (target_px < entry_px < stop_px)):
                     st.caption(t("risk_geom_bad"))
             pv_txt = f"{pval:.4f}" if 0.0 < pval < 10.0 else f"{pval:.2f}"
-            st.caption(t("risk_units", pv=pv_txt, atr=fmt_dist(atr_c), buf=fmt_dist(stop_buf)))
+            st.caption(t("risk_units", pv=pv_txt, atr=fmt_dist(atr_show)))
+            if entry_mode in TRIG_WATCH_BARS and plan and plan.get("ok"):
+                st.caption(t("trig_rule_note", lim=f"{ATR_CHASE_LIMIT:.1f}",
+                             atr=fmt_dist(plan["atr_now"]), buf=fmt_dist(buf_show)))
 
-            # --- Карточка приказа в Telegram: исполнение только после нажатия кнопки трейдером ---
+            # --- Карточка приказа в Telegram: исполнение только после нажатия трейдером ---
             if send_clicked:
                 sym_clean = mt5_symbol(asset_name)
                 side_txt = "BUY" if side_buy else "SELL"
                 order_id = f"{sym_clean}-{tf_name}-{int(pd.Timestamp.now().timestamp())}"
                 dg = price_digits(last_close)
+                otype = dec if dec in ("market", "limit", "watch") else "market"
                 payload = {
                     "token": _mt5_secret(),
                     "id": order_id,
                     "symbol": sym_clean,
                     "side": side_txt,
+                    "tf": tf_name,
+                    "order_type": otype,
+                    "trigger": round(float(level_px if level_px is not None else entry_px), dg),
                     "entry": round(float(entry_px), dg),
                     "sl": round(float(stop_px), dg),
                     "tp": round(float(target_px), dg),
                     "risk_percent": float(risk_pct),
+                    "atr": round(float(atr_show), 8),
                     "comment": "Hosoda N",
                 }
+                if plan and plan.get("ok"):
+                    payload["ref_time"] = f"{plan['ref_t']:%Y-%m-%d %H:%M}"
+                if expire_ts is not None:
+                    payload["expire"] = f"{expire_ts:%Y-%m-%d %H:%M}"
                 confirm_label = t("tg_confirm_btn", sym=sym_clean, side=side_txt, lots=f"{lots:.2f}")
                 with st.spinner(t("mt5_sending")):
                     ok, err = send_mt5_order(payload, confirm_label)
                 if ok:
                     st.success(t("mt5_sent"))
                     st.caption(t("mt5_sent_id", oid=order_id, sym=sym_clean, side=side_txt,
-                                 lots=f"{lots:.2f}", risk=f"{risk_pct:.2f}"))
+                                 dec=t("dec_" + dec), lots=f"{lots:.2f}", risk=f"{risk_pct:.2f}"))
+                    if otype == "watch":
+                        st.caption(t("mt5_after_watch"))
+                    elif otype == "limit":
+                        st.caption(t("mt5_after_limit"))
                     st.caption(t("mt5_confirm_note"))
                 else:
                     st.error(t("mt5_err", detail=err))
