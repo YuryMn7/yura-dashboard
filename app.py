@@ -1,7 +1,14 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.42-rev / v1.45. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.50. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 Крипта: BTC W1/MN1/MN3 -> старший MN1.
+
+OUTBOUND TELEMETRY (MT5 ➔ Supabase ➔ Streamlit):
+  Поллер fetch_account_telemetry() (ttl 4 с) читает последнюю строку из
+  public.account_telemetry по Supabase PostgREST. HUD здоровья счёта в сайдбаре
+  (только в терминале): Account · Balance · Equity · Daily DD (кап 3.0 %) · Total DD · Status.
+  Зелёная пульсирующая точка ● LIVE при age < 60 с, ○ OFFLINE иначе.
+  Автопривязка: при LIVE account_deposit = equity (поле disabled), при OFFLINE — ручной ввод.
 
 ЛЕКСИКОН И САНИТАЦИЯ: слой предварительного экстремума именуется «Предварительная C» /
 «Preliminary C», в легенде кратко «Предв. C» / «Cand. C». Эмодзи-глифов на холсте нет;
@@ -53,7 +60,8 @@ BY DESIGN: точки A-B-C сбрасываются при смене инст�
 кнопкой «Сбросить точки» и при телепорте. Обновление котировок, смена языка и отчёты точки НЕ сбрасывают.
 
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опц.).
-Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.).
+Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.),
+         SUPABASE_URL, SUPABASE_KEY (опц., для телеметрии MT5).
 """
 import gc
 import io
@@ -158,6 +166,8 @@ CAND_HOVER_BORDER = ACCENT_MUTED
 CAND_HOVER_FONT = "#E8EDF5"
 MINOR_COLOR = "#95a5a6"
 MAJOR_COLOR = "#2c3e50"
+TELEMETRY_LIVE_SECONDS = 60      # age < 60s -> LIVE, иначе OFFLINE
+TELEMETRY_DAILY_CAP = 3.0        # Blue Guardian: daily drawdown hard cap
 
 LANGS = {"English": "en", "Русский": "ru"}
 DEFAULT_LANG = "Русский"
@@ -209,6 +219,11 @@ I18N = {
         "pts_bar": "Points selected: <b>{n}/3</b>",
         "pts_hint": "cand. C",
         "pts_hint_tip": "Preliminary C: extremum of the last 3 bars including the live one, for an early entry. Tap the marker to place a wave point before the fractal forms. Toggle layers in the chart legend - one click switches a whole fractal group.",
+        "telemetry_title": "Account Health",
+        "telemetry_live": "LIVE",
+        "telemetry_offline": "OFFLINE · last seen {m}m ago",
+        "telemetry_unavailable": "OFFLINE — telemetry unavailable",
+        "telemetry_locked": "Locked: live from MT5 equity",
         "risk_title": "Trade parameters (calculated)", "risk_buy": "BUY", "risk_sell": "SELL",
         "entry_mode": "Entry point",
         "entry_hosoda": "Hosoda: C reversal", "entry_break_b": "Point B breakout",
@@ -343,6 +358,11 @@ I18N = {
         "pts_bar": "Выбрано точек: <b>{n}/3</b>",
         "pts_hint": "предв. C",
         "pts_hint_tip": "Предварительный экстремум точки C по последним 3 барам, включая текущий, для раннего входа. Нажмите маркер, чтобы поставить точку волны до формирования фрактала. Слои переключаются в легенде: один клик гасит всю группу фракталов.",
+        "telemetry_title": "Здоровье счёта",
+        "telemetry_live": "LIVE",
+        "telemetry_offline": "OFFLINE · последний сигнал {m} мин назад",
+        "telemetry_unavailable": "OFFLINE — телеметрия недоступна",
+        "telemetry_locked": "Синхронизировано с эквити MT5",
         "risk_title": "Параметры сделки (расчет)", "risk_buy": "ПОКУПКА", "risk_sell": "ПРОДАЖА",
         "entry_mode": "Точка входа",
         "entry_hosoda": "Хосода: разворот C", "entry_break_b": "Пробой точки B",
@@ -368,7 +388,7 @@ I18N = {
         "risk_pct_label": "Риск на сделку, %",
         "risk_pct_help": "Доля депозита, теряемая при срабатывании стопа. Дефолт Blue Guardian 0.5 %, шаг 0.1 %. Советник дополнительно применит свой жесткий потолок риска.",
         "deposit_label": "Депозит, $",
-        "deposit_help": "Размер счета в USD для перевода процента риска в денежный риск.",
+        "deposit_help": "Размер счета в USD для перевода процента риска в денежный риск. При LIVE телеметрии — автоподстановка эквити MT5.",
         "lot_line": "Рекомендуемый лот: <b>{lots}</b> (Риск: −{risk} | Цель N: +{gain})",
         "lot_too_small": "Расчетный объем меньше 0.01 лота — советник отклонит приказ. Уменьшите дистанцию риска или увеличьте депозит.",
         "lot_no_value": "Стоимость пункта в USD для этого инструмента недоступна — лот рассчитать нельзя.",
@@ -461,7 +481,7 @@ def fmt_err(err):
 
 def _secret_values():
     vals = [API_KEY]
-    for k in ("TELEGRAM_TOKEN", "MT5_SECRET_TOKEN"):
+    for k in ("TELEGRAM_TOKEN", "MT5_SECRET_TOKEN", "SUPABASE_KEY"):
         try:
             v = st.secrets.get(k, "")
             if v:
@@ -737,13 +757,32 @@ def inject_css(mobile):
         "font-size: 0.95rem; color: #2c3e50; font-variant-numeric: tabular-nums; }\n"
         ".lot-line b { font-size: 1.08rem; letter-spacing: 0.01em; }\n"
     )
+    telemetry_css = (
+        ".telemetry-hud { background: #fbfcfd; border: 1px solid #dfe4ea; border-radius: 2px; "
+        "padding: 8px 12px; margin: 0 0 0.5rem 0; font-size: 0.82rem; "
+        "font-variant-numeric: tabular-nums; }\n"
+        ".telemetry-hud .th-title { font-size: 0.70rem; letter-spacing: 0.08em; "
+        "text-transform: uppercase; color: #7f8c8d; margin-bottom: 6px; "
+        "display: flex; align-items: center; gap: 6px; }\n"
+        ".telemetry-hud .th-dot { width: 8px; height: 8px; border-radius: 50%; "
+        "display: inline-block; flex-shrink: 0; }\n"
+        ".telemetry-live .th-dot { background: #3f7d5c; animation: th-pulse 1.4s infinite ease-in-out; }\n"
+        ".telemetry-offline .th-dot { background: #95a5a6; }\n"
+        "@keyframes th-pulse { 0%, 100% { opacity: 1; transform: scale(1); } "
+        "50% { opacity: 0.55; transform: scale(1.25); } }\n"
+        ".telemetry-hud .th-row { display: grid; grid-template-columns: auto 1fr; "
+        "gap: 2px 10px; line-height: 1.55; }\n"
+        ".telemetry-hud .th-k { color: #7f8c8d; white-space: nowrap; }\n"
+        ".telemetry-hud .th-v { color: #2c3e50; text-align: right; font-weight: 600; }\n"
+        ".telemetry-hud .th-foot { margin-top: 4px; font-size: 0.70rem; color: #95a5a6; }\n"
+    )
     css = (
         "<style>\n"
         ".block-container { padding-top: 4rem; padding-bottom: 2rem; max-width: 100%; }\n"
         ".app-title { color: #2c3e50; font-size: clamp(1.05rem, 4.5vw, 1.75rem); line-height: 1.25; "
         "margin-top: 0.2rem; overflow-wrap: anywhere; white-space: normal; }\n"
         ".stPlotlyChart .modebar { opacity: 1; }\n"
-        + tool_css + status_css + teleport_css + exec_css + risk_css +
+        + tool_css + status_css + teleport_css + exec_css + risk_css + telemetry_css +
         "@media (max-width: 768px) {\n" + mobile_rules + "}\n"
         "@media (hover: none) {\n"
         ".stPlotlyChart .modebar { opacity: 1 !important; }\n"
@@ -955,6 +994,107 @@ def fetch_smart_data(asset_key, interval):
     out = pd.concat(frames).sort_index()
     out = out[~out.index.duplicated(keep="last")]
     return out, partial_err
+
+
+@st.cache_data(ttl=4, show_spinner=False)
+def fetch_account_telemetry():
+    """Читает последнюю строку public.account_telemetry по Supabase PostgREST.
+    Тихий отказ на любой ошибке: None — UI просто покажет OFFLINE.
+    """
+    try:
+        url = st.secrets.get("SUPABASE_URL", "")
+        key = st.secrets.get("SUPABASE_KEY", "")
+    except Exception:
+        return None
+    if not url or not key:
+        return None
+    try:
+        r = requests.get(
+            f"{url.rstrip('/')}/rest/v1/account_telemetry",
+            params={"order": "updated_at.desc", "limit": "1"},
+            headers={
+                "apikey": key,
+                "Authorization": f"Bearer {key}",
+                "Accept": "application/json",
+            },
+            timeout=5,
+        )
+        if r.status_code != 200:
+            return None
+        rows = r.json()
+        if not isinstance(rows, list) or not rows:
+            return None
+        return rows[0]
+    except Exception:
+        return None
+
+
+def render_telemetry_hud():
+    """Институциональный HUD здоровья счёта. Возвращает (is_live, equity_or_None)."""
+    row = fetch_account_telemetry()
+    if row is None:
+        html = (
+            "<div class='telemetry-hud telemetry-offline'>"
+            "<div class='th-title'>"
+            f"<span class='th-dot'></span>{t('telemetry_title')}: {t('telemetry_unavailable')}"
+            "</div>"
+            "</div>"
+        )
+        st.markdown(html, unsafe_allow_html=True)
+        return False, None
+
+    try:
+        updated_at = pd.to_datetime(row.get("updated_at"), utc=True, errors="coerce")
+    except Exception:
+        updated_at = pd.NaT
+    now = pd.Timestamp.now(tz="UTC")
+    if pd.notna(updated_at):
+        age_sec = float((now - updated_at).total_seconds())
+    else:
+        age_sec = 99999.0
+    is_live = age_sec < TELEMETRY_LIVE_SECONDS
+
+    account = row.get("account_id", "—")
+    try:
+        balance = float(row.get("balance", 0.0))
+        equity = float(row.get("equity", 0.0))
+        dd_today = float(row.get("drawdown_today", 0.0))
+        dd_total = float(row.get("drawdown_total", 0.0))
+    except (TypeError, ValueError):
+        balance, equity, dd_today, dd_total = 0.0, 0.0, 0.0, 0.0
+    status = str(row.get("status", "—"))
+
+    cap = TELEMETRY_DAILY_CAP
+    if dd_today >= cap:
+        dd_color = "#9a5252"
+    elif dd_today >= cap * 0.7:
+        dd_color = ACCENT_MUTED
+    else:
+        dd_color = "#2c3e50"
+
+    cls = "telemetry-live" if is_live else "telemetry-offline"
+    dot_label = t("telemetry_live") if is_live else t("telemetry_offline", m=int(age_sec // 60))
+    if pd.notna(updated_at):
+        foot = updated_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+    else:
+        foot = "—"
+
+    html = (
+        f"<div class='telemetry-hud {cls}'>"
+        f"<div class='th-title'><span class='th-dot'></span>{t('telemetry_title')}: {dot_label}</div>"
+        f"<div class='th-row'>"
+        f"<span class='th-k'>Account</span><span class='th-v'>{account}</span>"
+        f"<span class='th-k'>Balance</span><span class='th-v'>{fmt_money(balance, 'USD')}</span>"
+        f"<span class='th-k'>Equity</span><span class='th-v'>{fmt_money(equity, 'USD')}</span>"
+        f"<span class='th-k'>Daily DD</span><span class='th-v' style='color:{dd_color}'>{dd_today:.2f}% (cap {cap:.1f}%)</span>"
+        f"<span class='th-k'>Total DD</span><span class='th-v'>{dd_total:.2f}%</span>"
+        f"<span class='th-k'>Status</span><span class='th-v'>{status}</span>"
+        f"</div>"
+        f"<div class='th-foot'>{foot}</div>"
+        f"</div>"
+    )
+    st.markdown(html, unsafe_allow_html=True)
+    return is_live, equity if is_live else None
 
 
 def add_indicators(df):
@@ -1500,7 +1640,7 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
                 Xv = X[val_i][res_v]
                 auc = float(roc_auc_score(yv[res_v] == 1, _alice_fair(_alice_proba3(_alice_fit(X[fit_i], yf), Xv))))
                 if ALICE_USE_GEOMETRY:
-                    gcols = slice(len(ALICE_BASE_FEATURES), None)   # база без признаков Ишимоку
+                    gcols = slice(len(ALICE_BASE_FEATURES), None)
                     auc_geom = float(roc_auc_score(
                         yv[res_v] == 1, _alice_fair(_alice_proba3(_alice_fit(X[fit_i][:, gcols], yf), Xv[:, gcols]))))
                     uplift = auc - auc_geom
@@ -1652,10 +1792,11 @@ def send_telegram(token, chat_id, text, png):
 
 
 def refresh_button(key):
-    """Компактная иконка ↻: чистит только кэш котировок, точки и цели сохраняет."""
+    """Компактная иконка ↻: чистит кэши котировок и телеметрии, точки и цели сохраняет."""
     if st.button(t("refresh"), key=key, help=t("refresh_help")):
         fetch_smart_data.clear()
         fetch_yahoo.clear()
+        fetch_account_telemetry.clear()
         st.rerun()
 
 
@@ -1677,7 +1818,7 @@ if "lang" not in st.session_state:
 st.session_state.setdefault("w_tf", "H1")
 st.session_state.setdefault("w_radar_tf", "D1")
 st.session_state.setdefault("w_radar_active", True)
-st.session_state.setdefault("risk_pct", RISK_PCT_DEFAULT)   # Blue Guardian: 0.5 %
+st.session_state.setdefault("risk_pct", RISK_PCT_DEFAULT)
 st.session_state.setdefault("account_deposit", 10000.0)
 st.session_state.setdefault("entry_mode", "hosoda")
 
@@ -1701,6 +1842,13 @@ with st.sidebar:
     offset_choice = st.selectbox(t("server_time"), SERVER_CHOICES, key="w_server")
     count_weekend = st.checkbox(t("raw"), help=t("raw_help"), key="w_raw")
     drop_clearing = st.checkbox(t("clearing"), disabled=count_weekend, help=t("clearing_help"), key="w_clear")
+
+    # --- ТЕЛЕМЕТРИЯ MT5 (HUD здоровья счёта): только в режиме терминала ---
+    telemetry_live_flag = False
+    telemetry_live_equity = None
+    if app_mode == "terminal":
+        st.markdown("---")
+        telemetry_live_flag, telemetry_live_equity = render_telemetry_hud()
 
 MOBILE = detect_mobile_ua()
 inject_css(MOBILE)
@@ -1961,7 +2109,6 @@ elif app_mode == "terminal":
         fig.add_trace(marker_trace(major_high, "High", "High", 0.5, UIP["mark_major"], MAJOR_COLOR, t("chart_major_high"), "major"))
         fig.add_trace(marker_trace(major_low, "Low", "Low", 0.5, UIP["mark_major"], MAJOR_COLOR, t("chart_major_low"), "major"))
 
-        # Носители легенды: одна плашка на группу, клик гасит обе стороны (groupclick=togglegroup).
         fig.add_trace(go.Scatter(
             x=[None], y=[None], mode="markers",
             marker=dict(size=UIP["mark_minor"], color=MINOR_COLOR),
@@ -2019,7 +2166,6 @@ elif app_mode == "terminal":
                 fig.add_hline(y=val, line_dash="dash", line_color=colors[name], annotation_text=f"{name} {fmt_price(val)}", annotation_position="right", annotation_font_size=UIP["ann_font"], annotation_font_color=colors[name])
             time_ab, time_ac = abs(B["x"] - A["x"]), abs(C["x"] - A["x"])
             clock = _forecast_clock(df_plot, tf_name, is_fx)
-            # горизонт проекции: строго +76 баров от точки C (канон Какан)
             x_view_right = float(max(len(df_plot) - 1, C["x"] + TIME_AXIS_FORWARD_BARS))
 
             def vlabel(x, text, color, y):
@@ -2052,7 +2198,6 @@ elif app_mode == "terminal":
                 name=t("chart_time_targets"), showlegend=False, text=tt_text, hovertemplate="%{text}<extra></extra>",
             ))
 
-        # --- Preliminary C: слой в нативной легенде Plotly, компактный ховер без глифов ---
         if cand:
             fig.add_trace(go.Scatter(
                 x=[cand["x"]], y=[cand["y"]], mode="markers",
@@ -2088,7 +2233,6 @@ elif app_mode == "terminal":
             modebar=dict(bgcolor="rgba(255,255,255,0.9)", color="#2c3e50", activecolor="#e74c3c"),
         )
 
-        # Оболочка графика: ↻ оверлеем в верхней полосе, ноль строк в потоке.
         with st.container(key="chart_shell"):
             refresh_button("refresh_term")
             event = st.plotly_chart(
@@ -2183,7 +2327,6 @@ elif app_mode == "terminal":
                             st.caption(t("ai_rel_" + r["reliability"]))
                         st.caption(t("ai_disclaimer"))
 
-        # ---- Карточка сделки ----
         if len(abc) == 3:
             rA, rB, rC = abc
             side_buy = rB["y"] > rA["y"]
@@ -2276,12 +2419,29 @@ elif app_mode == "terminal":
                 st.info(t("risk_wait", dir=t("risk_wait_above" if side_buy else "risk_wait_below"),
                           level=fmt_price(level_px)))
 
+            # --- Депозит: при LIVE-телеметрии авто-привязка к equity (disabled), иначе ручной ввод ---
             if MOBILE:
                 risk_pct = st.number_input(t("risk_pct_label"), min_value=0.1, max_value=100.0,
                                            step=RISK_PCT_STEP, format="%.1f", key="risk_pct",
                                            help=t("risk_pct_help"))
-                deposit = st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9,
-                                          step=1000.0, format="%.0f", key="account_deposit", help=t("deposit_help"))
+                if telemetry_live_flag and telemetry_live_equity is not None:
+                    try:
+                        st.session_state.account_deposit = float(telemetry_live_equity)
+                    except (TypeError, ValueError):
+                        pass
+                    st.number_input(
+                        t("deposit_label"),
+                        value=float(telemetry_live_equity),
+                        disabled=True,
+                        format="%.2f",
+                        key="account_deposit",
+                        help=t("deposit_help"),
+                    )
+                    st.caption(t("telemetry_locked"))
+                else:
+                    deposit = st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9,
+                                              step=1000.0, format="%.0f", key="account_deposit",
+                                              help=t("deposit_help"))
             else:
                 rc1, rc2, _rc3 = st.columns([1, 1, 2])
                 with rc1:
@@ -2289,13 +2449,30 @@ elif app_mode == "terminal":
                                                step=RISK_PCT_STEP, format="%.1f", key="risk_pct",
                                                help=t("risk_pct_help"))
                 with rc2:
-                    deposit = st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9,
-                                              step=1000.0, format="%.0f", key="account_deposit", help=t("deposit_help"))
+                    if telemetry_live_flag and telemetry_live_equity is not None:
+                        try:
+                            st.session_state.account_deposit = float(telemetry_live_equity)
+                        except (TypeError, ValueError):
+                            pass
+                        st.number_input(
+                            t("deposit_label"),
+                            value=float(telemetry_live_equity),
+                            disabled=True,
+                            format="%.2f",
+                            key="account_deposit",
+                            help=t("deposit_help"),
+                        )
+                        st.caption(t("telemetry_locked"))
+                    else:
+                        deposit = st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9,
+                                                  step=1000.0, format="%.0f", key="account_deposit",
+                                                  help=t("deposit_help"))
 
             lot_ready = (entry_px is not None and rr is not None and pval > 0.0)
             lots, risk_usd, gain_usd = 0.0, 0.0, 0.0
             if lot_ready:
-                risk_usd = deposit * (risk_pct / 100.0)
+                deposit_val = float(st.session_state.get("account_deposit", 0.0))
+                risk_usd = deposit_val * (risk_pct / 100.0)
                 pips_risk = risk_dist / psize
                 pips_reward = reward_dist / psize
                 loss_per_lot = pips_risk * pval
