@@ -1,7 +1,14 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.61. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.62. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 Крипта: BTC W1/MN1/MN3 -> старший MN1.
+
+ANNOTATION DYNAMIC POLARITY (v1.62): подписи точек волны A/B/C и Истока O больше не имеют
+статичного сдвига вверх. Полярность каждой точки определяется сравнением с High/Low её свечи
+(is_high = |y-High| <= |y-Low|); буква якорится за пределами тела и теней — над High
+(yshift +14 / yanchor bottom / va bottom) или под Low (yshift -14 / yanchor top / va top).
+Реализовано синхронно в Plotly (fig.add_annotation) и Matplotlib (ax.annotate) — веб-холст и
+Telegram-снапшот одинаково читаемы. Полилиния A->B->C, маркеры, цели V/N/E/NT и расчёты не затронуты.
 
 BUGFIX v1.61 (Telegram export pipeline): в блоке отправки отчета список точек для
 Matplotlib-снапшота больше не обрезается до трёх (tg_pts = [... for p_ in pts]).
@@ -180,6 +187,8 @@ CAND_HOVER_FONT = "#E8EDF5"
 MINOR_COLOR = "#95a5a6"
 MAJOR_COLOR = "#2c3e50"
 ORIGIN_COLOR = "#7f8c8d"         # Point O (Origin/Anchor)
+WAVE_LABEL_COLOR = "#f39c12"     # подписи A/B/C и полилиния волны
+LABEL_BG = "rgba(255, 255, 255, 0.75)"
 TELEMETRY_LIVE_SECONDS = 60      # age < 60s -> LIVE, иначе OFFLINE
 TELEMETRY_DAILY_CAP = 3.0        # Blue Guardian: daily drawdown hard cap
 
@@ -489,6 +498,17 @@ def t(key, **kw):
 def cand_trace_name():
     """Единый токен слоя Preliminary C: регистрация трейса и детекция клика. Без глифов."""
     return t("chart_cand_c")
+
+
+def polar_anchor(df_plot, px, py):
+    """Динамическая полярность подписи точки волны.
+    Возвращает (y_anchor, yshift_plotly, yanchor_plotly, y_offset_mpl, va_mpl):
+    точка у High свечи -> якорь над верхней тенью; у Low -> под нижней тенью."""
+    row = df_plot.iloc[int(px)]
+    hi, lo = float(row["High"]), float(row["Low"])
+    if abs(py - hi) <= abs(py - lo):
+        return hi, 14, "bottom", 8, "bottom"
+    return lo, -14, "top", -12, "top"
 
 
 def E(code, **kw):
@@ -1736,16 +1756,43 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     if len(pts) >= 3:
         A_, B_, C_ = pts[:3]
         ax.plot([p_["x"] for p_ in [A_, B_, C_]], [p_["y"] for p_ in [A_, B_, C_]], color="#f39c12", marker="o", markersize=5, linewidth=1.6, zorder=6)
+        # v1.62: динамическая полярность подписей — над High или под Low свечи
         for letter, p_ in zip("ABC", [A_, B_, C_]):
-            ax.annotate(letter, (p_["x"], p_["y"]), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=10, color=ACCENT_MUTED)
-        # Point O marker (if present and distinct from A)
+            bar_row = df_plot.iloc[int(p_["x"])]
+            is_high = abs(p_["y"] - float(bar_row["High"])) <= abs(p_["y"] - float(bar_row["Low"]))
+            if is_high:
+                y_anchor = float(bar_row["High"])
+                y_offset = 8
+                va_mode = "bottom"
+            else:
+                y_anchor = float(bar_row["Low"])
+                y_offset = -12
+                va_mode = "top"
+            ax.annotate(
+                letter, (p_["x"], y_anchor),
+                textcoords="offset points", xytext=(0, y_offset),
+                ha="center", va=va_mode, fontsize=10, fontweight="bold",
+                color=ACCENT_MUTED,
+                bbox=dict(boxstyle="round,pad=0.1", facecolor="white", edgecolor="none", alpha=0.7),
+            )
+        # Point O marker + polar label (if present and distinct from A)
         if len(pts) >= 4:
             O_ = pts[3]
             if O_["x"] != A_["x"] or O_["y"] != A_["y"]:
                 ax.plot([O_["x"]], [O_["y"]], marker="D", markersize=7,
                         color=ORIGIN_COLOR, linestyle="none", zorder=6, clip_on=True)
-                ax.annotate("O", (O_["x"], O_["y"]), textcoords="offset points",
-                            xytext=(0, 10), ha="center", fontsize=10, color=ORIGIN_COLOR)
+                bar_row = df_plot.iloc[int(O_["x"])]
+                is_high = abs(O_["y"] - float(bar_row["High"])) <= abs(O_["y"] - float(bar_row["Low"]))
+                y_anchor = float(bar_row["High"]) if is_high else float(bar_row["Low"])
+                y_offset = 8 if is_high else -12
+                va_mode = "bottom" if is_high else "top"
+                ax.annotate(
+                    "O", (O_["x"], y_anchor),
+                    textcoords="offset points", xytext=(0, y_offset),
+                    ha="center", va=va_mode, fontsize=10, fontweight="bold",
+                    color=ORIGIN_COLOR,
+                    bbox=dict(boxstyle="round,pad=0.1", facecolor="white", edgecolor="none", alpha=0.7),
+                )
     colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
     for name, val in (targets or {}).items():
         ax.axhline(val, color=colors.get(name, "gray"), linestyle="--", linewidth=1.0, zorder=2)
@@ -2243,7 +2290,17 @@ elif app_mode == "terminal":
 
             fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]], mode="lines+markers", line=dict(color="#f39c12", width=2), marker=dict(size=UIP["wave_mark"]), name=t("chart_wave"), hovertemplate=f"%{{y:{pfmt}}}<extra>{t('chart_wave')}</extra>"))
 
-            # Point O marker (if present and distinct from A)
+            # v1.62: буквы A/B/C — динамическая полярность (над High / под Low свечи)
+            for letter, P_ in zip(("A", "B", "C"), pts[:3]):
+                ya, ys, yanch, _off, _va = polar_anchor(df_plot, P_["x"], P_["y"])
+                fig.add_annotation(
+                    x=P_["x"], y=ya, text=letter, showarrow=False,
+                    yshift=ys, yanchor=yanch,
+                    font=dict(size=11, color=WAVE_LABEL_COLOR, family="sans-serif"),
+                    bgcolor=LABEL_BG, borderpad=1,
+                )
+
+            # Point O marker (if present and distinct from A) + polar label
             if len(pts) >= 4:
                 O_ = pts[3]
                 if O_["x"] != A["x"] or O_["y"] != A["y"]:
@@ -2255,12 +2312,12 @@ elif app_mode == "terminal":
                         hovertemplate=t("origin_hover"),
                         showlegend=False,
                     ))
+                    ya, ys, yanch, _off, _va = polar_anchor(df_plot, O_["x"], O_["y"])
                     fig.add_annotation(
-                        x=O_["x"], y=O_["y"],
-                        text="O",
-                        showarrow=False,
-                        yshift=12,
-                        font=dict(size=10, color=ORIGIN_COLOR),
+                        x=O_["x"], y=ya, text="O", showarrow=False,
+                        yshift=ys, yanchor=yanch,
+                        font=dict(size=11, color=ORIGIN_COLOR),
+                        bgcolor=LABEL_BG, borderpad=1,
                     )
 
         if tt_x:
