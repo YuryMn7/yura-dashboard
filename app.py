@@ -1,7 +1,15 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.50. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.60. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 Крипта: BTC W1/MN1/MN3 -> старший MN1.
+
+4-POINT HOSODA TIME ARCHITECTURE:
+  Points 1-3 (A, B, C): первичная геометрия волны, цели V/N/E/NT, коридор Taiyosuu (AB/AC),
+  AI Alice инференс, риск-менеджмент и лот-калькуляция.
+  Point 4 (O — Origin/Anchor): опциональный исток цикла для сетки Kihon Suu (9, 17, 26, ...).
+  Может быть до A, совпадать с A или представлять более ранний макро-пивот.
+  Fallback: если O не задан (только 3 точки), Kihon Suu якорится к A (не к C, как было).
+  Полное развязывание: AI и Risk строго потребляют abc[:3], O влияет только на time grid.
 
 OUTBOUND TELEMETRY (MT5 ➔ Supabase ➔ Streamlit):
   Поллер fetch_account_telemetry() (ttl 4 с) читает последнюю строку из
@@ -53,10 +61,10 @@ Statistical Edge, вероятности исходов и светофор вы
 ШЛЮЗ: карточка /order {JSON} в Telegram с кнопкой подтверждения; советник получает приказ
 только как callback_query после нажатия трейдером. Финальный лот и комплаенс — на стороне советника.
 
-НИЖНЯЯ ПАНЕЛЬ: статус «Выбрано точек: X/3» под графиком; на мобильных зафиксирован внизу
-вьюпорта и не перехватывает касания.
+НИЖНЯЯ ПАНЕЛЬ: статус «Выбрано точек: X/3» или «4/4» под графиком; на мобильных зафиксирован
+внизу вьюпорта и не перехватывает касания.
 
-BY DESIGN: точки A-B-C сбрасываются при смене инструмента, ТФ, серверного времени, raw, клиринга,
+BY DESIGN: точки A-B-C-O сбрасываются при смене инструмента, ТФ, серверного времени, raw, клиринга,
 кнопкой «Сбросить точки» и при телепорте. Обновление котировок, смена языка и отчёты точки НЕ сбрасывают.
 
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опц.).
@@ -166,6 +174,7 @@ CAND_HOVER_BORDER = ACCENT_MUTED
 CAND_HOVER_FONT = "#E8EDF5"
 MINOR_COLOR = "#95a5a6"
 MAJOR_COLOR = "#2c3e50"
+ORIGIN_COLOR = "#7f8c8d"         # Point O (Origin/Anchor)
 TELEMETRY_LIVE_SECONDS = 60      # age < 60s -> LIVE, иначе OFFLINE
 TELEMETRY_DAILY_CAP = 3.0        # Blue Guardian: daily drawdown hard cap
 
@@ -183,8 +192,9 @@ I18N = {
         "clearing": "Drop 23:00 Clearing",
         "clearing_help": "Removes the 23:00 server-time hour (it exists in MT5). Off by default.",
         "terminal_settings": "Terminal Settings", "symbol": "Symbol:", "timeframe": "Timeframe:",
-        "wave_points": "Wave Points (A-B-C)", "pt_a": "A (Start)", "pt_b": "B (Peak/Trough)", "pt_c": "C (Retracement)",
-        "awaiting": "Awaiting {label}...", "clear_points": "Clear Points",
+        "wave_points": "Wave Points (A-B-C-O)", "pt_a": "A (Start)", "pt_b": "B (Peak/Trough)", "pt_c": "C (Retracement)", "pt_o": "O (Origin)",
+        "awaiting": "Awaiting {label}...", "awaiting_origin": "Awaiting Origin (click 4, optional)",
+        "clear_points": "Clear Points",
         "refresh": "↻",
         "refresh_help": "Refresh quotes. Wave A-B-C, price and time targets are preserved.",
         "scanner_title": "Global Market Scanner",
@@ -213,12 +223,15 @@ I18N = {
         "chart_minor_group": "Minor fractals", "chart_major_group": "Major fractals",
         "chart_time_targets": "Time targets", "hover_high": "High", "hover_low": "Low",
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} bars)", "hover_forecast": "forecast",
-        "chart_wave": "Wave A-B-C", "chart_cand_c": "Cand. C",
+        "chart_wave": "Wave A-B-C", "chart_cand_c": "Cand. C", "chart_origin": "Cycle Origin",
         "cand_full": "Preliminary C",
         "cand_hover": "<b>Preliminary C:</b> %{customdata:.5f}<extra></extra>",
+        "origin_hover": "<b>Cycle Origin:</b> %{customdata:.5f}<extra></extra>",
         "pts_bar": "Points selected: <b>{n}/3</b>",
+        "pts_bar_3_with_origin": "Points: 3/3 (Origin: Point A)",
+        "pts_bar_4": "Points: 4/4 (Origin: locked)",
         "pts_hint": "cand. C",
-        "pts_hint_tip": "Preliminary C: extremum of the last 3 bars including the live one, for an early entry. Tap the marker to place a wave point before the fractal forms. Toggle layers in the chart legend - one click switches a whole fractal group.",
+        "pts_hint_tip": "Preliminary C: extremum of the last 3 bars including the live one, for an early entry. Tap the marker to place a wave point before the fractal forms. Toggle layers in the chart legend - one click switches a whole fractal group. Click 4 to set cycle origin.",
         "telemetry_title": "Account Health",
         "telemetry_live": "LIVE",
         "telemetry_offline": "OFFLINE · last seen {m}m ago",
@@ -322,8 +335,9 @@ I18N = {
         "clearing": "Убрать клиринг 23:00",
         "clearing_help": "Вырезает час 23:00 серверного времени (в MT5 этот час есть). По умолчанию выключено.",
         "terminal_settings": "Настройки терминала", "symbol": "Инструмент:", "timeframe": "Таймфрейм:",
-        "wave_points": "Точки волны (A-B-C)", "pt_a": "A (начало)", "pt_b": "B (пик/впадина)", "pt_c": "C (откат)",
-        "awaiting": "Ожидается {label}...", "clear_points": "Сбросить точки",
+        "wave_points": "Точки волны (A-B-C-O)", "pt_a": "A (начало)", "pt_b": "B (пик/впадина)", "pt_c": "C (откат)", "pt_o": "O (Исток)",
+        "awaiting": "Ожидается {label}...", "awaiting_origin": "Ожидается Исток (клик 4, опционально)",
+        "clear_points": "Сбросить точки",
         "refresh": "↻",
         "refresh_help": "Обновить котировки. Волна A-B-C, цели по цене и по времени сохраняются.",
         "scanner_title": "Глобальный сканер рынка",
@@ -352,12 +366,15 @@ I18N = {
         "chart_minor_group": "Малые фракталы", "chart_major_group": "Главные фракталы",
         "chart_time_targets": "Временные цели", "hover_high": "Хай", "hover_low": "Лоу",
         "hover_kihon": "Kihon suu {k}", "hover_taiyosuu": "Taiyosuu {name} ({n} баров)", "hover_forecast": "прогноз",
-        "chart_wave": "Волна A-B-C", "chart_cand_c": "Предв. C",
+        "chart_wave": "Волна A-B-C", "chart_cand_c": "Предв. C", "chart_origin": "Исток цикла",
         "cand_full": "Предварительная C",
         "cand_hover": "<b>Предварительная C:</b> %{customdata:.5f}<extra></extra>",
+        "origin_hover": "<b>Исток цикла:</b> %{customdata:.5f}<extra></extra>",
         "pts_bar": "Выбрано точек: <b>{n}/3</b>",
+        "pts_bar_3_with_origin": "Выбрано точек: 3/3 (Исток: точка A)",
+        "pts_bar_4": "Выбрано точек: 4/4 (Исток: зафиксирован)",
         "pts_hint": "предв. C",
-        "pts_hint_tip": "Предварительный экстремум точки C по последним 3 барам, включая текущий, для раннего входа. Нажмите маркер, чтобы поставить точку волны до формирования фрактала. Слои переключаются в легенде: один клик гасит всю группу фракталов.",
+        "pts_hint_tip": "Предварительный экстремум точки C по последним 3 барам, включая текущий, для раннего входа. Нажмите маркер, чтобы поставить точку волны до формирования фрактала. Слои переключаются в легенде: один клик гасит всю группу фракталов. Клик 4 — исток цикла.",
         "telemetry_title": "Здоровье счёта",
         "telemetry_live": "LIVE",
         "telemetry_offline": "OFFLINE · последний сигнал {m} мин назад",
@@ -599,8 +616,14 @@ def risk_card_html(head, rows, accent):
 
 def points_bar_html(n):
     """Компактная статусная строка выбора точек; на мобильных фиксируется внизу вьюпорта."""
+    if n < 3:
+        status = t('pts_bar', n=int(n))
+    elif n == 3:
+        status = t('pts_bar_3_with_origin')
+    else:
+        status = t('pts_bar_4')
     return ("<div class='pts-bar'>"
-            f"<span class='pts-n'>{t('pts_bar', n=int(n))}</span>"
+            f"<span class='pts-n'>{status}</span>"
             f"<span class='pts-hint' title=\"{t('pts_hint_tip')}\">{t('pts_hint')}</span>"
             "</div>")
 
@@ -1705,18 +1728,27 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     sa, sb = df_plot["raw_senkou_a"].to_numpy(dtype=float), df_plot["raw_senkou_b"].to_numpy(dtype=float)
     ax.fill_between(x + 26, sa, sb, where=sa >= sb, color="#2ecc71", alpha=0.25, linewidth=0, zorder=1)
     ax.fill_between(x + 26, sa, sb, where=sa < sb, color="#e74c3c", alpha=0.20, linewidth=0, zorder=1)
-    if pts:
-        ax.plot([p_["x"] for p_ in pts], [p_["y"] for p_ in pts], color="#f39c12", marker="o", markersize=5, linewidth=1.6, zorder=6)
-        for letter, p_ in zip("ABC", pts):
+    if len(pts) >= 3:
+        A_, B_, C_ = pts[:3]
+        ax.plot([p_["x"] for p_ in [A_, B_, C_]], [p_["y"] for p_ in [A_, B_, C_]], color="#f39c12", marker="o", markersize=5, linewidth=1.6, zorder=6)
+        for letter, p_ in zip("ABC", [A_, B_, C_]):
             ax.annotate(letter, (p_["x"], p_["y"]), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=10, color=ACCENT_MUTED)
+        # Point O marker (if present and distinct from A)
+        if len(pts) >= 4:
+            O_ = pts[3]
+            if O_["x"] != A_["x"] or O_["y"] != A_["y"]:
+                ax.plot([O_["x"]], [O_["y"]], marker="D", markersize=7,
+                        color=ORIGIN_COLOR, linestyle="none", zorder=6, clip_on=True)
+                ax.annotate("O", (O_["x"], O_["y"]), textcoords="offset points",
+                            xytext=(0, 10), ha="center", fontsize=10, color=ORIGIN_COLOR)
     colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
     for name, val in (targets or {}).items():
         ax.axhline(val, color=colors.get(name, "gray"), linestyle="--", linewidth=1.0, zorder=2)
         ax.text(1.0, val, f" {name} {fmt_price(val)}", transform=ax.get_yaxis_transform(), va="center", fontsize=9, color=colors.get(name, "gray"))
 
     x_right = float(len(df_plot) - 1)
-    if len(pts) == 3:
-        A_, B_, C_ = pts
+    if len(pts) >= 3:
+        A_, B_, C_ = pts[:3]
         cx = float(C_["x"])
         x_right = max(x_right, cx + TIME_AXIS_FORWARD_BARS)
         time_ab, time_ac = abs(B_["x"] - A_["x"]), abs(C_["x"] - A_["x"])
@@ -1734,8 +1766,10 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
             ts_, fc_ = bar_time_at(df_plot, x_pos, tf, is_fx, clock)
             ax.axvline(x_pos, color=col, linestyle=":", linewidth=1.1, zorder=2)
             vlabel(x_pos, time_target_label(base, ts_, fc_, tf, mobile), col, y_frac, 8)
+        # Kihon Suu: anchor to O if present, else A
+        origin_x = pts[3]["x"] if len(pts) >= 4 else pts[0]["x"]
         for k in KIHON_SUU:
-            xk = cx + k - 1
+            xk = origin_x + k - 1
             if xk > x_right:
                 continue
             ts_, fc_ = bar_time_at(df_plot, xk, tf, is_fx, clock)
@@ -2053,6 +2087,14 @@ elif app_mode == "terminal":
                 st.success(f"{labels[i]}: {fmt_price(p['y'])}  ({p['t']:%Y-%m-%d %H:%M})")
             else:
                 st.info(t("awaiting", label=labels[i]))
+
+        # Point O (Origin/Anchor) — optional 4th point
+        if len(st.session_state.abc_points) >= 4:
+            p = st.session_state.abc_points[3]
+            st.success(f"{t('pt_o')}: {fmt_price(p['y'])}  ({p['t']:%Y-%m-%d %H:%M})")
+        elif len(st.session_state.abc_points) == 3:
+            st.info(t("awaiting_origin"))
+
         if st.button(t("clear_points"), **WIDE):
             reset_points()
             st.rerun()
@@ -2152,13 +2194,13 @@ elif app_mode == "terminal":
 
         abc = st.session_state.abc_points
         mode_now = st.session_state.get("entry_mode", "hosoda")
-        armed = trigger_plan(df, abc, mode_now, tf_name, is_fx, last_close) if len(abc) == 3 else None
+        armed = trigger_plan(df, abc[:3], mode_now, tf_name, is_fx, last_close) if len(abc) >= 3 else None
         cand = candidate_c_extreme(df_plot)
 
         tt_x, tt_text = [], []
         x_view_right = float(len(df_plot) - 1)
-        if len(pts) == 3:
-            A, B, C = pts
+        if len(pts) >= 3:
+            A, B, C = pts[:3]
             tg = hosoda_targets(A["y"], B["y"], C["y"])
             V, N, E, NT = tg["V"], tg["N"], tg["E"], tg["NT"]
             colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
@@ -2186,10 +2228,35 @@ elif app_mode == "terminal":
                                            (C["x"] + time_ac, "AC", time_ac, "teal")):
                 time_line(x_pos, f"{nm} {int(n_bars)}", col, "dot", 0.30,
                           t("hover_taiyosuu", name=nm, n=int(n_bars)))
+            # Kihon Suu: anchor to O if present, else A
+            origin_x = pts[3]["x"] if len(pts) >= 4 else pts[0]["x"]
             for k in KIHON_SUU:
-                time_line(C["x"] + k - 1, str(k), "#7f8c8d", "dash", 0.78, t("hover_kihon", k=k), opacity=0.35)
+                xk = origin_x + k - 1
+                if xk > x_view_right:
+                    continue
+                time_line(xk, str(k), "#7f8c8d", "dash", 0.78, t("hover_kihon", k=k), opacity=0.35)
 
             fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]], mode="lines+markers", line=dict(color="#f39c12", width=2), marker=dict(size=UIP["wave_mark"]), name=t("chart_wave"), hovertemplate=f"%{{y:{pfmt}}}<extra>{t('chart_wave')}</extra>"))
+
+            # Point O marker (if present and distinct from A)
+            if len(pts) >= 4:
+                O_ = pts[3]
+                if O_["x"] != A["x"] or O_["y"] != A["y"]:
+                    fig.add_trace(go.Scatter(
+                        x=[O_["x"]], y=[O_["y"]], mode="markers",
+                        marker=dict(size=7, color=ORIGIN_COLOR, symbol="diamond"),
+                        name=t("chart_origin"),
+                        customdata=[O_["y"]],
+                        hovertemplate=t("origin_hover"),
+                        showlegend=False,
+                    ))
+                    fig.add_annotation(
+                        x=O_["x"], y=O_["y"],
+                        text="O",
+                        showarrow=False,
+                        yshift=12,
+                        font=dict(size=10, color=ORIGIN_COLOR),
+                    )
 
         if tt_x:
             y_top = float(df_plot["High"].max())
@@ -2215,7 +2282,7 @@ elif app_mode == "terminal":
         xaxis = dict(tickmode="array", tickvals=df_plot["x_idx"].to_numpy()[::tick_step],
                      ticktext=df_plot.index.strftime(time_fmt)[::tick_step], showgrid=True, gridcolor="#f0f0f0",
                      tickangle=UIP["tick_angle"], fixedrange=False)
-        if len(pts) == 3:
+        if len(pts) >= 3:
             xaxis["range"] = [-0.5, x_view_right + 1.5]
         if UIP["y_font"]:
             yaxis["tickfont"] = UIP["y_font"]
@@ -2247,7 +2314,7 @@ elif app_mode == "terminal":
             )
 
         st.markdown(points_bar_html(len(abc)), unsafe_allow_html=True)
-        if len(abc) == 3 and len(pts) < 3:
+        if len(abc) >= 3 and len(pts) < 3:
             st.caption(t("points_outside"))
 
         _htf_memo = {}
@@ -2272,7 +2339,7 @@ elif app_mode == "terminal":
             st.warning(t("ai_err_sklearn"))
         else:
             htf_arr, _htf_tf, htf_missing = htf_info()
-            A_, B_, C_ = abc
+            A_, B_, C_ = abc[:3]
             res = alice_run(df, htf_arr, A_["t"], A_["y"], B_["t"], B_["y"], C_["t"], C_["y"], ALICE_TARGETS)
             if res["status"] != "ok":
                 st.info(t("ai_err_" + res["status"], **res.get("kw", {})))
@@ -2327,8 +2394,8 @@ elif app_mode == "terminal":
                             st.caption(t("ai_rel_" + r["reliability"]))
                         st.caption(t("ai_disclaimer"))
 
-        if len(abc) == 3:
-            rA, rB, rC = abc
+        if len(abc) >= 3:
+            rA, rB, rC = abc[:3]
             side_buy = rB["y"] > rA["y"]
             r_tg = hosoda_targets(rA["y"], rB["y"], rC["y"])
             target_px = float(r_tg["N"])
@@ -2349,7 +2416,7 @@ elif app_mode == "terminal":
             entry_mode = st.selectbox(t("entry_mode"), ["hosoda", "break_b", "market", "custom"],
                                       format_func=lambda k: t("entry_" + k), key="entry_mode")
 
-            plan = armed if entry_mode == mode_now else trigger_plan(df, abc, entry_mode, tf_name, is_fx, last_close)
+            plan = armed if entry_mode == mode_now else trigger_plan(df, abc[:3], entry_mode, tf_name, is_fx, last_close)
             entry_px, stop_px, dec, conf_txt, expire_ts, bars_n, level_px = None, stop_c, "market", None, None, 0, None
             atr_show, buf_show, stop_src = atr_c, stop_buf, "c"
 
@@ -2551,8 +2618,8 @@ elif app_mode == "terminal":
                 st.error(t("tg_no_secrets"))
             else:
                 with st.spinner(t("tg_sending")):
-                    tg_pts = [{"x": p_["x"], "y": p_["y"]} for p_ in pts] if len(pts) == 3 else []
-                    tg_abc = st.session_state.abc_points
+                    tg_pts = [{"x": p_["x"], "y": p_["y"]} for p_ in pts[:3]] if len(pts) >= 3 else []
+                    tg_abc = st.session_state.abc_points[:3]
                     tg_targets = hosoda_targets(*(p_["y"] for p_ in tg_abc)) if len(tg_abc) == 3 else {}
                     htf_arr_t, htf_tf_t, htf_missing_t = htf_info()
                     trend_key = {1.0: "tg_up", -1.0: "tg_down", 0.0: "tg_flat"}[float(htf_arr_t[-1])] if not htf_missing_t else "tg_na"
@@ -2571,8 +2638,9 @@ elif app_mode == "terminal":
                 else:
                     st.success(t("tg_sent"))
 
+        # --- Event handler: allow up to 4 points (A, B, C, O) ---
         if (event and event.selection and event.selection.get("points")
-                and len(event.selection["points"]) == 1 and len(st.session_state.abc_points) < 3):
+                and len(event.selection["points"]) == 1 and len(st.session_state.abc_points) < 4):
             clicked = event.selection["points"][0]
             x_val = clicked.get("x")
             if x_val is not None:
