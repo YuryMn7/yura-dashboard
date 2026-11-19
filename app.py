@@ -1,7 +1,12 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.60. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.61. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 Крипта: BTC W1/MN1/MN3 -> старший MN1.
+
+BUGFIX v1.61 (Telegram export pipeline): в блоке отправки отчета список точек для
+Matplotlib-снапшота больше не обрезается до трёх (tg_pts = [... for p_ in pts]).
+Ранее срез pts[:3] не давал Point O дойти до рендерера, и сетка Kihon Suu в Telegram
+всегда якорилась к точке A. Развязка сохранена: ценовые цели и AI строго по abc[:3].
 
 4-POINT HOSODA TIME ARCHITECTURE:
   Points 1-3 (A, B, C): первичная геометрия волны, цели V/N/E/NT, коридор Taiyosuu (AB/AC),
@@ -2618,7 +2623,10 @@ elif app_mode == "terminal":
                 st.error(t("tg_no_secrets"))
             else:
                 with st.spinner(t("tg_sending")):
-                    tg_pts = [{"x": p_["x"], "y": p_["y"]} for p_ in pts[:3]] if len(pts) >= 3 else []
+                    # v1.61: полный список точек (включая O) уходит в рендерер снапшота,
+                    # чтобы Matplotlib-экспорт якорил Kihon Suu к Истоку, как интерактивный холст.
+                    tg_pts = [{"x": p_["x"], "y": p_["y"]} for p_ in pts] if len(pts) >= 3 else []
+                    # Развязка сохранена: ценовые цели и отчет строго по первым трем точкам.
                     tg_abc = st.session_state.abc_points[:3]
                     tg_targets = hosoda_targets(*(p_["y"] for p_ in tg_abc)) if len(tg_abc) == 3 else {}
                     htf_arr_t, htf_tf_t, htf_missing_t = htf_info()
