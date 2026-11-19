@@ -1,50 +1,46 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.62. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.70. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 Крипта: BTC W1/MN1/MN3 -> старший MN1.
 
-ANNOTATION DYNAMIC POLARITY (v1.62): подписи точек волны A/B/C и Истока O больше не имеют
-статичного сдвига вверх. Полярность каждой точки определяется сравнением с High/Low её свечи
-(is_high = |y-High| <= |y-Low|); буква якорится за пределами тела и теней — над High
-(yshift +14 / yanchor bottom / va bottom) или под Low (yshift -14 / yanchor top / va top).
-Реализовано синхронно в Plotly (fig.add_annotation) и Matplotlib (ax.annotate) — веб-холст и
-Telegram-снапшот одинаково читаемы. Полилиния A->B->C, маркеры, цели V/N/E/NT и расчёты не затронуты.
+SWING EXTREMUM HARDENING (v1.70): фрактальный детектор использует тай-брейк полярности —
+слева нестрогое сравнение (>= / <=), справа строгое (> / <). При двойной вершине или плоском
+пике маркер достаётся ПЕРВОМУ появлению экстремума и не теряется на обоих барах.
+Дополнительно абсолютные High/Low видимого окна (idxmax / idxmin) принудительно получают
+маркер главного фрактала — доминантный экстремум не может быть замаскирован краем окна.
 
-BUGFIX v1.61 (Telegram export pipeline): в блоке отправки отчета список точек для
-Matplotlib-снапшота больше не обрезается до трёх (tg_pts = [... for p_ in pts]).
-Ранее срез pts[:3] не давал Point O дойти до рендерера, и сетка Kihon Suu в Telegram
-всегда якорилась к точке A. Развязка сохранена: ценовые цели и AI строго по abc[:3].
+TAP-TO-RESET HUD (v1.70): нижняя статус-пилюля — нативная кнопка pts_bar_btn. Один тап
+сбрасывает все точки волны (A, B, C, O) и перерисовывает холст начисто. Геометрия и типографика
+совпадают со статичной полосой v1.61; на мобильных пилюля зафиксирована внизу вьюпорта
+с pointer-events: auto, поэтому касание срабатывает немедленно.
+
+ANNOTATION DYNAMIC POLARITY (v1.62): подписи точек волны A/B/C и Истока O не имеют статичного
+сдвига вверх. Полярность определяется сравнением с High/Low свечи; буква якорится над High
+(yshift +14 / yanchor bottom / va bottom) или под Low (yshift -14 / yanchor top / va top).
+Реализовано синхронно в Plotly и Matplotlib — веб-холст и Telegram-снапшот одинаково читаемы.
+
+BUGFIX v1.61 (Telegram export pipeline): список точек для Matplotlib-снапшота не обрезается
+до трёх (tg_pts = [... for p_ in pts]), поэтому сетка Kihon Suu в Telegram якорится к Истоку.
+Развязка сохранена: ценовые цели и AI строго по abc[:3].
 
 4-POINT HOSODA TIME ARCHITECTURE:
   Points 1-3 (A, B, C): первичная геометрия волны, цели V/N/E/NT, коридор Taiyosuu (AB/AC),
   AI Alice инференс, риск-менеджмент и лот-калькуляция.
   Point 4 (O — Origin/Anchor): опциональный исток цикла для сетки Kihon Suu (9, 17, 26, ...).
-  Может быть до A, совпадать с A или представлять более ранний макро-пивот.
-  Fallback: если O не задан (только 3 точки), Kihon Suu якорится к A (не к C, как было).
-  Полное развязывание: AI и Risk строго потребляют abc[:3], O влияет только на time grid.
+  Fallback: если O не задан, Kihon Suu якорится к A. AI и Risk строго потребляют abc[:3].
 
 OUTBOUND TELEMETRY (MT5 ➔ Supabase ➔ Streamlit):
-  Поллер fetch_account_telemetry() (ttl 4 с) читает последнюю строку из
-  public.account_telemetry по Supabase PostgREST. HUD здоровья счёта в сайдбаре
-  (только в терминале): Account · Balance · Equity · Daily DD (кап 3.0 %) · Total DD · Status.
+  Поллер fetch_account_telemetry() (ttl 4 с) читает последнюю строку public.account_telemetry.
+  HUD здоровья счёта в сайдбаре: Account · Balance · Equity · Daily DD (кап 3.0 %) · Total DD · Status.
   Зелёная пульсирующая точка ● LIVE при age < 60 с, ○ OFFLINE иначе.
   Автопривязка: при LIVE account_deposit = equity (поле disabled), при OFFLINE — ручной ввод.
 
-ЛЕКСИКОН И САНИТАЦИЯ: слой предварительного экстремума именуется «Предварительная C» /
-«Preliminary C», в легенде кратко «Предв. C» / «Cand. C». Эмодзи-глифов на холсте нет;
-единственный акцентный тон — приглушённый #a88a45 (matte antique gold). Подписи под графиком
-о слое отсутствуют: пояснение живёт в тултипе статус-строки выбора точек.
+ЛЕГЕНДА-ХАД: фракталы сведены в группы Plotly — minor и major; у каждой группы одна плашка,
+остальные трейсы showlegend=False. layout.legend.groupclick="togglegroup" — один клик гасит
+всю группу. Облако Кумо работает по той же схеме. Переключение слоёв чисто клиентское.
 
-ЛЕГЕНДА-ХАД: фракталы сведены в группы Plotly — minor (малый максимум + малый минимум) и major
-(главный максимум + главный минимум); у каждой группы одна плашка-носитель, остальные трейсы
-showlegend=False. layout.legend.groupclick="togglegroup" — один клик гасит/возвращает всю группу.
-Облако Кумо работает по той же схеме. Имена трейсов не меняются: ховер и детекция клика прежние.
-Переключение слоёв — чисто клиентское, без серверной перерисовки.
-
-КНОПКА ОБНОВЛЕНИЯ ↻: наложена на верхнюю полосу графика слева (в одном ряду с modebar справа),
-абсолютное позиционирование внутри оболочки st.container(key="chart_shell") — ноль строк в потоке.
-Если данных нет и график не строится, кнопка рендерится обычным компактным элементом над
-предупреждением, чтобы повторить загрузку было чем.
+КНОПКА ОБНОВЛЕНИЯ ↻: наложена на верхнюю полосу графика слева, абсолютное позиционирование
+внутри оболочки st.container(key="chart_shell") — ноль строк в потоке.
 
 РАДАР (Real-Time засада у Киджун): тренд/Облако/линии/Чикоу — по закрытому бару (iloc[-2]);
 зона засады — по активной свече (iloc[-1]) с порогом 0.3*ATR. Колонка «Причина» — диагностика.
@@ -52,8 +48,7 @@ ONE-CLICK TELEPORT: выбор строки в таблице Радара -> п
 
 ПРЕДВАРИТЕЛЬНАЯ C: маркер размером с малый фрактал, виден ДО расстановки A-B-C.
 Нисходящий тренд (Тенкан < Киджун) — максимум High последних 3 свечей включая активную;
-восходящий — минимум Low. Отступ 0.2*ATR. Ховер — одна компактная строка (тёмная плашка,
-рамка #a88a45, 11px), не экранирует область нажатия. Клик по маркеру ставит точку волны.
+восходящий — минимум Low. Отступ 0.2*ATR, компактный ховер. Клик ставит точку волны.
 
 ГОРИЗОНТ ПРОЕКЦИИ: +76 баров от точки C (канон Какан). Тот же предел в PNG для Telegram.
 
@@ -63,9 +58,7 @@ ONE-CLICK TELEPORT: выбор строки в таблице Радара -> п
 дальше -> ЛИМИТНЫЙ ордер на самый уровень. Нет подтверждения -> наблюдение (watch).
 
 АЛИСА — ZERO-LAG: лаг подтверждения убран и в обучении, и в инференсе (ALICE_LAG = 0).
-Вход = бар C, все признаки причинны (бары <= C). Признаки: Kumo/Киджун/Тенкан-Киджун/ATR/HTF
-+ наклон AB (ATR на бар) + доля теней свечи C + геометрия (откат, риск, цель) + классы фракталов.
-Statistical Edge, вероятности исходов и светофор выдаются сразу при выборе точки C.
+Вход = бар C, все признаки причинны. Edge, вероятности и светофор выдаются сразу при выборе C.
 
 РИСК ПОД BLUE GUARDIAN: дефолт 0.5 % на сделку, шаг ввода 0.1 %.
 ЛОТ: pip_value_usd (JPY — 1000 JPY за пипс по курсу USD/JPY; прямые пары — $10; EUR/AUD — 10 AUD
@@ -73,11 +66,9 @@ Statistical Edge, вероятности исходов и светофор вы
 ШЛЮЗ: карточка /order {JSON} в Telegram с кнопкой подтверждения; советник получает приказ
 только как callback_query после нажатия трейдером. Финальный лот и комплаенс — на стороне советника.
 
-НИЖНЯЯ ПАНЕЛЬ: статус «Выбрано точек: X/3» или «4/4» под графиком; на мобильных зафиксирован
-внизу вьюпорта и не перехватывает касания.
-
 BY DESIGN: точки A-B-C-O сбрасываются при смене инструмента, ТФ, серверного времени, raw, клиринга,
-кнопкой «Сбросить точки» и при телепорте. Обновление котировок, смена языка и отчёты точки НЕ сбрасывают.
+кнопкой «Сбросить точки», тапом по статус-пилюле и при телепорте. Обновление котировок, смена языка
+и отчёты точки НЕ сбрасывают.
 
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опц.).
 Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.),
@@ -189,6 +180,11 @@ MAJOR_COLOR = "#2c3e50"
 ORIGIN_COLOR = "#7f8c8d"         # Point O (Origin/Anchor)
 WAVE_LABEL_COLOR = "#f39c12"     # подписи A/B/C и полилиния волны
 LABEL_BG = "rgba(255, 255, 255, 0.75)"
+SURFACE = "#fbfcfd"
+BORDER = "#dfe4ea"
+BORDER_HOVER = "#2c3e50"
+SURFACE_HOVER = "#eef2f5"
+SURFACE_ACTIVE = "#e3e9ee"
 TELEMETRY_LIVE_SECONDS = 60      # age < 60s -> LIVE, иначе OFFLINE
 TELEMETRY_DAILY_CAP = 3.0        # Blue Guardian: daily drawdown hard cap
 
@@ -245,6 +241,7 @@ I18N = {
         "pts_bar_3_with_origin": "Points: 3/3 (Origin: Point A)",
         "pts_bar_4": "Points: 4/4 (Origin: locked)",
         "pts_hint": "cand. C",
+        "pts_reset_tip": "Click/Tap to clear wave points (Reset Points)",
         "pts_hint_tip": "Preliminary C: extremum of the last 3 bars including the live one, for an early entry. Tap the marker to place a wave point before the fractal forms. Toggle layers in the chart legend - one click switches a whole fractal group. Click 4 to set cycle origin.",
         "telemetry_title": "Account Health",
         "telemetry_live": "LIVE",
@@ -388,6 +385,7 @@ I18N = {
         "pts_bar_3_with_origin": "Выбрано точек: 3/3 (Исток: точка A)",
         "pts_bar_4": "Выбрано точек: 4/4 (Исток: зафиксирован)",
         "pts_hint": "предв. C",
+        "pts_reset_tip": "Нажмите, чтобы сбросить точки (Reset Points)",
         "pts_hint_tip": "Предварительный экстремум точки C по последним 3 барам, включая текущий, для раннего входа. Нажмите маркер, чтобы поставить точку волны до формирования фрактала. Слои переключаются в легенде: один клик гасит всю группу фракталов. Клик 4 — исток цикла.",
         "telemetry_title": "Здоровье счёта",
         "telemetry_live": "LIVE",
@@ -639,18 +637,17 @@ def risk_card_html(head, rows, accent):
             f"<div class='risk-hd'>{head}</div><table class='risk-tb'>{body}</table></div>")
 
 
-def points_bar_html(n):
-    """Компактная статусная строка выбора точек; на мобильных фиксируется внизу вьюпорта."""
+def points_bar_text(n):
+    """Чистая текстовая метка интерактивной статус-пилюли (без HTML).
+    Сохраняет композицию прежней полосы: статус слева, подсказка слоя справа."""
     if n < 3:
-        status = t('pts_bar', n=int(n))
+        status = t("pts_bar", n=int(n))
     elif n == 3:
-        status = t('pts_bar_3_with_origin')
+        status = t("pts_bar_3_with_origin")
     else:
-        status = t('pts_bar_4')
-    return ("<div class='pts-bar'>"
-            f"<span class='pts-n'>{status}</span>"
-            f"<span class='pts-hint' title=\"{t('pts_hint_tip')}\">{t('pts_hint')}</span>"
-            "</div>")
+        status = t("pts_bar_4")
+    status = re.sub(r"<[^>]+>", "", status)
+    return f"{status}  ·  {t('pts_hint')}"
 
 
 def detect_default_lang():
@@ -722,6 +719,25 @@ def candidate_c_extreme(df_plot, bars=CAND_C_BARS):
             "t": df_plot.index[x], "bars": lb}
 
 
+def enforce_visible_extremes(df_plot):
+    """Абсолютные High/Low видимого окна всегда получают маркер главного фрактала.
+    Тай-брейк, плоская вершина или край окна (NaN в shift(-1/-2)) не должны прятать
+    доминантный экстремум свинга. Первое вхождение берётся по idxmax / idxmin."""
+    mh = df_plot["Major_High"].to_numpy(dtype=bool).copy()
+    ml = df_plot["Major_Low"].to_numpy(dtype=bool).copy()
+    if len(df_plot) == 0:
+        return mh, ml
+    try:
+        hi_pos = int(df_plot.index.get_loc(df_plot["High"].idxmax()))
+        lo_pos = int(df_plot.index.get_loc(df_plot["Low"].idxmin()))
+    except Exception:
+        hi_pos = int(np.argmax(df_plot["High"].to_numpy(dtype=float)))
+        lo_pos = int(np.argmin(df_plot["Low"].to_numpy(dtype=float)))
+    mh[hi_pos] = True
+    ml[lo_pos] = True
+    return mh, ml
+
+
 def inject_css(mobile):
     mobile_rules = (
         ".block-container { padding-top: 3.2rem !important; padding-left: 0.6rem !important; "
@@ -731,9 +747,10 @@ def inject_css(mobile):
         ".modebar-btn { padding: 3px 5px !important; }\n"
         ".risk-tb td { font-size: 0.8rem; }\n"
         ".lot-line { font-size: 0.88rem; }\n"
-        ".pts-bar { position: fixed; left: 0.6rem; right: 0.6rem; bottom: 0.4rem; z-index: 60; "
-        "background: rgba(251,252,253,0.97); box-shadow: 0 -1px 6px rgba(44,62,80,0.10); "
-        "pointer-events: none; }\n"
+        ".st-key-pts_bar_btn { position: fixed; left: 0.6rem; right: 0.6rem; bottom: 0.4rem; "
+        "z-index: 60; margin: 0 !important; pointer-events: auto !important; }\n"
+        f".st-key-pts_bar_btn button {{ background: rgba(251,252,253,0.97); "
+        "box-shadow: 0 -1px 6px rgba(44,62,80,0.10); pointer-events: auto !important; }\n"
         ".st-key-chart_shell .st-key-refresh_term { top: 5px; left: 2px; }\n"
         '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
     )
@@ -756,12 +773,22 @@ def inject_css(mobile):
         "margin: 0 !important; padding: 0 !important; pointer-events: none; }\n"
         ".st-key-chart_shell .st-key-refresh_term button { pointer-events: auto; }\n"
     )
+    # Интерактивная статус-пилюля: геометрия и типографика прежней статичной полосы.
     status_css = (
-        ".pts-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; "
-        "border: 1px solid #dfe4ea; background: #fbfcfd; border-radius: 2px; padding: 4px 10px; "
-        "font-size: 0.8rem; color: #2c3e50; margin: 2px 0 4px 0; }\n"
-        ".pts-bar b { font-variant-numeric: tabular-nums; }\n"
-        f".pts-hint {{ color: {ACCENT_MUTED}; white-space: nowrap; cursor: help; }}\n"
+        ".st-key-pts_bar_btn { margin: 2px 0 4px 0; }\n"
+        ".st-key-pts_bar_btn button { width: 100%; height: 28px; min-height: 28px !important; "
+        f"padding: 0 10px !important; background: {SURFACE}; color: {MAJOR_COLOR}; "
+        f"border: 1px solid {BORDER}; border-radius: 2px; box-shadow: none; "
+        "display: inline-flex; align-items: center; justify-content: center; "
+        "font-weight: 500; letter-spacing: 0.01em; "
+        "transition: background-color .15s ease, border-color .15s ease; }\n"
+        ".st-key-pts_bar_btn button p, .st-key-pts_bar_btn button span { "
+        f"font-size: 0.8rem !important; color: {MAJOR_COLOR} !important; margin: 0 !important; "
+        "line-height: 1 !important; font-variant-numeric: tabular-nums; "
+        "white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n"
+        f".st-key-pts_bar_btn button:hover {{ background: {SURFACE_HOVER}; border-color: {BORDER_HOVER}; }}\n"
+        f".st-key-pts_bar_btn button:active {{ background: {SURFACE_ACTIVE}; border-color: {BORDER_HOVER}; }}\n"
+        f".st-key-pts_bar_btn button:focus-visible {{ outline: 1px solid {BORDER_HOVER}; outline-offset: 1px; }}\n"
     )
     teleport_css = (
         ".st-key-teleport_btn { margin: 0.4rem 0 0.2rem 0; }\n"
@@ -1159,12 +1186,22 @@ def add_indicators(df):
     out["senkou_a"] = out["raw_senkou_a"].shift(26)
     out["senkou_b"] = out["raw_senkou_b"].shift(26)
     out["chikou"] = out["Close"].shift(-26)
-    out["Minor_High"] = (high > high.shift(1)) & (high > high.shift(2)) & (high > high.shift(-1)) & (high > high.shift(-2))
-    out["Minor_Low"] = (low < low.shift(1)) & (low < low.shift(2)) & (low < low.shift(-1)) & (low < low.shift(-2))
+
+    # --- Фракталы с тай-брейком полярности (v1.70) ---
+    # Слева нестрогое сравнение, справа строгое: при двойной вершине / плоском пике
+    # маркер достаётся ПЕРВОМУ появлению экстремума и не исчезает на обоих барах.
+    out["Minor_High"] = (
+        (high >= high.shift(1)) & (high > high.shift(2)) &
+        (high > high.shift(-1)) & (high > high.shift(-2))
+    )
+    out["Minor_Low"] = (
+        (low <= low.shift(1)) & (low < low.shift(2)) &
+        (low < low.shift(-1)) & (low < low.shift(-2))
+    )
     out["Major_High"], out["Major_Low"] = True, True
     for i in range(1, 11):
-        out["Major_High"] &= (high > high.shift(i)) & (high > high.shift(-i))
-        out["Major_Low"] &= (low < low.shift(i)) & (low < low.shift(-i))
+        out["Major_High"] &= (high >= high.shift(i)) & (high > high.shift(-i))
+        out["Major_Low"] &= (low <= low.shift(i)) & (low < low.shift(-i))
     return out
 
 
@@ -1756,7 +1793,7 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     if len(pts) >= 3:
         A_, B_, C_ = pts[:3]
         ax.plot([p_["x"] for p_ in [A_, B_, C_]], [p_["y"] for p_ in [A_, B_, C_]], color="#f39c12", marker="o", markersize=5, linewidth=1.6, zorder=6)
-        # v1.62: динамическая полярность подписей — над High или под Low свечи
+        # Динамическая полярность подписей — над High или под Low свечи.
         for letter, p_ in zip("ABC", [A_, B_, C_]):
             bar_row = df_plot.iloc[int(p_["x"])]
             is_high = abs(p_["y"] - float(bar_row["High"])) <= abs(p_["y"] - float(bar_row["Low"]))
@@ -1775,7 +1812,6 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
                 color=ACCENT_MUTED,
                 bbox=dict(boxstyle="round,pad=0.1", facecolor="white", edgecolor="none", alpha=0.7),
             )
-        # Point O marker + polar label (if present and distinct from A)
         if len(pts) >= 4:
             O_ = pts[3]
             if O_["x"] != A_["x"] or O_["y"] != A_["y"]:
@@ -1818,7 +1854,6 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
             ts_, fc_ = bar_time_at(df_plot, x_pos, tf, is_fx, clock)
             ax.axvline(x_pos, color=col, linestyle=":", linewidth=1.1, zorder=2)
             vlabel(x_pos, time_target_label(base, ts_, fc_, tf, mobile), col, y_frac, 8)
-        # Kihon Suu: anchor to O if present, else A
         origin_x = pts[3]["x"] if len(pts) >= 4 else pts[0]["x"]
         for k in KIHON_SUU:
             xk = origin_x + k - 1
@@ -2171,6 +2206,11 @@ elif app_mode == "terminal":
         df_plot["x_idx"] = np.arange(len(df_plot))
         UIP = chart_ui(MOBILE)
 
+        # Абсолютные экстремумы видимого окна никогда не маскируются (v1.70).
+        major_high_mask, major_low_mask = enforce_visible_extremes(df_plot)
+        df_plot["Major_High"] = major_high_mask
+        df_plot["Major_Low"] = major_low_mask
+
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
             x=df_plot["x_idx"], open=df_plot["Open"], high=df_plot["High"], low=df_plot["Low"], close=df_plot["Close"],
@@ -2184,24 +2224,23 @@ elif app_mode == "terminal":
 
         def marker_trace(mask, kind, price_col, offset_mult, size, color, name, group):
             """Трейс фракталов: имя сохраняется для ховера и клика, в легенду не выходит."""
-            sub = df_plot.loc[mask]
+            m = np.asarray(mask, dtype=bool)
+            sub = df_plot.loc[m]
             sign = 1 if kind == "High" else -1
             return go.Scatter(
                 x=sub["x_idx"], y=sub[price_col] + sign * sub["ATR"] * offset_mult,
                 mode="markers", marker=dict(size=size, color=color), name=name,
                 legendgroup=group, showlegend=False,
-                customdata=sub[price_col].to_numpy(dtype=float), text=time_txt[np.flatnonzero(mask.to_numpy())],
+                customdata=sub[price_col].to_numpy(dtype=float), text=time_txt[np.flatnonzero(m)],
                 hovertemplate=f"{name}<br>{t('hover_' + kind.lower())}: %{{customdata:{pfmt}}}<br>%{{text}}<extra></extra>",
             )
 
-        minor_high = df_plot["Minor_High"] & ~df_plot["Major_High"]
-        minor_low = df_plot["Minor_Low"] & ~df_plot["Major_Low"]
-        major_high = df_plot["Major_High"]
-        major_low = df_plot["Major_Low"]
+        minor_high = df_plot["Minor_High"].to_numpy(dtype=bool) & ~major_high_mask
+        minor_low = df_plot["Minor_Low"].to_numpy(dtype=bool) & ~major_low_mask
         fig.add_trace(marker_trace(minor_high, "High", "High", 0.2, UIP["mark_minor"], MINOR_COLOR, t("chart_minor_high"), "minor"))
         fig.add_trace(marker_trace(minor_low, "Low", "Low", 0.2, UIP["mark_minor"], MINOR_COLOR, t("chart_minor_low"), "minor"))
-        fig.add_trace(marker_trace(major_high, "High", "High", 0.5, UIP["mark_major"], MAJOR_COLOR, t("chart_major_high"), "major"))
-        fig.add_trace(marker_trace(major_low, "Low", "Low", 0.5, UIP["mark_major"], MAJOR_COLOR, t("chart_major_low"), "major"))
+        fig.add_trace(marker_trace(major_high_mask, "High", "High", 0.5, UIP["mark_major"], MAJOR_COLOR, t("chart_major_high"), "major"))
+        fig.add_trace(marker_trace(major_low_mask, "Low", "Low", 0.5, UIP["mark_major"], MAJOR_COLOR, t("chart_major_low"), "major"))
 
         fig.add_trace(go.Scatter(
             x=[None], y=[None], mode="markers",
@@ -2280,7 +2319,6 @@ elif app_mode == "terminal":
                                            (C["x"] + time_ac, "AC", time_ac, "teal")):
                 time_line(x_pos, f"{nm} {int(n_bars)}", col, "dot", 0.30,
                           t("hover_taiyosuu", name=nm, n=int(n_bars)))
-            # Kihon Suu: anchor to O if present, else A
             origin_x = pts[3]["x"] if len(pts) >= 4 else pts[0]["x"]
             for k in KIHON_SUU:
                 xk = origin_x + k - 1
@@ -2290,7 +2328,6 @@ elif app_mode == "terminal":
 
             fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]], mode="lines+markers", line=dict(color="#f39c12", width=2), marker=dict(size=UIP["wave_mark"]), name=t("chart_wave"), hovertemplate=f"%{{y:{pfmt}}}<extra>{t('chart_wave')}</extra>"))
 
-            # v1.62: буквы A/B/C — динамическая полярность (над High / под Low свечи)
             for letter, P_ in zip(("A", "B", "C"), pts[:3]):
                 ya, ys, yanch, _off, _va = polar_anchor(df_plot, P_["x"], P_["y"])
                 fig.add_annotation(
@@ -2300,7 +2337,6 @@ elif app_mode == "terminal":
                     bgcolor=LABEL_BG, borderpad=1,
                 )
 
-            # Point O marker (if present and distinct from A) + polar label
             if len(pts) >= 4:
                 O_ = pts[3]
                 if O_["x"] != A["x"] or O_["y"] != A["y"]:
@@ -2375,7 +2411,12 @@ elif app_mode == "terminal":
                 **WIDE,
             )
 
-        st.markdown(points_bar_html(len(abc)), unsafe_allow_html=True)
+        # --- Интерактивная статус-пилюля: один тап сбрасывает все точки волны (v1.70) ---
+        status_label = points_bar_text(len(abc))
+        if st.button(status_label, key="pts_bar_btn", help=t("pts_reset_tip"), **WIDE):
+            reset_points()
+            st.rerun()
+
         if len(abc) >= 3 and len(pts) < 3:
             st.caption(t("points_outside"))
 
@@ -2680,10 +2721,7 @@ elif app_mode == "terminal":
                 st.error(t("tg_no_secrets"))
             else:
                 with st.spinner(t("tg_sending")):
-                    # v1.61: полный список точек (включая O) уходит в рендерер снапшота,
-                    # чтобы Matplotlib-экспорт якорил Kihon Suu к Истоку, как интерактивный холст.
                     tg_pts = [{"x": p_["x"], "y": p_["y"]} for p_ in pts] if len(pts) >= 3 else []
-                    # Развязка сохранена: ценовые цели и отчет строго по первым трем точкам.
                     tg_abc = st.session_state.abc_points[:3]
                     tg_targets = hosoda_targets(*(p_["y"] for p_ in tg_abc)) if len(tg_abc) == 3 else {}
                     htf_arr_t, htf_tf_t, htf_missing_t = htf_info()
@@ -2703,7 +2741,7 @@ elif app_mode == "terminal":
                 else:
                     st.success(t("tg_sent"))
 
-        # --- Event handler: allow up to 4 points (A, B, C, O) ---
+        # --- Event handler: up to 4 points (A, B, C, O) ---
         if (event and event.selection and event.selection.get("points")
                 and len(event.selection["points"]) == 1 and len(st.session_state.abc_points) < 4):
             clicked = event.selection["points"][0]
