@@ -1,22 +1,25 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.81. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.82. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 
-GEO-RESILIENCE (v1.81): публичные вызовы Bybit из AWS US-регионов (Streamlit Community Cloud)
-перехватываются CloudFront WAF и возвращают HTTP 403 с HTML-телом. Поэтому:
-  * обход двух доменов: api.bybit.com -> api.bytick.com;
-  * браузерный User-Agent + Accept: application/json;
-  * проверка r.status_code == 200 ДО r.json() — JSONDecodeError не может дойти до UI;
-  * накопление last_err по всем попыткам, тихий возврат (empty_df, err);
-  * бесшовный fallback на Yahoo-поток актива (route["yf"]) в fetch_smart_data и fetch_radar.
+DATA PROVENANCE (v1.82): терминал показывает ФАКТИЧЕСКИЙ источник свечей, а не теоретическую
+метку роутера. Сетевой резолвер _resolve_feed (cache ttl 60) возвращает (df, err, source);
+некэшированная обёртка fetch_smart_data фиксирует source в st.session_state["data_feed_source"]
+при каждом прогоне (присваивание внутри cache_data не выполнялось бы на cache-hit).
+Институциональный бейдж «ПОТОК: …» под графиком: slate для основного канала,
+приглушённый янтарь для Fallback. Источник дублируется в заголовке PNG-снапшота
+и в текстовой депеше Telegram. HTF-запрос идёт с track=False и не перебивает бейдж.
+
+GEO-RESILIENCE (v1.81): публичные вызовы Bybit из AWS US-регионов перехватываются CloudFront WAF
+(HTTP 403 + HTML). Обход api.bybit.com -> api.bytick.com, браузерный User-Agent,
+проверка r.status_code == 200 ДО r.json(), накопление last_err, бесшовный fallback на Yahoo.
 Подписанный поллер кошелька ходит по тем же доменам; timestamp и HMAC пересчитываются
 на каждой попытке, чтобы не превысить recvWindow.
 
 BYBIT API v5 (PHASE 1 — MARKET DATA + UTA TELEMETRY):
-  Публичный /v5/market/kline (category=linear) для BTCUSDT / ETHUSDT / SOLUSDT:
-  непрерывный 24/7 ряд без выходных разрывов и без лимитов TwelveData.
-  Нативный маппинг ТФ: M1..M30 -> 1/5/15/30, H1/H2/H4 -> 60/120/240, D1/W1/MN1 -> D/W/M.
-  H8 агрегируется из H4, MN3/MN6/MN24 — из MN1 (resample).
+  /v5/market/kline (category=linear) для BTCUSDT / ETHUSDT / SOLUSDT — непрерывный 24/7 ряд.
+  Маппинг ТФ: M1..M30 -> 1/5/15/30, H1/H2/H4 -> 60/120/240, D1/W1/MN1 -> D/W/M.
+  H8 агрегируется из H4, MN3/MN6/MN24 — из MN1.
   /v5/account/wallet-balance?accountType=UNIFIED (HMAC-SHA256):
   payload = timestamp + apiKey + recvWindow + queryString, заголовки X-BAPI-*.
   Контекстный HUD: Forex/Индекс -> MT5/Blue Guardian (Supabase); Крипта -> Bybit UTA Wallet.
@@ -109,6 +112,7 @@ WIDE = {"width": "stretch"} if _ST_VER >= (1, 50) else {"use_container_width": T
 
 st.session_state.setdefault("abc_points", [])
 st.session_state.setdefault("chart_ver", 0)
+st.session_state.setdefault("data_feed_source", "—")
 
 
 def reset_points():
@@ -166,6 +170,13 @@ BYBIT_TF_MAP = {
     "D1": "D", "W1": "W", "MN1": "M", "MN3": "M", "MN6": "M", "MN24": "M",
 }
 BYBIT_BASE_TF = {"H8": "H4", "MN3": "MN1", "MN6": "MN1", "MN24": "MN1"}
+
+# --- Метки провенанса (отображаются в бейдже, PNG-заголовке и депеше Telegram) ---
+FEED_BYBIT = "Bybit v5 (Linear)"
+FEED_YAHOO = "Yahoo Finance"
+FEED_YAHOO_FB = "Yahoo Finance (Fallback)"
+FEED_TD = "TwelveData"
+FEED_NONE = "—"
 
 TD_PAGE_SIZE = 5000
 TD_PAGES = {"D1": 3}
@@ -263,6 +274,7 @@ I18N = {
         "cand_full": "Preliminary C",
         "cand_hover": "<b>Preliminary C:</b> %{customdata:.5f}<extra></extra>",
         "origin_hover": "<b>Cycle Origin:</b> %{customdata:.5f}<extra></extra>",
+        "feed_label": "FEED:",
         "pts_bar": "Points selected: <b>{n}/3</b>",
         "pts_bar_3_with_origin": "Points: 3/3 (Origin: Point A)",
         "pts_bar_4": "Points: 4/4 (Origin: locked)",
@@ -347,7 +359,7 @@ I18N = {
         "tg_sent_text": "Chart image is unavailable (install kaleido or matplotlib); a text-only report was sent.",
         "tg_err": "Telegram error: {detail}",
         "tg_no_secrets": "Add TELEGRAM_TOKEN and TELEGRAM_CHAT_ID to the app secrets.",
-        "tg_report": "Ichimoku Wave Terminal\n{symbol} | {tf} | {bar}\nPrice: {price}\nHTF trend ({htf}): {trend}\nTarget N: {target}\nAI verdict: {verdict}",
+        "tg_report": "Ichimoku Wave Terminal\n{symbol} | {tf} | {bar}\nPrice: {price}\nHTF trend ({htf}): {trend}\nTarget N: {target}\nAI verdict: {verdict}\nData source: {feed}",
         "tg_up": "Bullish", "tg_down": "Bearish", "tg_flat": "Neutral", "tg_na": "n/a",
         "ai_stats": "Samples: {n} ({neff} distinct waves) | Historical outcomes: target {ft}% / stop {fs}% / timeout {f0}% | Holdout AUC: {auc}",
         "ai_fractals": "Fractals: A - {a}, B - {b}, C - {c}",
@@ -414,6 +426,7 @@ I18N = {
         "cand_full": "Предварительная C",
         "cand_hover": "<b>Предварительная C:</b> %{customdata:.5f}<extra></extra>",
         "origin_hover": "<b>Исток цикла:</b> %{customdata:.5f}<extra></extra>",
+        "feed_label": "ПОТОК:",
         "pts_bar": "Выбрано точек: <b>{n}/3</b>",
         "pts_bar_3_with_origin": "Выбрано точек: 3/3 (Исток: точка A)",
         "pts_bar_4": "Выбрано точек: 4/4 (Исток: зафиксирован)",
@@ -498,7 +511,7 @@ I18N = {
         "tg_sent_text": "Изображение графика недоступно (установите kaleido или matplotlib); отправлен только текстовый отчет.",
         "tg_err": "Ошибка Telegram: {detail}",
         "tg_no_secrets": "Добавьте TELEGRAM_TOKEN и TELEGRAM_CHAT_ID в секреты приложения.",
-        "tg_report": "Ichimoku Wave Terminal\n{symbol} | {tf} | {bar}\nЦена: {price}\nТренд HTF ({htf}): {trend}\nЦель N: {target}\nВердикт ИИ: {verdict}",
+        "tg_report": "Ichimoku Wave Terminal\n{symbol} | {tf} | {bar}\nЦена: {price}\nТренд HTF ({htf}): {trend}\nЦель N: {target}\nВердикт ИИ: {verdict}\nИсточник данных: {feed}",
         "tg_up": "Бычий", "tg_down": "Медвежий", "tg_flat": "Нейтральный", "tg_na": "н/д",
         "ai_stats": "Выборка: {n} ({neff} различных волн) | Исторические исходы: цель {ft}% / стоп {fs}% / таймаут {f0}% | AUC на отложенной выборке: {auc}",
         "ai_fractals": "Фракталы: A — {a}, B — {b}, C — {c}",
@@ -536,6 +549,19 @@ def t(key, **kw):
 def cand_trace_name():
     """Единый токен слоя Preliminary C: регистрация трейса и детекция клика. Без глифов."""
     return t("chart_cand_c")
+
+
+def feed_source():
+    """Активный источник свечей для бейджа, PNG-заголовка и депеши."""
+    return st.session_state.get("data_feed_source", FEED_NONE)
+
+
+def feed_badge_html():
+    """Институциональный бейдж провенанса: slate для основного канала, янтарь для Fallback."""
+    src = feed_source()
+    src_color = ACCENT_MUTED if "Fallback" in src else ORIGIN_COLOR
+    return (f"<div class='feed-badge'>{t('feed_label')} "
+            f"<b style='color:{src_color};'>{src}</b></div>")
 
 
 def polar_anchor(df_plot, px, py):
@@ -810,6 +836,10 @@ def inject_css(mobile):
         ".st-key-chart_shell .st-key-refresh_term button { pointer-events: auto; }\n"
     )
     status_css = (
+        ".feed-badge { font-size: 0.75rem; color: #7f8c8d; letter-spacing: 0.04em; "
+        "line-height: 1.2; margin: 0 0 2px 0; white-space: nowrap; overflow: hidden; "
+        "text-overflow: ellipsis; }\n"
+        ".feed-badge b { font-weight: 600; }\n"
         ".st-key-pts_bar_btn { margin: 2px 0 4px 0; }\n"
         ".st-key-pts_bar_btn button { width: 100%; height: 28px; min-height: 28px !important; "
         f"padding: 0 10px !important; background: {SURFACE}; color: {MAJOR_COLOR}; "
@@ -1054,7 +1084,6 @@ def fetch_bybit_kline(sym, interval, category="linear"):
     for base_url in BYBIT_ENDPOINTS:
         try:
             r = requests.get(f"{base_url}/v5/market/kline", params=params, headers=headers, timeout=8)
-            # Защита от HTML/WAF-тела: статус проверяется до разбора JSON.
             if r.status_code != 200:
                 last_err = E("bybit", detail=f"HTTP {r.status_code}")
                 continue
@@ -1198,25 +1227,29 @@ def _next_monday(ts):
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def fetch_smart_data(asset_key, interval):
+def _resolve_feed(asset_key, interval):
+    """Сетевой резолвер: возвращает (df, err, source). Кэшируется дорогая часть.
+    Присваивание session_state здесь НЕ делается — на cache-hit тело не выполняется."""
     route = ASSET_ROUTER[asset_key]
     if is_bybit_asset(route):
         base_tf = BYBIT_BASE_TF.get(interval, interval)
         df_bybit, err_bybit = fetch_bybit_kline(route["sym"], BYBIT_TF_MAP[base_tf], route.get("cat", "linear"))
         if not df_bybit.empty:
-            return df_bybit, None
+            return df_bybit, None, FEED_BYBIT
         # Бесшовный институциональный fallback: Yahoo-поток того же актива.
         if route.get("yf"):
             df_yf, err_yf = fetch_yahoo(route["yf"], interval)
             if not df_yf.empty:
-                return df_yf, None
-        return pd.DataFrame(), err_bybit
+                return df_yf, None, FEED_YAHOO_FB
+        return pd.DataFrame(), err_bybit, FEED_NONE
     if route["prov"] == "yahoo":
-        return fetch_yahoo(route["yf"], interval)
+        df, err = fetch_yahoo(route["yf"], interval)
+        return df, err, (FEED_YAHOO if not df.empty else FEED_NONE)
+
     base_int = TF_MAP[BASE_TF.get(interval, interval)]
     df, err = _td_request(route["sym"], base_int)
     if err or df.empty:
-        return df, err or E("td_nodata")
+        return df, err or E("td_nodata"), FEED_NONE
     frames, page, partial_err = [df], df, None
     for _ in range(TD_PAGES.get(interval, 1) - 1):
         if len(page) < TD_PAGE_SIZE - 100:
@@ -1235,7 +1268,17 @@ def fetch_smart_data(asset_key, interval):
         frames.append(page)
     out = pd.concat(frames).sort_index()
     out = out[~out.index.duplicated(keep="last")]
-    return out, partial_err
+    return out, partial_err, (FEED_TD if not out.empty else FEED_NONE)
+
+
+def fetch_smart_data(asset_key, interval, track=True):
+    """Тонкая НЕкэшированная обёртка: фиксирует активный источник в session_state
+    при каждом прогоне и сохраняет контракт возврата (df, err).
+    track=False используется для HTF-запроса, чтобы не перебивать бейдж основного холста."""
+    df, err, source = _resolve_feed(asset_key, interval)
+    if track:
+        st.session_state["data_feed_source"] = source
+    return df, err
 
 
 @st.cache_data(ttl=4, show_spinner=False)
@@ -2079,7 +2122,10 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     ax.set_xticks(x[::step])
     ax.set_xticklabels(df_plot.index.strftime("%Y-%m-%d %H:%M")[::step], rotation=45, ha="right", fontsize=8)
     ax.yaxis.tick_right()
-    ax.set_title(title, loc="left", fontsize=11, color="#2c3e50")
+    # Провенанс в заголовке снапшота: получатель депеши видит источник свечей.
+    feed_src = feed_source()
+    title_with_source = f"{title} · [{feed_src}]" if feed_src and feed_src != FEED_NONE else title
+    ax.set_title(title_with_source, loc="left", fontsize=11, color="#2c3e50")
     ax.grid(True, color="#f0f0f0")
     for side in ("top", "left"):
         ax.spines[side].set_visible(False)
@@ -2121,7 +2167,7 @@ def send_telegram(token, chat_id, text, png):
 def refresh_button(key):
     """Иконка ↻: чистит кэши котировок и телеметрии, точки и цели сохраняет."""
     if st.button(t("refresh"), key=key, help=t("refresh_help")):
-        fetch_smart_data.clear()
+        _resolve_feed.clear()
         fetch_yahoo.clear()
         fetch_bybit_kline.clear()
         fetch_bybit_wallet.clear()
@@ -2130,7 +2176,7 @@ def refresh_button(key):
 
 
 PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active",
-                "risk_pct", "account_deposit", "entry_mode", "custom_entry"]
+                "risk_pct", "account_deposit", "entry_mode", "custom_entry", "data_feed_source"]
 
 
 def _on_lang_change():
@@ -2150,6 +2196,7 @@ st.session_state.setdefault("w_radar_active", True)
 st.session_state.setdefault("risk_pct", RISK_PCT_DEFAULT)
 st.session_state.setdefault("account_deposit", 10000.0)
 st.session_state.setdefault("entry_mode", "hosoda")
+st.session_state.setdefault("data_feed_source", FEED_NONE)
 
 # --- Контекст телеметрии: выбирается в сайдбаре по типу активного инструмента ---
 telemetry_live_flag = False
@@ -2637,6 +2684,9 @@ elif app_mode == "terminal":
                 **WIDE,
             )
 
+        # --- Институциональный бейдж провенанса: фактический источник свечей ---
+        st.markdown(feed_badge_html(), unsafe_allow_html=True)
+
         status_label = points_bar_text(len(abc))
         if st.button(status_label, key="pts_bar_btn", help=t("pts_reset_tip"), **WIDE):
             reset_points()
@@ -2653,7 +2703,7 @@ elif app_mode == "terminal":
                 if htf_tf == tf_name:
                     df_h = df_raw
                 else:
-                    df_h_raw, _htf_err = fetch_smart_data(asset_name, htf_tf)
+                    df_h_raw, _htf_err = fetch_smart_data(asset_name, htf_tf, track=False)
                     df_h = prepare_ohlc(df_h_raw, htf_tf, is_fx, count_weekend, drop_clearing, offset_choice)
                 missing = df_h.empty
                 _htf_memo["v"] = (np.zeros(len(df)) if missing else htf_trend_series(df_h, df.index), htf_tf, missing)
@@ -2921,7 +2971,8 @@ elif app_mode == "terminal":
                         "tg_report", symbol=asset_label(asset_name), tf=tf_name, bar=f"{df_plot.index[-1]:%Y-%m-%d %H:%M}",
                         price=fmt_price(last_close), htf=htf_tf_t, trend=t(trend_key),
                         target=fmt_price(tg_targets["N"]) if tg_targets else t("tg_na"),
-                        verdict=t("ai_light_" + ai_light) if ai_light else t("tg_na"))
+                        verdict=t("ai_light_" + ai_light) if ai_light else t("tg_na"),
+                        feed=feed_source())
                     png, _engine = render_chart_png(fig, df_plot, tg_pts, tg_targets,
                                                     f"{asset_label(asset_name)} | {tf_name}", tf_name, is_fx, MOBILE)
                     ok, err = send_telegram(token, chat_id, report, png)
