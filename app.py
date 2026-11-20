@@ -1,49 +1,51 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.70. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.80. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
-Крипта: BTC W1/MN1/MN3 -> старший MN1.
+
+BYBIT API v5 (PHASE 1 — MARKET DATA + UTA TELEMETRY):
+  Публичный фид /v5/market/kline (category=linear) для BTCUSDT / ETHUSDT / SOLUSDT:
+  непрерывный 24/7 ряд без выходных разрывов и без лимитов TwelveData.
+  Нативный маппинг ТФ: M1..M30 -> 1/5/15/30, H1/H2/H4 -> 60/120/240, D1/W1/MN1 -> D/W/M.
+  H8 агрегируется из H4, MN3/MN6/MN24 — из MN1 (resample).
+  Подписанный поллер /v5/account/wallet-balance?accountType=UNIFIED (HMAC-SHA256):
+  payload = timestamp + apiKey + recvWindow + queryString, заголовки X-BAPI-*.
+  Контекстный HUD: Forex/Индекс -> MT5/Blue Guardian (Supabase); Крипта -> Bybit UTA Wallet.
+  Нулевая казна Bybit ($0.00) обрабатывается штатно: ручной ввод депозита остаётся активным.
+  Исполнение приказов в Phase 1 не меняется — шлюз остаётся MT5/Telegram.
 
 SWING EXTREMUM HARDENING (v1.70): фрактальный детектор использует тай-брейк полярности —
 слева нестрогое сравнение (>= / <=), справа строгое (> / <). При двойной вершине или плоском
-пике маркер достаётся ПЕРВОМУ появлению экстремума и не теряется на обоих барах.
-Дополнительно абсолютные High/Low видимого окна (idxmax / idxmin) принудительно получают
-маркер главного фрактала — доминантный экстремум не может быть замаскирован краем окна.
+пике маркер достаётся ПЕРВОМУ появлению экстремума. Абсолютные High/Low видимого окна
+(idxmax / idxmin) принудительно получают маркер главного фрактала.
 
 TAP-TO-RESET HUD (v1.70): нижняя статус-пилюля — нативная кнопка pts_bar_btn. Один тап
-сбрасывает все точки волны (A, B, C, O) и перерисовывает холст начисто. Геометрия и типографика
-совпадают со статичной полосой v1.61; на мобильных пилюля зафиксирована внизу вьюпорта
-с pointer-events: auto, поэтому касание срабатывает немедленно.
+сбрасывает все точки волны (A, B, C, O) и перерисовывает холст начисто. На мобильных
+пилюля зафиксирована внизу вьюпорта с pointer-events: auto.
 
-ANNOTATION DYNAMIC POLARITY (v1.62): подписи точек волны A/B/C и Истока O не имеют статичного
-сдвига вверх. Полярность определяется сравнением с High/Low свечи; буква якорится над High
-(yshift +14 / yanchor bottom / va bottom) или под Low (yshift -14 / yanchor top / va top).
-Реализовано синхронно в Plotly и Matplotlib — веб-холст и Telegram-снапшот одинаково читаемы.
+ANNOTATION DYNAMIC POLARITY (v1.62): подписи A/B/C/O якорятся над High или под Low свечи
+(полярность по |y-High| <= |y-Low|), синхронно в Plotly и Matplotlib.
 
-BUGFIX v1.61 (Telegram export pipeline): список точек для Matplotlib-снапшота не обрезается
-до трёх (tg_pts = [... for p_ in pts]), поэтому сетка Kihon Suu в Telegram якорится к Истоку.
-Развязка сохранена: ценовые цели и AI строго по abc[:3].
+BUGFIX v1.61: список точек для Matplotlib-снапшота не обрезается до трёх, поэтому сетка
+Kihon Suu в Telegram якорится к Истоку. Ценовые цели и AI строго по abc[:3].
 
 4-POINT HOSODA TIME ARCHITECTURE:
-  Points 1-3 (A, B, C): первичная геометрия волны, цели V/N/E/NT, коридор Taiyosuu (AB/AC),
-  AI Alice инференс, риск-менеджмент и лот-калькуляция.
-  Point 4 (O — Origin/Anchor): опциональный исток цикла для сетки Kihon Suu (9, 17, 26, ...).
-  Fallback: если O не задан, Kihon Suu якорится к A. AI и Risk строго потребляют abc[:3].
+  A, B, C: геометрия волны, цели V/N/E/NT, коридор Taiyosuu, AI Alice, риск и лот.
+  O (Origin/Anchor): опциональный исток цикла Kihon Suu. Fallback — точка A.
+  AI и Risk строго потребляют abc[:3]; O влияет только на временную сетку.
 
 OUTBOUND TELEMETRY (MT5 ➔ Supabase ➔ Streamlit):
-  Поллер fetch_account_telemetry() (ttl 4 с) читает последнюю строку public.account_telemetry.
-  HUD здоровья счёта в сайдбаре: Account · Balance · Equity · Daily DD (кап 3.0 %) · Total DD · Status.
-  Зелёная пульсирующая точка ● LIVE при age < 60 с, ○ OFFLINE иначе.
-  Автопривязка: при LIVE account_deposit = equity (поле disabled), при OFFLINE — ручной ввод.
+  Поллер fetch_account_telemetry() (ttl 4 с) читает public.account_telemetry.
+  HUD: Account · Balance · Equity · Daily DD (кап 3.0 %) · Total DD · Status.
+  ● LIVE при age < 60 с, ○ OFFLINE иначе. При LIVE account_deposit = equity (disabled).
 
-ЛЕГЕНДА-ХАД: фракталы сведены в группы Plotly — minor и major; у каждой группы одна плашка,
-остальные трейсы showlegend=False. layout.legend.groupclick="togglegroup" — один клик гасит
-всю группу. Облако Кумо работает по той же схеме. Переключение слоёв чисто клиентское.
+ЛЕГЕНДА-ХАД: фракталы сведены в группы minor / major, по одной плашке на группу,
+layout.legend.groupclick="togglegroup" — один клик гасит всю группу. Облако Кумо так же.
+Переключение слоёв чисто клиентское, без серверной перерисовки.
 
-КНОПКА ОБНОВЛЕНИЯ ↻: наложена на верхнюю полосу графика слева, абсолютное позиционирование
-внутри оболочки st.container(key="chart_shell") — ноль строк в потоке.
+КНОПКА ОБНОВЛЕНИЯ ↻: оверлей в верхней полосе графика слева внутри st.container(key="chart_shell").
 
-РАДАР (Real-Time засада у Киджун): тренд/Облако/линии/Чикоу — по закрытому бару (iloc[-2]);
-зона засады — по активной свече (iloc[-1]) с порогом 0.3*ATR. Колонка «Причина» — диагностика.
+РАДАР: тренд/Облако/линии/Чикоу — по закрытому бару (iloc[-2]); зона засады — по активной
+свече (iloc[-1]) с порогом 0.3*ATR. Bybit-пары сканируются тем же движком через kline-фид.
 ONE-CLICK TELEPORT: выбор строки в таблице Радара -> перенос в Терминал.
 
 ПРЕДВАРИТЕЛЬНАЯ C: маркер размером с малый фрактал, виден ДО расстановки A-B-C.
@@ -57,27 +59,28 @@ ONE-CLICK TELEPORT: выбор строки в таблице Радара -> п
 Подтверждение = ЗАКРЫТИЕ свечи за уровнем. Правило догона: уход <= 1*ATR -> рынок,
 дальше -> ЛИМИТНЫЙ ордер на самый уровень. Нет подтверждения -> наблюдение (watch).
 
-АЛИСА — ZERO-LAG: лаг подтверждения убран и в обучении, и в инференсе (ALICE_LAG = 0).
-Вход = бар C, все признаки причинны. Edge, вероятности и светофор выдаются сразу при выборе C.
+АЛИСА — ZERO-LAG: ALICE_LAG = 0, вход на баре C, все признаки причинны (бары <= C).
+Edge, вероятности исходов и светофор выдаются сразу при выборе точки C.
 
 РИСК ПОД BLUE GUARDIAN: дефолт 0.5 % на сделку, шаг ввода 0.1 %.
-ЛОТ: pip_value_usd (JPY — 1000 JPY за пипс по курсу USD/JPY; прямые пары — $10; EUR/AUD — 10 AUD
-в USD; золото — $100 за пункт; BTC — $1; индексы — $1), округление ВНИЗ до шага 0.01.
+ЛОТ: pip_value_usd, округление ВНИЗ до шага 0.01.
 ШЛЮЗ: карточка /order {JSON} в Telegram с кнопкой подтверждения; советник получает приказ
-только как callback_query после нажатия трейдером. Финальный лот и комплаенс — на стороне советника.
+только как callback_query после нажатия трейдером.
 
-BY DESIGN: точки A-B-C-O сбрасываются при смене инструмента, ТФ, серверного времени, raw, клиринга,
-кнопкой «Сбросить точки», тапом по статус-пилюле и при телепорте. Обновление котировок, смена языка
-и отчёты точки НЕ сбрасывают.
+BY DESIGN: точки A-B-C-O сбрасываются при смене инструмента, ТФ, серверного времени, raw,
+клиринга, кнопкой «Сбросить точки», тапом по статус-пилюле и при телепорте.
 
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опц.).
 Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.),
-         SUPABASE_URL, SUPABASE_KEY (опц., для телеметрии MT5).
+         SUPABASE_URL, SUPABASE_KEY (опц.), BYBIT_API_KEY, BYBIT_API_SECRET (опц.).
 """
 import gc
+import hashlib
+import hmac
 import io
 import json
 import re
+import time
 from datetime import timedelta, timezone
 
 import numpy as np
@@ -121,6 +124,9 @@ ASSET_ROUTER = {
     "EUR/AUD": {"prov": "twelvedata", "sym": "EUR/AUD", "yf": "EURAUD=X"},
     "XAU/USD (Gold)": {"prov": "twelvedata", "sym": "XAU/USD", "yf": "GC=F"},
     "BTC/USD (Bitcoin)": {"prov": "twelvedata", "sym": "BTC/USD", "yf": "BTC-USD"},
+    "BTC/USDT (Bybit)": {"prov": "bybit", "sym": "BTCUSDT", "cat": "linear", "yf": "BTC-USD"},
+    "ETH/USDT (Bybit)": {"prov": "bybit", "sym": "ETHUSDT", "cat": "linear", "yf": "ETH-USD"},
+    "SOL/USDT (Bybit)": {"prov": "bybit", "sym": "SOLUSDT", "cat": "linear", "yf": "SOL-USD"},
     "SPX500": {"prov": "yahoo", "sym": "SPX", "yf": "^GSPC"},
     "GER40 (DAX)": {"prov": "yahoo", "sym": "GDAXI", "yf": "^GDAXI"},
     "JPN225": {"prov": "yahoo", "sym": "N225", "yf": "^N225"},
@@ -143,6 +149,18 @@ YF_MAP = {
 }
 BASE_TF = {"H2": "H1", "H4": "H1", "H8": "H1", "D1": "H1", "MN3": "MN1", "MN6": "MN1", "MN24": "MN1"}
 RESAMPLE_RULE = {"H2": "2h", "H4": "4h", "H8": "8h", "D1": "1D", "MN3": "3MS", "MN6": "6MS", "MN24": "24MS"}
+
+# --- Bybit v5: нативные интервалы Kline и базовые ТФ для агрегации ---
+BYBIT_BASE_URL = "https://api.bybit.com"
+BYBIT_RECV_WINDOW = "5000"
+BYBIT_KLINE_LIMIT = 1000
+BYBIT_TF_MAP = {
+    "M1": "1", "M5": "5", "M15": "15", "M30": "30",
+    "H1": "60", "H2": "120", "H4": "240", "H8": "240",
+    "D1": "D", "W1": "W", "MN1": "M", "MN3": "M", "MN6": "M", "MN24": "M",
+}
+BYBIT_BASE_TF = {"H8": "H4", "MN3": "MN1", "MN6": "MN1", "MN24": "MN1"}
+
 TD_PAGE_SIZE = 5000
 TD_PAGES = {"D1": 3}
 radar_tfs = ["M15", "M30", "H1", "H2", "H4", "H8", "D1", "W1", "MN1", "MN3"]
@@ -155,6 +173,10 @@ CRYPTO_PREFIXES = ("BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "LTC", "BCH")
 CRYPTO_HTF_OVERRIDE = {"W1": "MN1", "MN1": "MN1", "MN3": "MN1"}
 MIN_LTF_BARS = 110
 MIN_HTF_BARS = 80
+# Крипто-история объективно короче (месячные ряды perp-контрактов) — пороги мягче,
+# чтобы Радар не отсекал валидные сетапы BTC/ETH/SOL на старших ТФ.
+MIN_LTF_BARS_CRYPTO = 60
+MIN_HTF_BARS_CRYPTO = 50
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
 TIME_AXIS_FORWARD_BARS = 76      # горизонт проекции: +76 баров от точки C (канон Какан)
 MN_MONTHS = {"MN1": 1, "MN3": 3, "MN6": 6, "MN24": 24}
@@ -170,23 +192,23 @@ MT5_EXEC_MARK = "IG_EXEC"
 TRIG_WATCH_BARS = {"hosoda": 3, "break_b": 17}
 ATR_CHASE_LIMIT = 1.0
 CAND_C_BARS = 3
-ACCENT_MUTED = "#a88a45"         # единственный институциональный акцентный тон (matte antique gold)
+ACCENT_MUTED = "#a88a45"         # единственный институциональный акцентный тон
 CAND_C_COLOR = ACCENT_MUTED
 CAND_HOVER_BG = "rgba(20, 24, 35, 0.85)"
 CAND_HOVER_BORDER = ACCENT_MUTED
 CAND_HOVER_FONT = "#E8EDF5"
 MINOR_COLOR = "#95a5a6"
 MAJOR_COLOR = "#2c3e50"
-ORIGIN_COLOR = "#7f8c8d"         # Point O (Origin/Anchor)
-WAVE_LABEL_COLOR = "#f39c12"     # подписи A/B/C и полилиния волны
+ORIGIN_COLOR = "#7f8c8d"
+WAVE_LABEL_COLOR = "#f39c12"
 LABEL_BG = "rgba(255, 255, 255, 0.75)"
 SURFACE = "#fbfcfd"
 BORDER = "#dfe4ea"
 BORDER_HOVER = "#2c3e50"
 SURFACE_HOVER = "#eef2f5"
 SURFACE_ACTIVE = "#e3e9ee"
-TELEMETRY_LIVE_SECONDS = 60      # age < 60s -> LIVE, иначе OFFLINE
-TELEMETRY_DAILY_CAP = 3.0        # Blue Guardian: daily drawdown hard cap
+TELEMETRY_LIVE_SECONDS = 60
+TELEMETRY_DAILY_CAP = 3.0
 
 LANGS = {"English": "en", "Русский": "ru"}
 DEFAULT_LANG = "Русский"
@@ -198,7 +220,7 @@ I18N = {
         "mode_radar": "Market Scanner (Radar)", "mode_terminal": "Analytical Terminal",
         "data_settings": "Data Settings (Radar + Terminal)", "server_time": "Server Time (MT5):",
         "raw": "Include Saturday & closing night (raw)",
-        "raw_help": "Off: Saturday and closed hours (Fri 17:00 NY - Sun 17:00 NY) are removed, Sunday evening is kept. On: raw provider data with no filtering at all.",
+        "raw_help": "Off: Saturday and closed hours (Fri 17:00 NY - Sun 17:00 NY) are removed, Sunday evening is kept. On: raw provider data with no filtering at all. Crypto is always 24/7.",
         "clearing": "Drop 23:00 Clearing",
         "clearing_help": "Removes the 23:00 server-time hour (it exists in MT5). Off by default.",
         "terminal_settings": "Terminal Settings", "symbol": "Symbol:", "timeframe": "Timeframe:",
@@ -206,7 +228,7 @@ I18N = {
         "awaiting": "Awaiting {label}...", "awaiting_origin": "Awaiting Origin (click 4, optional)",
         "clear_points": "Clear Points",
         "refresh": "↻",
-        "refresh_help": "Refresh quotes. Wave A-B-C, price and time targets are preserved.",
+        "refresh_help": "Refresh quotes and wallet telemetry. Wave A-B-C-O, price and time targets are preserved.",
         "scanner_title": "Global Market Scanner",
         "filter_active": "Show active signals only (hide 'Waiting')",
         "run_scan_all": "Scan all timeframes", "processing_tf": "Processing {asset} / {tf}...",
@@ -248,6 +270,12 @@ I18N = {
         "telemetry_offline": "OFFLINE · last seen {m}m ago",
         "telemetry_unavailable": "OFFLINE — telemetry unavailable",
         "telemetry_locked": "Locked: live from MT5 equity",
+        "bybit_title": "BYBIT WALLET (UTA)",
+        "bybit_offline_keys": "OFFLINE — Bybit keys not configured",
+        "bybit_offline_api": "OFFLINE — no response from Bybit API",
+        "bybit_locked": "Locked: live from Bybit UTA equity",
+        "bybit_empty_treasury": "Bybit treasury is empty ($0.00) — manual deposit input is active for testing.",
+        "bybit_equity": "Equity", "bybit_wallet": "Wallet", "bybit_avail": "Available",
         "risk_title": "Trade parameters (calculated)", "risk_buy": "BUY", "risk_sell": "SELL",
         "entry_mode": "Entry point",
         "entry_hosoda": "Hosoda: C reversal", "entry_break_b": "Point B breakout",
@@ -273,7 +301,7 @@ I18N = {
         "risk_pct_label": "Risk per trade, %",
         "risk_pct_help": "Share of equity lost if the stop is hit. Blue Guardian default 0.5 %, step 0.1 %. The EA applies its own hard cap on top of this.",
         "deposit_label": "Deposit, $",
-        "deposit_help": "Account equity in USD used to convert the risk percentage into money risk.",
+        "deposit_help": "Account equity used to convert the risk percentage into money risk. Auto-bound to MT5 equity or Bybit UTA equity when telemetry is LIVE.",
         "lot_line": "Recommended lot: <b>{lots}</b> (Risk: -{risk} | Target N: +{gain})",
         "lot_too_small": "Calculated size is below 0.01 lot - the EA will reject this order. Reduce the risk distance or increase the deposit.",
         "lot_no_value": "Point value in USD is unavailable for this instrument - lot size cannot be calculated.",
@@ -295,6 +323,7 @@ I18N = {
         "pt_pip": "pips", "pt_point": "pts",
         "err_nodata": "no data", "err_yahoo_nodata": "Yahoo: no data for {detail}",
         "err_td": "TwelveData: {detail}", "err_td_nodata": "TwelveData: no data", "err_exception": "{detail}",
+        "err_bybit": "Bybit: {detail}", "err_bybit_nodata": "Bybit: no data for {detail}",
         "err_no_processed": "no data after processing",
         "err_few_bars": "not enough bars (LTF {ltf}/{min_ltf}, HTF {htf}/{min_htf})",
         "err_nan": "indicators not ready (NaN)",
@@ -342,7 +371,7 @@ I18N = {
         "mode_radar": "Сканер рынка (Радар)", "mode_terminal": "Аналитический терминал",
         "data_settings": "Настройки данных (Радар + Терминал)", "server_time": "Серверное время (MT5):",
         "raw": "Считать субботу и ночь закрытия (сырые данные)",
-        "raw_help": "Выкл: суббота и закрытые часы (пт 17:00 NY — вс 17:00 NY) убраны, воскресный вечер остаётся. Вкл: сырые данные провайдера без какой-либо фильтрации.",
+        "raw_help": "Выкл: суббота и закрытые часы (пт 17:00 NY — вс 17:00 NY) убраны, воскресный вечер остаётся. Вкл: сырые данные провайдера без фильтрации. Крипта всегда 24/7.",
         "clearing": "Убрать клиринг 23:00",
         "clearing_help": "Вырезает час 23:00 серверного времени (в MT5 этот час есть). По умолчанию выключено.",
         "terminal_settings": "Настройки терминала", "symbol": "Инструмент:", "timeframe": "Таймфрейм:",
@@ -350,7 +379,7 @@ I18N = {
         "awaiting": "Ожидается {label}...", "awaiting_origin": "Ожидается Исток (клик 4, опционально)",
         "clear_points": "Сбросить точки",
         "refresh": "↻",
-        "refresh_help": "Обновить котировки. Волна A-B-C, цели по цене и по времени сохраняются.",
+        "refresh_help": "Обновить котировки и телеметрию кошелька. Волна A-B-C-O, цели по цене и времени сохраняются.",
         "scanner_title": "Глобальный сканер рынка",
         "filter_active": "Показывать только активные сигналы (Скрыть 'Ждем')",
         "run_scan_all": "Сканировать все таймфреймы", "processing_tf": "Обработка: {asset} / {tf}...",
@@ -392,6 +421,12 @@ I18N = {
         "telemetry_offline": "OFFLINE · последний сигнал {m} мин назад",
         "telemetry_unavailable": "OFFLINE — телеметрия недоступна",
         "telemetry_locked": "Синхронизировано с эквити MT5",
+        "bybit_title": "BYBIT КОШЕЛЁК (UTA)",
+        "bybit_offline_keys": "OFFLINE — ключи Bybit не заданы",
+        "bybit_offline_api": "OFFLINE — нет ответа Bybit API",
+        "bybit_locked": "Синхронизировано с эквити Bybit UTA",
+        "bybit_empty_treasury": "Bybit казна пуста ($0.00) — активен ручной ввод депозита для тестов.",
+        "bybit_equity": "Эквити", "bybit_wallet": "Кошелёк", "bybit_avail": "Доступно",
         "risk_title": "Параметры сделки (расчет)", "risk_buy": "ПОКУПКА", "risk_sell": "ПРОДАЖА",
         "entry_mode": "Точка входа",
         "entry_hosoda": "Хосода: разворот C", "entry_break_b": "Пробой точки B",
@@ -417,7 +452,7 @@ I18N = {
         "risk_pct_label": "Риск на сделку, %",
         "risk_pct_help": "Доля депозита, теряемая при срабатывании стопа. Дефолт Blue Guardian 0.5 %, шаг 0.1 %. Советник дополнительно применит свой жесткий потолок риска.",
         "deposit_label": "Депозит, $",
-        "deposit_help": "Размер счета в USD для перевода процента риска в денежный риск. При LIVE телеметрии — автоподстановка эквити MT5.",
+        "deposit_help": "Эквити счета для перевода процента риска в денежный риск. При LIVE-телеметрии подставляется автоматически из MT5 или Bybit UTA.",
         "lot_line": "Рекомендуемый лот: <b>{lots}</b> (Риск: −{risk} | Цель N: +{gain})",
         "lot_too_small": "Расчетный объем меньше 0.01 лота — советник отклонит приказ. Уменьшите дистанцию риска или увеличьте депозит.",
         "lot_no_value": "Стоимость пункта в USD для этого инструмента недоступна — лот рассчитать нельзя.",
@@ -439,6 +474,7 @@ I18N = {
         "pt_pip": "пипс", "pt_point": "п.",
         "err_nodata": "нет данных", "err_yahoo_nodata": "Yahoo: нет данных для {detail}",
         "err_td": "TwelveData: {detail}", "err_td_nodata": "TwelveData: нет данных", "err_exception": "{detail}",
+        "err_bybit": "Bybit: {detail}", "err_bybit_nodata": "Bybit: нет данных для {detail}",
         "err_no_processed": "нет данных после обработки",
         "err_few_bars": "мало баров (LTF {ltf}/{min_ltf}, HTF {htf}/{min_htf})",
         "err_nan": "индикаторы не готовы (NaN)",
@@ -499,9 +535,7 @@ def cand_trace_name():
 
 
 def polar_anchor(df_plot, px, py):
-    """Динамическая полярность подписи точки волны.
-    Возвращает (y_anchor, yshift_plotly, yanchor_plotly, y_offset_mpl, va_mpl):
-    точка у High свечи -> якорь над верхней тенью; у Low -> под нижней тенью."""
+    """Динамическая полярность подписи точки волны."""
     row = df_plot.iloc[int(px)]
     hi, lo = float(row["High"]), float(row["Low"])
     if abs(py - hi) <= abs(py - lo):
@@ -521,7 +555,8 @@ def fmt_err(err):
 
 def _secret_values():
     vals = [API_KEY]
-    for k in ("TELEGRAM_TOKEN", "MT5_SECRET_TOKEN", "SUPABASE_KEY"):
+    for k in ("TELEGRAM_TOKEN", "MT5_SECRET_TOKEN", "SUPABASE_KEY",
+              "BYBIT_API_KEY", "BYBIT_API_SECRET"):
         try:
             v = st.secrets.get(k, "")
             if v:
@@ -597,7 +632,7 @@ def pip_value_usd(asset_key, current_price, psize):
     """Стоимость 1 пункта/пипса в USD на 1 стандартный лот."""
     route = ASSET_ROUTER.get(asset_key)
     sym = route["sym"] if route else asset_key
-    if "BTC" in sym:
+    if is_bybit_asset(route) or "BTC" in sym or "ETH" in sym or "SOL" in sym:
         return 1.0 * psize
     if "XAU" in sym:
         return 100.0 * psize
@@ -638,8 +673,7 @@ def risk_card_html(head, rows, accent):
 
 
 def points_bar_text(n):
-    """Чистая текстовая метка интерактивной статус-пилюли (без HTML).
-    Сохраняет композицию прежней полосы: статус слева, подсказка слоя справа."""
+    """Чистая текстовая метка интерактивной статус-пилюли (без HTML)."""
     if n < 3:
         status = t("pts_bar", n=int(n))
     elif n == 3:
@@ -720,9 +754,7 @@ def candidate_c_extreme(df_plot, bars=CAND_C_BARS):
 
 
 def enforce_visible_extremes(df_plot):
-    """Абсолютные High/Low видимого окна всегда получают маркер главного фрактала.
-    Тай-брейк, плоская вершина или край окна (NaN в shift(-1/-2)) не должны прятать
-    доминантный экстремум свинга. Первое вхождение берётся по idxmax / idxmin."""
+    """Абсолютные High/Low видимого окна всегда получают маркер главного фрактала."""
     mh = df_plot["Major_High"].to_numpy(dtype=bool).copy()
     ml = df_plot["Major_Low"].to_numpy(dtype=bool).copy()
     if len(df_plot) == 0:
@@ -749,7 +781,7 @@ def inject_css(mobile):
         ".lot-line { font-size: 0.88rem; }\n"
         ".st-key-pts_bar_btn { position: fixed; left: 0.6rem; right: 0.6rem; bottom: 0.4rem; "
         "z-index: 60; margin: 0 !important; pointer-events: auto !important; }\n"
-        f".st-key-pts_bar_btn button {{ background: rgba(251,252,253,0.97); "
+        ".st-key-pts_bar_btn button { background: rgba(251,252,253,0.97); "
         "box-shadow: 0 -1px 6px rgba(44,62,80,0.10); pointer-events: auto !important; }\n"
         ".st-key-chart_shell .st-key-refresh_term { top: 5px; left: 2px; }\n"
         '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
@@ -773,7 +805,6 @@ def inject_css(mobile):
         "margin: 0 !important; padding: 0 !important; pointer-events: none; }\n"
         ".st-key-chart_shell .st-key-refresh_term button { pointer-events: auto; }\n"
     )
-    # Интерактивная статус-пилюля: геометрия и типографика прежней статичной полосы.
     status_css = (
         ".st-key-pts_bar_btn { margin: 2px 0 4px 0; }\n"
         ".st-key-pts_bar_btn button { width: 100%; height: 28px; min-height: 28px !important; "
@@ -946,6 +977,10 @@ def is_fx_asset(route):
     return ("/" in sym) and ("BTC" not in sym)
 
 
+def is_bybit_asset(route):
+    return bool(route) and route.get("prov") == "bybit"
+
+
 def is_crypto_asset(route):
     sym = route["sym"].upper()
     return any(sym.startswith(p) for p in CRYPTO_PREFIXES)
@@ -1002,6 +1037,102 @@ def fetch_yahoo(sym, interval):
         return pd.DataFrame(), E("exception", detail=safe_err(e))
 
 
+@st.cache_data(ttl=30, show_spinner=False)
+def fetch_bybit_kline(sym, interval, category="linear"):
+    """Bybit v5 public Kline. Ряд приходит по убыванию времени — разворачиваем в хронологию.
+    Крипта 24/7: фильтрация выходных не применяется. Индекс — UTC.
+    """
+    params = {"category": category, "symbol": sym, "interval": interval, "limit": BYBIT_KLINE_LIMIT}
+    try:
+        r = requests.get(f"{BYBIT_BASE_URL}/v5/market/kline", params=params, timeout=12)
+        res = r.json()
+        if res.get("retCode") != 0:
+            return pd.DataFrame(), E("bybit", detail=res.get("retMsg", "unknown error"))
+        rows = (res.get("result") or {}).get("list") or []
+        if not rows:
+            return pd.DataFrame(), E("bybit_nodata", detail=f"{sym} ({interval})")
+        recs = []
+        for row in rows:
+            try:
+                recs.append((int(row[0]), float(row[1]), float(row[2]),
+                             float(row[3]), float(row[4]), float(row[5])))
+            except (TypeError, ValueError, IndexError):
+                continue
+        if not recs:
+            return pd.DataFrame(), E("bybit_nodata", detail=f"{sym} ({interval})")
+        df = pd.DataFrame(recs, columns=["ms", "Open", "High", "Low", "Close", "Volume"])
+        df.index = pd.to_datetime(df["ms"], unit="ms", utc=True)
+        df = df.drop(columns=["ms"])
+        df = df[~df.index.duplicated(keep="last")].sort_index()
+        df = df[(df["High"] >= df["Low"]) & (df["Close"] > 0)]
+        if df.empty:
+            return pd.DataFrame(), E("bybit_nodata", detail=f"{sym} ({interval})")
+        return df, None
+    except Exception as e:
+        return pd.DataFrame(), E("exception", detail=safe_err(e))
+
+
+def _bybit_credentials():
+    try:
+        return (str(st.secrets.get("BYBIT_API_KEY", "")),
+                str(st.secrets.get("BYBIT_API_SECRET", "")))
+    except Exception:
+        return "", ""
+
+
+@st.cache_data(ttl=5, show_spinner=False)
+def fetch_bybit_wallet():
+    """Bybit v5 Unified Trading Account wallet balance (HMAC-SHA256).
+    payload = timestamp + apiKey + recvWindow + queryString.
+    Возвращает dict с equity / wallet_balance / avail_margin либо None (OFFLINE).
+    """
+    key, secret = _bybit_credentials()
+    if not key or not secret:
+        return None
+    qs = "accountType=UNIFIED"
+    ts = str(int(time.time() * 1000))
+    payload = ts + key + BYBIT_RECV_WINDOW + qs
+    try:
+        sign = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    except Exception:
+        return None
+    headers = {
+        "X-BAPI-API-KEY": key,
+        "X-BAPI-TIMESTAMP": ts,
+        "X-BAPI-RECV-WINDOW": BYBIT_RECV_WINDOW,
+        "X-BAPI-SIGN": sign,
+        "Content-Type": "application/json",
+    }
+    try:
+        r = requests.get(f"{BYBIT_BASE_URL}/v5/account/wallet-balance?{qs}",
+                         headers=headers, timeout=8)
+        if r.status_code != 200:
+            return None
+        res = r.json()
+        if res.get("retCode") != 0:
+            return None
+        lst = (res.get("result") or {}).get("list") or []
+        if not lst:
+            return None
+        acc = lst[0] or {}
+
+        def _f(v):
+            try:
+                return float(v) if v not in (None, "") else 0.0
+            except (TypeError, ValueError):
+                return 0.0
+
+        return {
+            "equity": _f(acc.get("totalEquity")),
+            "wallet_balance": _f(acc.get("totalWalletBalance")),
+            "avail_margin": _f(acc.get("totalAvailableBalance")),
+            "updated_at": pd.Timestamp.now(tz="UTC"),
+            "status": "LIVE",
+        }
+    except Exception:
+        return None
+
+
 class TDError(Exception):
     """Ошибка страницы Twelve Data: исключения не кэшируются."""
 
@@ -1044,6 +1175,9 @@ def _next_monday(ts):
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_smart_data(asset_key, interval):
     route = ASSET_ROUTER[asset_key]
+    if is_bybit_asset(route):
+        base_tf = BYBIT_BASE_TF.get(interval, interval)
+        return fetch_bybit_kline(route["sym"], BYBIT_TF_MAP[base_tf], route.get("cat", "linear"))
     if route["prov"] == "yahoo":
         return fetch_yahoo(route["yf"], interval)
     base_int = TF_MAP[BASE_TF.get(interval, interval)]
@@ -1073,9 +1207,7 @@ def fetch_smart_data(asset_key, interval):
 
 @st.cache_data(ttl=4, show_spinner=False)
 def fetch_account_telemetry():
-    """Читает последнюю строку public.account_telemetry по Supabase PostgREST.
-    Тихий отказ на любой ошибке: None — UI просто покажет OFFLINE.
-    """
+    """Последняя строка public.account_telemetry (Supabase PostgREST). Тихий отказ -> None."""
     try:
         url = st.secrets.get("SUPABASE_URL", "")
         key = st.secrets.get("SUPABASE_KEY", "")
@@ -1087,11 +1219,7 @@ def fetch_account_telemetry():
         r = requests.get(
             f"{url.rstrip('/')}/rest/v1/account_telemetry",
             params={"order": "updated_at.desc", "limit": "1"},
-            headers={
-                "apikey": key,
-                "Authorization": f"Bearer {key}",
-                "Accept": "application/json",
-            },
+            headers={"apikey": key, "Authorization": f"Bearer {key}", "Accept": "application/json"},
             timeout=5,
         )
         if r.status_code != 200:
@@ -1105,15 +1233,14 @@ def fetch_account_telemetry():
 
 
 def render_telemetry_hud():
-    """Институциональный HUD здоровья счёта. Возвращает (is_live, equity_or_None)."""
+    """MT5 / Blue Guardian HUD. Возвращает (is_live, equity_or_None)."""
     row = fetch_account_telemetry()
     if row is None:
         html = (
             "<div class='telemetry-hud telemetry-offline'>"
             "<div class='th-title'>"
             f"<span class='th-dot'></span>{t('telemetry_title')}: {t('telemetry_unavailable')}"
-            "</div>"
-            "</div>"
+            "</div></div>"
         )
         st.markdown(html, unsafe_allow_html=True)
         return False, None
@@ -1123,10 +1250,7 @@ def render_telemetry_hud():
     except Exception:
         updated_at = pd.NaT
     now = pd.Timestamp.now(tz="UTC")
-    if pd.notna(updated_at):
-        age_sec = float((now - updated_at).total_seconds())
-    else:
-        age_sec = 99999.0
+    age_sec = float((now - updated_at).total_seconds()) if pd.notna(updated_at) else 99999.0
     is_live = age_sec < TELEMETRY_LIVE_SECONDS
 
     account = row.get("account_id", "—")
@@ -1145,14 +1269,11 @@ def render_telemetry_hud():
     elif dd_today >= cap * 0.7:
         dd_color = ACCENT_MUTED
     else:
-        dd_color = "#2c3e50"
+        dd_color = MAJOR_COLOR
 
     cls = "telemetry-live" if is_live else "telemetry-offline"
     dot_label = t("telemetry_live") if is_live else t("telemetry_offline", m=int(age_sec // 60))
-    if pd.notna(updated_at):
-        foot = updated_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-    else:
-        foot = "—"
+    foot = updated_at.strftime("%Y-%m-%d %H:%M:%S UTC") if pd.notna(updated_at) else "—"
 
     html = (
         f"<div class='telemetry-hud {cls}'>"
@@ -1172,6 +1293,68 @@ def render_telemetry_hud():
     return is_live, equity if is_live else None
 
 
+def render_bybit_hud():
+    """Bybit Unified Trading Account HUD. Возвращает (is_live, equity_or_None).
+    Нулевое эквити — валидное LIVE-состояние: возвращается 0.0, привязка депозита не выполняется."""
+    w = fetch_bybit_wallet()
+    if w is None:
+        key, secret = _bybit_credentials()
+        msg = t("bybit_offline_keys") if (not key or not secret) else t("bybit_offline_api")
+        html = (
+            "<div class='telemetry-hud telemetry-offline'>"
+            f"<div class='th-title'><span class='th-dot'></span>{t('bybit_title')}: {msg}</div>"
+            "</div>"
+        )
+        st.markdown(html, unsafe_allow_html=True)
+        return False, None
+
+    eq = float(w.get("equity", 0.0))
+    wb = float(w.get("wallet_balance", 0.0))
+    am = float(w.get("avail_margin", 0.0))
+    ts = w.get("updated_at")
+    foot = ts.strftime("%Y-%m-%d %H:%M:%S UTC") if isinstance(ts, pd.Timestamp) else "—"
+    eq_color = MAJOR_COLOR if eq > 0.0 else MINOR_COLOR
+
+    html = (
+        "<div class='telemetry-hud telemetry-live'>"
+        f"<div class='th-title'><span class='th-dot'></span>{t('bybit_title')}: {t('telemetry_live')}</div>"
+        "<div class='th-row'>"
+        f"<span class='th-k'>{t('bybit_equity')}</span><span class='th-v' style='color:{eq_color}'>{fmt_money(eq, 'USDT')}</span>"
+        f"<span class='th-k'>{t('bybit_wallet')}</span><span class='th-v'>{fmt_money(wb, 'USDT')}</span>"
+        f"<span class='th-k'>{t('bybit_avail')}</span><span class='th-v'>{fmt_money(am, 'USDT')}</span>"
+        "</div>"
+        f"<div class='th-foot'>{foot}</div>"
+        "</div>"
+    )
+    st.markdown(html, unsafe_allow_html=True)
+    return True, eq
+
+
+def deposit_widget():
+    """Депозит: авто-привязка к живой телеметрии (MT5 equity / Bybit UTA equity).
+    Bybit equity == 0 -> ручной ввод активен (бумажные расчёты), с поясняющей подписью."""
+    if bybit_mode:
+        if wallet_live_flag and wallet_equity is not None and wallet_equity > 0.0:
+            st.session_state["account_deposit"] = float(wallet_equity)
+            st.number_input(t("deposit_label"), disabled=True, format="%.2f",
+                            key="account_deposit", help=t("deposit_help"))
+            st.caption(t("bybit_locked"))
+            return
+        if wallet_live_flag and wallet_equity is not None and wallet_equity <= 0.0:
+            st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9, step=100.0,
+                            format="%.2f", key="account_deposit", help=t("deposit_help"))
+            st.caption(t("bybit_empty_treasury"))
+            return
+    elif telemetry_live_flag and telemetry_live_equity is not None:
+        st.session_state["account_deposit"] = float(telemetry_live_equity)
+        st.number_input(t("deposit_label"), disabled=True, format="%.2f",
+                        key="account_deposit", help=t("deposit_help"))
+        st.caption(t("telemetry_locked"))
+        return
+    st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9, step=1000.0,
+                    format="%.0f", key="account_deposit", help=t("deposit_help"))
+
+
 def add_indicators(df):
     out = df.copy()
     prev = out["Close"].shift(1)
@@ -1187,9 +1370,7 @@ def add_indicators(df):
     out["senkou_b"] = out["raw_senkou_b"].shift(26)
     out["chikou"] = out["Close"].shift(-26)
 
-    # --- Фракталы с тай-брейком полярности (v1.70) ---
-    # Слева нестрогое сравнение, справа строгое: при двойной вершине / плоском пике
-    # маркер достаётся ПЕРВОМУ появлению экстремума и не исчезает на обоих барах.
+    # Фракталы с тай-брейком полярности: слева нестрого, справа строго.
     out["Minor_High"] = (
         (high >= high.shift(1)) & (high > high.shift(2)) &
         (high > high.shift(-1)) & (high > high.shift(-2))
@@ -1369,7 +1550,7 @@ def trigger_plan(df, abc, mode, tf, is_fx, last_close):
 ALICE_TARGETS = ("N",)
 ALICE_HORIZON = 50
 ALICE_HORIZON_MAX = 300
-ALICE_LAG = {"minor": 0, "major": 0}     # ZERO-LAG: вход на баре C, без ожидания подтверждений
+ALICE_LAG = {"minor": 0, "major": 0}
 ALICE_MAJOR_RADIUS = 10
 ALICE_SNAP_BARS = 2
 ALICE_MAJOR_TOL_ATR = 0.35
@@ -1409,7 +1590,6 @@ def _alice_arrays(df, htf):
 
 
 def _alice_base(ar, e, d):
-    """Признаки Ишимоку на баре e — строго причинно (бары <= e)."""
     atr, cl = ar["atr"][e], ar["cl"][e]
     if not (np.isfinite(atr) and atr > 0 and np.isfinite(cl) and cl > 0):
         return None
@@ -1424,7 +1604,6 @@ def _alice_base(ar, e, d):
 
 
 def _alice_wave(ar, a, b, c, Ap, Bp, atr):
-    """Причинные признаки формы волны: наклон AB (ATR на бар) и доля теней свечи C."""
     bars = max(1, b - a)
     slope = (Bp - Ap) / bars / atr if atr > 0.0 else 0.0
     hi, lo = ar["hi"][c], ar["lo"][c]
@@ -1469,7 +1648,6 @@ def _alice_pivots(df, d, cls, strict=False):
 
 
 def alice_build_samples(df, htf, targets, ab_cls, c_cls, strict=True, strict_ab=None):
-    """Исторические волны; ZERO-LAG: вход на закрытии бара C, исход — строго после C."""
     strict_ab = strict if strict_ab is None else strict_ab
     ar = _alice_arrays(df, htf)
     n, lag = len(df), ALICE_LAG[c_cls]
@@ -1551,7 +1729,6 @@ def _alice_train_rows(samples, name, e):
 
 
 def _alice_matrix(tr, name):
-    """Ишимоку + форма волны + геометрия + классы. Порядок совпадает с вектором инференса."""
     X = tr[ALICE_BASE_FEATURES].to_numpy(dtype=float)
     X = np.column_stack([X, tr[ALICE_WAVE_FEATURES].to_numpy(dtype=float)])
     if ALICE_USE_GEOMETRY:
@@ -1640,7 +1817,6 @@ def alice_verdict(r):
 
 
 def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
-    """ZERO-LAG инференс: вход на баре C, признаки по барам <= C. Отдаёт Edge мгновенно."""
     if not SKLEARN_OK:
         return {"status": "sklearn"}
     n = len(df)
@@ -1792,19 +1968,15 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     ax.fill_between(x + 26, sa, sb, where=sa < sb, color="#e74c3c", alpha=0.20, linewidth=0, zorder=1)
     if len(pts) >= 3:
         A_, B_, C_ = pts[:3]
-        ax.plot([p_["x"] for p_ in [A_, B_, C_]], [p_["y"] for p_ in [A_, B_, C_]], color="#f39c12", marker="o", markersize=5, linewidth=1.6, zorder=6)
-        # Динамическая полярность подписей — над High или под Low свечи.
+        ax.plot([p_["x"] for p_ in [A_, B_, C_]], [p_["y"] for p_ in [A_, B_, C_]],
+                color="#f39c12", marker="o", markersize=5, linewidth=1.6, zorder=6)
         for letter, p_ in zip("ABC", [A_, B_, C_]):
             bar_row = df_plot.iloc[int(p_["x"])]
             is_high = abs(p_["y"] - float(bar_row["High"])) <= abs(p_["y"] - float(bar_row["Low"]))
             if is_high:
-                y_anchor = float(bar_row["High"])
-                y_offset = 8
-                va_mode = "bottom"
+                y_anchor, y_offset, va_mode = float(bar_row["High"]), 8, "bottom"
             else:
-                y_anchor = float(bar_row["Low"])
-                y_offset = -12
-                va_mode = "top"
+                y_anchor, y_offset, va_mode = float(bar_row["Low"]), -12, "top"
             ax.annotate(
                 letter, (p_["x"], y_anchor),
                 textcoords="offset points", xytext=(0, y_offset),
@@ -1832,7 +2004,8 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
     for name, val in (targets or {}).items():
         ax.axhline(val, color=colors.get(name, "gray"), linestyle="--", linewidth=1.0, zorder=2)
-        ax.text(1.0, val, f" {name} {fmt_price(val)}", transform=ax.get_yaxis_transform(), va="center", fontsize=9, color=colors.get(name, "gray"))
+        ax.text(1.0, val, f" {name} {fmt_price(val)}", transform=ax.get_yaxis_transform(),
+                va="center", fontsize=9, color=colors.get(name, "gray"))
 
     x_right = float(len(df_plot) - 1)
     if len(pts) >= 3:
@@ -1913,10 +2086,12 @@ def send_telegram(token, chat_id, text, png):
 
 
 def refresh_button(key):
-    """Компактная иконка ↻: чистит кэши котировок и телеметрии, точки и цели сохраняет."""
+    """Иконка ↻: чистит кэши котировок и телеметрии, точки и цели сохраняет."""
     if st.button(t("refresh"), key=key, help=t("refresh_help")):
         fetch_smart_data.clear()
         fetch_yahoo.clear()
+        fetch_bybit_kline.clear()
+        fetch_bybit_wallet.clear()
         fetch_account_telemetry.clear()
         st.rerun()
 
@@ -1943,6 +2118,13 @@ st.session_state.setdefault("risk_pct", RISK_PCT_DEFAULT)
 st.session_state.setdefault("account_deposit", 10000.0)
 st.session_state.setdefault("entry_mode", "hosoda")
 
+# --- Контекст телеметрии: выбирается в сайдбаре по типу активного инструмента ---
+telemetry_live_flag = False
+telemetry_live_equity = None
+bybit_mode = False
+wallet_live_flag = False
+wallet_equity = None
+
 _teleport = st.session_state.pop("_teleport", None)
 if _teleport:
     if _teleport.get("asset") in ASSET_ROUTER:
@@ -1964,12 +2146,16 @@ with st.sidebar:
     count_weekend = st.checkbox(t("raw"), help=t("raw_help"), key="w_raw")
     drop_clearing = st.checkbox(t("clearing"), disabled=count_weekend, help=t("clearing_help"), key="w_clear")
 
-    # --- ТЕЛЕМЕТРИЯ MT5 (HUD здоровья счёта): только в режиме терминала ---
-    telemetry_live_flag = False
-    telemetry_live_equity = None
+    # --- КОНТЕКСТНЫЙ HUD: Forex/Индекс -> MT5 (Supabase); Крипта -> Bybit UTA ---
     if app_mode == "terminal":
         st.markdown("---")
-        telemetry_live_flag, telemetry_live_equity = render_telemetry_hud()
+        _sym_key = st.session_state.get("w_symbol", list(ASSET_ROUTER.keys())[0])
+        _route_ctx = ASSET_ROUTER.get(_sym_key, {})
+        bybit_mode = is_bybit_asset(_route_ctx)
+        if bybit_mode:
+            wallet_live_flag, wallet_equity = render_bybit_hud()
+        else:
+            telemetry_live_flag, telemetry_live_equity = render_telemetry_hud()
 
 MOBILE = detect_mobile_ua()
 inject_css(MOBILE)
@@ -1981,7 +2167,11 @@ if app_mode == "radar":
     radar_tf = st.selectbox(t("select_tf"), radar_tfs, key="w_radar_tf")
 
     def fetch_radar(route, tf):
-        df, err = fetch_yahoo(route["yf"], tf)
+        if is_bybit_asset(route):
+            base_tf = BYBIT_BASE_TF.get(tf, tf)
+            df, err = fetch_bybit_kline(route["sym"], BYBIT_TF_MAP[base_tf], route.get("cat", "linear"))
+        else:
+            df, err = fetch_yahoo(route["yf"], tf)
         if err or df.empty:
             return df, err or E("nodata")
         df = prepare_ohlc(df, tf, is_fx_asset(route), count_weekend, drop_clearing, offset_choice)
@@ -1998,8 +2188,11 @@ if app_mode == "radar":
             df_htf, err_h = fetch_radar(route, htf_radar)
             if err_l or err_h:
                 return None, err_l or err_h
-            if len(df_ltf) < MIN_LTF_BARS or len(df_htf) < MIN_HTF_BARS:
-                return None, E("few_bars", ltf=len(df_ltf), min_ltf=MIN_LTF_BARS, htf=len(df_htf), min_htf=MIN_HTF_BARS)
+            crypto = is_crypto_asset(route)
+            min_ltf = MIN_LTF_BARS_CRYPTO if crypto else MIN_LTF_BARS
+            min_htf = MIN_HTF_BARS_CRYPTO if crypto else MIN_HTF_BARS
+            if len(df_ltf) < min_ltf or len(df_htf) < min_htf:
+                return None, E("few_bars", ltf=len(df_ltf), min_ltf=min_ltf, htf=len(df_htf), min_htf=min_htf)
             df_ltf = add_indicators(df_ltf)
             df_htf = add_indicators(df_htf)
             h_c = df_htf.iloc[-2]
@@ -2175,7 +2368,6 @@ elif app_mode == "terminal":
             else:
                 st.info(t("awaiting", label=labels[i]))
 
-        # Point O (Origin/Anchor) — optional 4th point
         if len(st.session_state.abc_points) >= 4:
             p = st.session_state.abc_points[3]
             st.success(f"{t('pt_o')}: {fmt_price(p['y'])}  ({p['t']:%Y-%m-%d %H:%M})")
@@ -2206,7 +2398,6 @@ elif app_mode == "terminal":
         df_plot["x_idx"] = np.arange(len(df_plot))
         UIP = chart_ui(MOBILE)
 
-        # Абсолютные экстремумы видимого окна никогда не маскируются (v1.70).
         major_high_mask, major_low_mask = enforce_visible_extremes(df_plot)
         df_plot["Major_High"] = major_high_mask
         df_plot["Major_Low"] = major_low_mask
@@ -2223,7 +2414,6 @@ elif app_mode == "terminal":
         time_txt = df_plot.index.strftime("%Y-%m-%d %H:%M").to_numpy()
 
         def marker_trace(mask, kind, price_col, offset_mult, size, color, name, group):
-            """Трейс фракталов: имя сохраняется для ховера и клика, в легенду не выходит."""
             m = np.asarray(mask, dtype=bool)
             sub = df_plot.loc[m]
             sign = 1 if kind == "High" else -1
@@ -2411,7 +2601,6 @@ elif app_mode == "terminal":
                 **WIDE,
             )
 
-        # --- Интерактивная статус-пилюля: один тап сбрасывает все точки волны (v1.70) ---
         status_label = points_bar_text(len(abc))
         if st.button(status_label, key="pts_bar_btn", help=t("pts_reset_tip"), **WIDE):
             reset_points()
@@ -2589,55 +2778,21 @@ elif app_mode == "terminal":
                 st.info(t("risk_wait", dir=t("risk_wait_above" if side_buy else "risk_wait_below"),
                           level=fmt_price(level_px)))
 
-            # --- Депозит: при LIVE-телеметрии авто-привязка к equity (disabled), иначе ручной ввод ---
             if MOBILE:
-                risk_pct = st.number_input(t("risk_pct_label"), min_value=0.1, max_value=100.0,
-                                           step=RISK_PCT_STEP, format="%.1f", key="risk_pct",
-                                           help=t("risk_pct_help"))
-                if telemetry_live_flag and telemetry_live_equity is not None:
-                    try:
-                        st.session_state.account_deposit = float(telemetry_live_equity)
-                    except (TypeError, ValueError):
-                        pass
-                    st.number_input(
-                        t("deposit_label"),
-                        value=float(telemetry_live_equity),
-                        disabled=True,
-                        format="%.2f",
-                        key="account_deposit",
-                        help=t("deposit_help"),
-                    )
-                    st.caption(t("telemetry_locked"))
-                else:
-                    deposit = st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9,
-                                              step=1000.0, format="%.0f", key="account_deposit",
-                                              help=t("deposit_help"))
+                st.number_input(t("risk_pct_label"), min_value=0.1, max_value=100.0,
+                                step=RISK_PCT_STEP, format="%.1f", key="risk_pct",
+                                help=t("risk_pct_help"))
+                deposit_widget()
             else:
                 rc1, rc2, _rc3 = st.columns([1, 1, 2])
                 with rc1:
-                    risk_pct = st.number_input(t("risk_pct_label"), min_value=0.1, max_value=100.0,
-                                               step=RISK_PCT_STEP, format="%.1f", key="risk_pct",
-                                               help=t("risk_pct_help"))
+                    st.number_input(t("risk_pct_label"), min_value=0.1, max_value=100.0,
+                                    step=RISK_PCT_STEP, format="%.1f", key="risk_pct",
+                                    help=t("risk_pct_help"))
                 with rc2:
-                    if telemetry_live_flag and telemetry_live_equity is not None:
-                        try:
-                            st.session_state.account_deposit = float(telemetry_live_equity)
-                        except (TypeError, ValueError):
-                            pass
-                        st.number_input(
-                            t("deposit_label"),
-                            value=float(telemetry_live_equity),
-                            disabled=True,
-                            format="%.2f",
-                            key="account_deposit",
-                            help=t("deposit_help"),
-                        )
-                        st.caption(t("telemetry_locked"))
-                    else:
-                        deposit = st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9,
-                                                  step=1000.0, format="%.0f", key="account_deposit",
-                                                  help=t("deposit_help"))
+                    deposit_widget()
 
+            risk_pct = float(st.session_state.get("risk_pct", RISK_PCT_DEFAULT))
             lot_ready = (entry_px is not None and rr is not None and pval > 0.0)
             lots, risk_usd, gain_usd = 0.0, 0.0, 0.0
             if lot_ready:
@@ -2741,7 +2896,6 @@ elif app_mode == "terminal":
                 else:
                     st.success(t("tg_sent"))
 
-        # --- Event handler: up to 4 points (A, B, C, O) ---
         if (event and event.selection and event.selection.get("points")
                 and len(event.selection["points"]) == 1 and len(st.session_state.abc_points) < 4):
             clicked = event.selection["points"][0]
