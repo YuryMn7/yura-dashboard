@@ -1,51 +1,56 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.80. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.81. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 
+GEO-RESILIENCE (v1.81): публичные вызовы Bybit из AWS US-регионов (Streamlit Community Cloud)
+перехватываются CloudFront WAF и возвращают HTTP 403 с HTML-телом. Поэтому:
+  * обход двух доменов: api.bybit.com -> api.bytick.com;
+  * браузерный User-Agent + Accept: application/json;
+  * проверка r.status_code == 200 ДО r.json() — JSONDecodeError не может дойти до UI;
+  * накопление last_err по всем попыткам, тихий возврат (empty_df, err);
+  * бесшовный fallback на Yahoo-поток актива (route["yf"]) в fetch_smart_data и fetch_radar.
+Подписанный поллер кошелька ходит по тем же доменам; timestamp и HMAC пересчитываются
+на каждой попытке, чтобы не превысить recvWindow.
+
 BYBIT API v5 (PHASE 1 — MARKET DATA + UTA TELEMETRY):
-  Публичный фид /v5/market/kline (category=linear) для BTCUSDT / ETHUSDT / SOLUSDT:
+  Публичный /v5/market/kline (category=linear) для BTCUSDT / ETHUSDT / SOLUSDT:
   непрерывный 24/7 ряд без выходных разрывов и без лимитов TwelveData.
   Нативный маппинг ТФ: M1..M30 -> 1/5/15/30, H1/H2/H4 -> 60/120/240, D1/W1/MN1 -> D/W/M.
   H8 агрегируется из H4, MN3/MN6/MN24 — из MN1 (resample).
-  Подписанный поллер /v5/account/wallet-balance?accountType=UNIFIED (HMAC-SHA256):
+  /v5/account/wallet-balance?accountType=UNIFIED (HMAC-SHA256):
   payload = timestamp + apiKey + recvWindow + queryString, заголовки X-BAPI-*.
   Контекстный HUD: Forex/Индекс -> MT5/Blue Guardian (Supabase); Крипта -> Bybit UTA Wallet.
   Нулевая казна Bybit ($0.00) обрабатывается штатно: ручной ввод депозита остаётся активным.
   Исполнение приказов в Phase 1 не меняется — шлюз остаётся MT5/Telegram.
 
-SWING EXTREMUM HARDENING (v1.70): фрактальный детектор использует тай-брейк полярности —
-слева нестрогое сравнение (>= / <=), справа строгое (> / <). При двойной вершине или плоском
-пике маркер достаётся ПЕРВОМУ появлению экстремума. Абсолютные High/Low видимого окна
-(idxmax / idxmin) принудительно получают маркер главного фрактала.
+SWING EXTREMUM HARDENING (v1.70): тай-брейк полярности фракталов — слева нестрого (>= / <=),
+справа строго (> / <). Абсолютные High/Low видимого окна принудительно получают маркер
+главного фрактала.
 
 TAP-TO-RESET HUD (v1.70): нижняя статус-пилюля — нативная кнопка pts_bar_btn. Один тап
-сбрасывает все точки волны (A, B, C, O) и перерисовывает холст начисто. На мобильных
-пилюля зафиксирована внизу вьюпорта с pointer-events: auto.
+сбрасывает A, B, C, O и перерисовывает холст начисто. На мобильных зафиксирована внизу.
 
-ANNOTATION DYNAMIC POLARITY (v1.62): подписи A/B/C/O якорятся над High или под Low свечи
-(полярность по |y-High| <= |y-Low|), синхронно в Plotly и Matplotlib.
+ANNOTATION DYNAMIC POLARITY (v1.62): подписи A/B/C/O якорятся над High или под Low свечи,
+синхронно в Plotly и Matplotlib.
 
-BUGFIX v1.61: список точек для Matplotlib-снапшота не обрезается до трёх, поэтому сетка
-Kihon Suu в Telegram якорится к Истоку. Ценовые цели и AI строго по abc[:3].
+BUGFIX v1.61: список точек для Matplotlib-снапшота не обрезается до трёх — сетка Kihon Suu
+в Telegram якорится к Истоку. Ценовые цели и AI строго по abc[:3].
 
 4-POINT HOSODA TIME ARCHITECTURE:
   A, B, C: геометрия волны, цели V/N/E/NT, коридор Taiyosuu, AI Alice, риск и лот.
   O (Origin/Anchor): опциональный исток цикла Kihon Suu. Fallback — точка A.
-  AI и Risk строго потребляют abc[:3]; O влияет только на временную сетку.
 
 OUTBOUND TELEMETRY (MT5 ➔ Supabase ➔ Streamlit):
   Поллер fetch_account_telemetry() (ttl 4 с) читает public.account_telemetry.
-  HUD: Account · Balance · Equity · Daily DD (кап 3.0 %) · Total DD · Status.
   ● LIVE при age < 60 с, ○ OFFLINE иначе. При LIVE account_deposit = equity (disabled).
 
-ЛЕГЕНДА-ХАД: фракталы сведены в группы minor / major, по одной плашке на группу,
-layout.legend.groupclick="togglegroup" — один клик гасит всю группу. Облако Кумо так же.
-Переключение слоёв чисто клиентское, без серверной перерисовки.
+ЛЕГЕНДА-ХАД: группы minor / major, по одной плашке на группу,
+layout.legend.groupclick="togglegroup". Переключение слоёв чисто клиентское.
 
 КНОПКА ОБНОВЛЕНИЯ ↻: оверлей в верхней полосе графика слева внутри st.container(key="chart_shell").
 
-РАДАР: тренд/Облако/линии/Чикоу — по закрытому бару (iloc[-2]); зона засады — по активной
-свече (iloc[-1]) с порогом 0.3*ATR. Bybit-пары сканируются тем же движком через kline-фид.
+РАДАР: тренд/Облако/линии/Чикоу — по закрытому бару; зона засады — по активной свече
+с порогом 0.3*ATR. Bybit-пары сканируются тем же движком, с тем же fallback на Yahoo.
 ONE-CLICK TELEPORT: выбор строки в таблице Радара -> перенос в Терминал.
 
 ПРЕДВАРИТЕЛЬНАЯ C: маркер размером с малый фрактал, виден ДО расстановки A-B-C.
@@ -60,7 +65,6 @@ ONE-CLICK TELEPORT: выбор строки в таблице Радара -> п
 дальше -> ЛИМИТНЫЙ ордер на самый уровень. Нет подтверждения -> наблюдение (watch).
 
 АЛИСА — ZERO-LAG: ALICE_LAG = 0, вход на баре C, все признаки причинны (бары <= C).
-Edge, вероятности исходов и светофор выдаются сразу при выборе точки C.
 
 РИСК ПОД BLUE GUARDIAN: дефолт 0.5 % на сделку, шаг ввода 0.1 %.
 ЛОТ: pip_value_usd, округление ВНИЗ до шага 0.01.
@@ -150,8 +154,10 @@ YF_MAP = {
 BASE_TF = {"H2": "H1", "H4": "H1", "H8": "H1", "D1": "H1", "MN3": "MN1", "MN6": "MN1", "MN24": "MN1"}
 RESAMPLE_RULE = {"H2": "2h", "H4": "4h", "H8": "8h", "D1": "1D", "MN3": "3MS", "MN6": "6MS", "MN24": "24MS"}
 
-# --- Bybit v5: нативные интервалы Kline и базовые ТФ для агрегации ---
-BYBIT_BASE_URL = "https://api.bybit.com"
+# --- Bybit v5: обход гео-блокировок CloudFront (основной домен -> альтернативный) ---
+BYBIT_ENDPOINTS = ["https://api.bybit.com", "https://api.bytick.com"]
+BYBIT_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 BYBIT_RECV_WINDOW = "5000"
 BYBIT_KLINE_LIMIT = 1000
 BYBIT_TF_MAP = {
@@ -173,8 +179,6 @@ CRYPTO_PREFIXES = ("BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "LTC", "BCH")
 CRYPTO_HTF_OVERRIDE = {"W1": "MN1", "MN1": "MN1", "MN3": "MN1"}
 MIN_LTF_BARS = 110
 MIN_HTF_BARS = 80
-# Крипто-история объективно короче (месячные ряды perp-контрактов) — пороги мягче,
-# чтобы Радар не отсекал валидные сетапы BTC/ETH/SOL на старших ТФ.
 MIN_LTF_BARS_CRYPTO = 60
 MIN_HTF_BARS_CRYPTO = 50
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
@@ -183,8 +187,8 @@ MN_MONTHS = {"MN1": 1, "MN3": 3, "MN6": 6, "MN24": 24}
 KIJUN_ZONE_ATR = 0.3
 STOP_BUFFER_ATR = 0.2
 LOT_STEP = 0.01
-RISK_PCT_DEFAULT = 0.5           # Blue Guardian: дефолт риска на сделку, %
-RISK_PCT_STEP = 0.1              # шаг ввода риска, %
+RISK_PCT_DEFAULT = 0.5
+RISK_PCT_STEP = 0.1
 USDJPY_APPROX = 155.0
 AUDUSD_APPROX = 0.65
 MT5_DEFAULT_TOKEN = "SECRET_ICHIMOKU_TOKEN"
@@ -192,7 +196,7 @@ MT5_EXEC_MARK = "IG_EXEC"
 TRIG_WATCH_BARS = {"hosoda": 3, "break_b": 17}
 ATR_CHASE_LIMIT = 1.0
 CAND_C_BARS = 3
-ACCENT_MUTED = "#a88a45"         # единственный институциональный акцентный тон
+ACCENT_MUTED = "#a88a45"
 CAND_C_COLOR = ACCENT_MUTED
 CAND_HOVER_BG = "rgba(20, 24, 35, 0.85)"
 CAND_HOVER_BORDER = ACCENT_MUTED
@@ -1039,37 +1043,55 @@ def fetch_yahoo(sym, interval):
 
 @st.cache_data(ttl=30, show_spinner=False)
 def fetch_bybit_kline(sym, interval, category="linear"):
-    """Bybit v5 public Kline. Ряд приходит по убыванию времени — разворачиваем в хронологию.
-    Крипта 24/7: фильтрация выходных не применяется. Индекс — UTC.
+    """Bybit v5 public Kline с гео-устойчивостью.
+    Обход api.bybit.com -> api.bytick.com, браузерный UA, проверка статуса ДО r.json():
+    HTML-страница CloudFront WAF (403) никогда не попадает в парсер JSON.
+    Ряд приходит по убыванию времени — разворачиваем в хронологию. Крипта 24/7.
     """
     params = {"category": category, "symbol": sym, "interval": interval, "limit": BYBIT_KLINE_LIMIT}
-    try:
-        r = requests.get(f"{BYBIT_BASE_URL}/v5/market/kline", params=params, timeout=12)
-        res = r.json()
-        if res.get("retCode") != 0:
-            return pd.DataFrame(), E("bybit", detail=res.get("retMsg", "unknown error"))
-        rows = (res.get("result") or {}).get("list") or []
-        if not rows:
-            return pd.DataFrame(), E("bybit_nodata", detail=f"{sym} ({interval})")
-        recs = []
-        for row in rows:
-            try:
-                recs.append((int(row[0]), float(row[1]), float(row[2]),
-                             float(row[3]), float(row[4]), float(row[5])))
-            except (TypeError, ValueError, IndexError):
+    headers = {"User-Agent": BYBIT_UA, "Accept": "application/json"}
+    last_err = None
+    for base_url in BYBIT_ENDPOINTS:
+        try:
+            r = requests.get(f"{base_url}/v5/market/kline", params=params, headers=headers, timeout=8)
+            # Защита от HTML/WAF-тела: статус проверяется до разбора JSON.
+            if r.status_code != 200:
+                last_err = E("bybit", detail=f"HTTP {r.status_code}")
                 continue
-        if not recs:
-            return pd.DataFrame(), E("bybit_nodata", detail=f"{sym} ({interval})")
-        df = pd.DataFrame(recs, columns=["ms", "Open", "High", "Low", "Close", "Volume"])
-        df.index = pd.to_datetime(df["ms"], unit="ms", utc=True)
-        df = df.drop(columns=["ms"])
-        df = df[~df.index.duplicated(keep="last")].sort_index()
-        df = df[(df["High"] >= df["Low"]) & (df["Close"] > 0)]
-        if df.empty:
-            return pd.DataFrame(), E("bybit_nodata", detail=f"{sym} ({interval})")
-        return df, None
-    except Exception as e:
-        return pd.DataFrame(), E("exception", detail=safe_err(e))
+            res = r.json()
+            if res.get("retCode") != 0:
+                last_err = E("bybit", detail=res.get("retMsg", "unknown error"))
+                continue
+            rows = (res.get("result") or {}).get("list") or []
+            if not rows:
+                last_err = E("bybit_nodata", detail=f"{sym} ({interval})")
+                continue
+
+            recs = []
+            for row in rows:
+                try:
+                    recs.append((int(row[0]), float(row[1]), float(row[2]),
+                                 float(row[3]), float(row[4]), float(row[5])))
+                except (TypeError, ValueError, IndexError):
+                    continue
+            if not recs:
+                last_err = E("bybit_nodata", detail=f"{sym} ({interval})")
+                continue
+
+            df = pd.DataFrame(recs, columns=["ms", "Open", "High", "Low", "Close", "Volume"])
+            df.index = pd.to_datetime(df["ms"], unit="ms", utc=True)
+            df = df.drop(columns=["ms"])
+            df = df[~df.index.duplicated(keep="last")].sort_index()
+            df = df[(df["High"] >= df["Low"]) & (df["Close"] > 0)]
+            if df.empty:
+                last_err = E("bybit_nodata", detail=f"{sym} ({interval})")
+                continue
+            return df, None
+        except Exception as e:
+            last_err = E("exception", detail=safe_err(e))
+            continue
+
+    return pd.DataFrame(), last_err or E("bybit_nodata", detail=f"{sym} ({interval})")
 
 
 def _bybit_credentials():
@@ -1082,55 +1104,58 @@ def _bybit_credentials():
 
 @st.cache_data(ttl=5, show_spinner=False)
 def fetch_bybit_wallet():
-    """Bybit v5 Unified Trading Account wallet balance (HMAC-SHA256).
-    payload = timestamp + apiKey + recvWindow + queryString.
-    Возвращает dict с equity / wallet_balance / avail_margin либо None (OFFLINE).
+    """Bybit v5 Unified Trading Account wallet balance (HMAC-SHA256) с обходом двух доменов.
+    payload = timestamp + apiKey + recvWindow + queryString. Подпись пересчитывается
+    на каждой попытке, чтобы не выйти за recvWindow. Возвращает dict либо None (OFFLINE).
     """
     key, secret = _bybit_credentials()
     if not key or not secret:
         return None
     qs = "accountType=UNIFIED"
-    ts = str(int(time.time() * 1000))
-    payload = ts + key + BYBIT_RECV_WINDOW + qs
-    try:
-        sign = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    except Exception:
-        return None
-    headers = {
-        "X-BAPI-API-KEY": key,
-        "X-BAPI-TIMESTAMP": ts,
-        "X-BAPI-RECV-WINDOW": BYBIT_RECV_WINDOW,
-        "X-BAPI-SIGN": sign,
-        "Content-Type": "application/json",
-    }
-    try:
-        r = requests.get(f"{BYBIT_BASE_URL}/v5/account/wallet-balance?{qs}",
-                         headers=headers, timeout=8)
-        if r.status_code != 200:
+    for base_url in BYBIT_ENDPOINTS:
+        ts = str(int(time.time() * 1000))
+        payload = ts + key + BYBIT_RECV_WINDOW + qs
+        try:
+            sign = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        except Exception:
             return None
-        res = r.json()
-        if res.get("retCode") != 0:
-            return None
-        lst = (res.get("result") or {}).get("list") or []
-        if not lst:
-            return None
-        acc = lst[0] or {}
-
-        def _f(v):
-            try:
-                return float(v) if v not in (None, "") else 0.0
-            except (TypeError, ValueError):
-                return 0.0
-
-        return {
-            "equity": _f(acc.get("totalEquity")),
-            "wallet_balance": _f(acc.get("totalWalletBalance")),
-            "avail_margin": _f(acc.get("totalAvailableBalance")),
-            "updated_at": pd.Timestamp.now(tz="UTC"),
-            "status": "LIVE",
+        headers = {
+            "User-Agent": BYBIT_UA,
+            "Accept": "application/json",
+            "X-BAPI-API-KEY": key,
+            "X-BAPI-TIMESTAMP": ts,
+            "X-BAPI-RECV-WINDOW": BYBIT_RECV_WINDOW,
+            "X-BAPI-SIGN": sign,
+            "Content-Type": "application/json",
         }
-    except Exception:
-        return None
+        try:
+            r = requests.get(f"{base_url}/v5/account/wallet-balance?{qs}", headers=headers, timeout=8)
+            if r.status_code != 200:
+                continue
+            res = r.json()
+            if res.get("retCode") != 0:
+                continue
+            lst = (res.get("result") or {}).get("list") or []
+            if not lst:
+                continue
+            acc = lst[0] or {}
+
+            def _f(v):
+                try:
+                    return float(v) if v not in (None, "") else 0.0
+                except (TypeError, ValueError):
+                    return 0.0
+
+            return {
+                "equity": _f(acc.get("totalEquity")),
+                "wallet_balance": _f(acc.get("totalWalletBalance")),
+                "avail_margin": _f(acc.get("totalAvailableBalance")),
+                "updated_at": pd.Timestamp.now(tz="UTC"),
+                "status": "LIVE",
+            }
+        except Exception:
+            continue
+    return None
 
 
 class TDError(Exception):
@@ -1177,7 +1202,15 @@ def fetch_smart_data(asset_key, interval):
     route = ASSET_ROUTER[asset_key]
     if is_bybit_asset(route):
         base_tf = BYBIT_BASE_TF.get(interval, interval)
-        return fetch_bybit_kline(route["sym"], BYBIT_TF_MAP[base_tf], route.get("cat", "linear"))
+        df_bybit, err_bybit = fetch_bybit_kline(route["sym"], BYBIT_TF_MAP[base_tf], route.get("cat", "linear"))
+        if not df_bybit.empty:
+            return df_bybit, None
+        # Бесшовный институциональный fallback: Yahoo-поток того же актива.
+        if route.get("yf"):
+            df_yf, err_yf = fetch_yahoo(route["yf"], interval)
+            if not df_yf.empty:
+                return df_yf, None
+        return pd.DataFrame(), err_bybit
     if route["prov"] == "yahoo":
         return fetch_yahoo(route["yf"], interval)
     base_int = TF_MAP[BASE_TF.get(interval, interval)]
@@ -2170,6 +2203,9 @@ if app_mode == "radar":
         if is_bybit_asset(route):
             base_tf = BYBIT_BASE_TF.get(tf, tf)
             df, err = fetch_bybit_kline(route["sym"], BYBIT_TF_MAP[base_tf], route.get("cat", "linear"))
+            # Тот же бесшовный fallback, что и в терминале.
+            if df.empty and route.get("yf"):
+                df, err = fetch_yahoo(route["yf"], tf)
         else:
             df, err = fetch_yahoo(route["yf"], tf)
         if err or df.empty:
