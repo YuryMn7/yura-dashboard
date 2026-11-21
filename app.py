@@ -1,25 +1,32 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.84. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.85. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 
+CRITICAL BUGFIX (v1.85): контракт всех фидеров унифицирован до 2-кортежа (DataFrame, err).
+fetch_bybit_kline() больше НЕ возвращает gateway третьим элементом — провенанс шлюза
+пишется в st.session_state["bybit_active_gw"] ("proxy" / "direct"), поэтому ни один
+вызывающий код не может получить ValueError/TypeError на распаковке.
+Сетевой обход вынесен в приватный кэшированный _bybit_kline_probe; публичная обёртка
+не кэшируется и фиксирует шлюз при каждом прогоне (внутри cache_data присваивание
+не выполнялось бы на cache-hit). Метка шлюза считается до любого continue и защищена
+от исключений. htf_info() обёрнут в try/except: недоступность старшего ТФ даёт
+нейтральный HTF-признак, а не падение приложения.
+
 CLOUDFLARE EDGE REVERSE PROXY (v1.84): опциональный секрет BYBIT_PROXY_URL (Cloudflare Worker)
-ставится ПЕРВЫМ в списке обхода get_bybit_endpoints(). Запрос идёт через не-датацентровый
-edge Cloudflare и минует CloudFront WAF, блокирующий AWS US-диапазоны Streamlit Cloud.
-Подпись Bybit v5 (timestamp + apiKey + recvWindow + queryString) host-agnostic, поэтому
-остаётся криптографически валидной при форвардинге Воркером.
-Провенанс различает шлюз: «Bybit v5 (Proxy)» против «Bybit v5 (Linear)».
+ставится ПЕРВЫМ в get_bybit_endpoints(). Запрос идёт через не-датацентровый edge и минует
+CloudFront WAF, блокирующий AWS US-диапазоны Streamlit Cloud. Подпись Bybit v5
+(timestamp + apiKey + recvWindow + queryString) host-agnostic и остаётся валидной
+при форвардинге Воркером. Бейдж различает «Bybit v5 (Proxy)» и «Bybit v5 (Linear)».
 Имя worker-хоста не раскрывается: в диагностике метка «proxy», в HUD — «Cloudflare Proxy».
-Без BYBIT_PROXY_URL сохраняется прежний прямой обход с fallback на Yahoo.
 
 REGIONAL EEA INGESTION + EXPLICIT DIAGNOSTICS (v1.83):
-  Аккаунты EEA (напр. Польша) обслуживаются юрисдикцией Bybit EU (api.bybit.eu).
+  Аккаунты EEA обслуживаются юрисдикцией Bybit EU (api.bybit.eu).
   Прямой обход: api.bybit.com -> api.bybit.eu -> api.bybit.nl -> api.bytick.com.
-  BYBIT_RECV_WINDOW = 10000 мс — облачные контейнеры дают дрейф часов.
-  _bybit_wallet_probe (cache ttl 5) возвращает (wallet | None, diag); некэшированная обёртка
-  fetch_bybit_wallet пишет diag в session_state при каждом прогоне. HUD печатает точную причину:
-  «HTTP 403 (proxy)» либо «[10003] API key is invalid». Таймаут попытки 4 с.
+  BYBIT_RECV_WINDOW = 10000 мс — дрейф часов в облачных контейнерах.
+  _bybit_wallet_probe (cache ttl 5) -> (wallet | None, diag); некэшированная обёртка
+  fetch_bybit_wallet пишет diag в session_state. HUD печатает точную причину отказа.
 
-DATA PROVENANCE (v1.82): _resolve_feed (cache ttl 60) возвращает (df, err, source);
+DATA PROVENANCE (v1.82): _resolve_feed (cache ttl 60) -> (df, err, source);
   некэшированная обёртка fetch_smart_data фиксирует source в session_state.
   Бейдж «ПОТОК: …» под графиком: slate для основного канала, янтарь для Fallback.
   Источник дублируется в заголовке PNG и в депеше Telegram. HTF-запрос идёт с track=False.
@@ -126,6 +133,7 @@ st.session_state.setdefault("abc_points", [])
 st.session_state.setdefault("chart_ver", 0)
 st.session_state.setdefault("data_feed_source", "—")
 st.session_state.setdefault("bybit_diag_err", "—")
+st.session_state.setdefault("bybit_active_gw", "—")
 
 
 def reset_points():
@@ -180,8 +188,8 @@ BYBIT_DIRECT_ENDPOINTS = [
 ]
 BYBIT_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-BYBIT_RECV_WINDOW = "10000"      # дрейф часов в облачных контейнерах
-BYBIT_HTTP_TIMEOUT = 4           # одна попытка обхода
+BYBIT_RECV_WINDOW = "10000"
+BYBIT_HTTP_TIMEOUT = 4
 BYBIT_KLINE_LIMIT = 1000
 BYBIT_TF_MAP = {
     "M1": "1", "M5": "5", "M15": "15", "M30": "30",
@@ -194,6 +202,8 @@ BYBIT_DIAG_NONE = "—"
 BYBIT_DIAG_NOKEYS = "NO_KEYS"
 BYBIT_PROXY_LABEL = "proxy"
 BYBIT_PROXY_GATEWAY = "Cloudflare Proxy"
+BYBIT_GW_PROXY = "proxy"
+BYBIT_GW_DIRECT = "direct"
 
 # --- Метки провенанса (бейдж, PNG-заголовок, депеша Telegram) ---
 FEED_BYBIT = "Bybit v5 (Linear)"
@@ -1080,6 +1090,7 @@ def prepare_ohlc(df_utc, tf, is_fx, raw, drop_clearing, server_choice):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_yahoo(sym, interval):
+    """Стандартный контракт фидера: (DataFrame, err)."""
     yf_int, per = YF_MAP[interval]
     try:
         df = yf.download(sym, period=per, interval=yf_int, progress=False, auto_adjust=True)
@@ -1117,18 +1128,23 @@ def get_bybit_endpoints():
 
 
 def bybit_host_label(base_url):
-    """Метка шлюза для диагностики и HUD. Имя worker-хоста не раскрывается."""
-    proxy = bybit_proxy_url()
-    if proxy and base_url.rstrip("/") == proxy:
-        return BYBIT_PROXY_LABEL
-    return base_url.replace("https://", "")
+    """Метка шлюза для диагностики и HUD. Имя worker-хоста не раскрывается.
+    Полностью защищена от исключений: вызывается до любого continue."""
+    try:
+        proxy = bybit_proxy_url()
+        url = str(base_url).rstrip("/")
+        if proxy and url == proxy:
+            return BYBIT_PROXY_LABEL
+        return url.replace("https://", "").replace("http://", "")
+    except Exception:
+        return "gateway"
 
 
 @st.cache_data(ttl=30, show_spinner=False)
-def fetch_bybit_kline(sym, interval, category="linear"):
-    """Bybit v5 public Kline. Возвращает (df, err, gateway_url).
-    Обход: Cloudflare proxy (если задан) -> api.bybit.com -> .eu -> .nl -> .bytick.com.
-    Статус проверяется ДО r.json(): HTML-страница WAF никогда не попадает в парсер.
+def _bybit_kline_probe(sym, interval, category="linear"):
+    """Приватный сетевой обход Bybit v5 Kline. Возвращает (df, err, gateway_url).
+    Кэшируется только сетевая часть; запись в session_state здесь НЕ делается.
+    Статус проверяется ДО r.json(): HTML-страница WAF не попадает в парсер.
     Ряд приходит по убыванию времени — разворачиваем в хронологию. Крипта 24/7.
     """
     params = {"category": category, "symbol": sym, "interval": interval, "limit": BYBIT_KLINE_LIMIT}
@@ -1146,6 +1162,9 @@ def fetch_bybit_kline(sym, interval, category="linear"):
                 res = r.json()
             except Exception:
                 last_err = E("bybit", detail=f"HTTP 200 non-JSON ({label})")
+                continue
+            if not isinstance(res, dict):
+                last_err = E("bybit", detail=f"malformed payload ({label})")
                 continue
             if res.get("retCode") != 0:
                 last_err = E("bybit", detail=f"[{res.get('retCode')}] {res.get('retMsg')}")
@@ -1174,12 +1193,29 @@ def fetch_bybit_kline(sym, interval, category="linear"):
             if df.empty:
                 last_err = E("bybit_nodata", detail=f"{sym} ({interval})")
                 continue
-            return df, None, base_url.rstrip("/")
+            return df, None, str(base_url).rstrip("/")
         except Exception as e:
             last_err = E("exception", detail=safe_err(e))
             continue
 
     return pd.DataFrame(), last_err or E("bybit_nodata", detail=f"{sym} ({interval})"), ""
+
+
+def fetch_bybit_kline(sym, interval, category="linear"):
+    """ПУБЛИЧНЫЙ фидер: строго 2-кортеж (DataFrame, err) — как fetch_yahoo и _td_request.
+    Провенанс шлюза пишется в session_state, а не передаётся кортежем.
+    Не кэшируется: присваивание должно выполняться на каждом прогоне.
+    """
+    df, err, gw = _bybit_kline_probe(sym, interval, category)
+    try:
+        if not df.empty:
+            proxy = bybit_proxy_url()
+            st.session_state["bybit_active_gw"] = (
+                BYBIT_GW_PROXY if (proxy and gw == proxy) else BYBIT_GW_DIRECT
+            )
+    except Exception:
+        pass
+    return df, err
 
 
 def _bybit_credentials():
@@ -1195,7 +1231,6 @@ def _bybit_wallet_probe():
     """Bybit v5 UTA wallet-balance: обход через Cloudflare proxy и региональные шлюзы.
     Возвращает (wallet | None, diag). Подпись host-agnostic и остаётся валидной
     при форвардинге Воркером; пересчитывается на каждой попытке (recvWindow).
-    Присваивание session_state здесь не делается — на cache-hit тело не выполняется.
     """
     key, secret = _bybit_credentials()
     if not key or not secret:
@@ -1230,6 +1265,9 @@ def _bybit_wallet_probe():
             except Exception:
                 diag = f"HTTP 200 non-JSON ({label})"
                 continue
+            if not isinstance(res, dict):
+                diag = f"malformed payload ({label})"
+                continue
             rc = res.get("retCode")
             if rc != 0:
                 diag = f"[{rc}] {res.get('retMsg')}"
@@ -1262,8 +1300,7 @@ def _bybit_wallet_probe():
 
 
 def fetch_bybit_wallet():
-    """НЕкэшированная обёртка: фиксирует точный диагноз в session_state при каждом прогоне
-    и сохраняет контракт возврата (dict | None)."""
+    """НЕкэшированная обёртка: фиксирует точный диагноз в session_state при каждом прогоне."""
     w, diag = _bybit_wallet_probe()
     st.session_state["bybit_diag_err"] = diag
     return w
@@ -1274,14 +1311,16 @@ class TDError(Exception):
 
 
 def _td_request(sym, base_int, end_date=None):
+    """Стандартный контракт фидера: (DataFrame, err)."""
     params = {"symbol": sym, "interval": base_int, "apikey": API_KEY, "outputsize": TD_PAGE_SIZE, "timezone": "UTC"}
     if end_date:
         params["end_date"] = end_date
     try:
         r = requests.get("https://api.twelvedata.com/time_series", params=params, timeout=15)
         res = r.json()
-        if "values" not in res:
-            return pd.DataFrame(), (E("td", detail=res["message"]) if res.get("message") else E("td_nodata"))
+        if not isinstance(res, dict) or "values" not in res:
+            msg = res.get("message") if isinstance(res, dict) else None
+            return pd.DataFrame(), (E("td", detail=msg) if msg else E("td_nodata"))
         df = pd.DataFrame(res["values"])
         df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
         df = df.set_index("datetime").sort_index()
@@ -1310,11 +1349,12 @@ def _next_monday(ts):
 
 @st.cache_data(ttl=60, show_spinner=False)
 def _resolve_feed(asset_key, interval):
-    """Сетевой резолвер: возвращает (df, err, source). Кэшируется дорогая часть."""
+    """Сетевой резолвер: (df, err, source). Кэшируется дорогая часть.
+    Bybit-ветка вызывает приватный probe, чтобы не писать session_state внутри кэша."""
     route = ASSET_ROUTER[asset_key]
     if is_bybit_asset(route):
         base_tf = BYBIT_BASE_TF.get(interval, interval)
-        df_bybit, err_bybit, gw = fetch_bybit_kline(
+        df_bybit, err_bybit, gw = _bybit_kline_probe(
             route["sym"], BYBIT_TF_MAP[base_tf], route.get("cat", "linear"))
         if not df_bybit.empty:
             proxy = bybit_proxy_url()
@@ -1355,12 +1395,16 @@ def _resolve_feed(asset_key, interval):
 
 
 def fetch_smart_data(asset_key, interval, track=True):
-    """Тонкая НЕкэшированная обёртка: фиксирует активный источник в session_state
-    при каждом прогоне и сохраняет контракт возврата (df, err).
+    """ПУБЛИЧНЫЙ фидер: строго 2-кортеж (DataFrame, err).
+    Фиксирует источник и активный шлюз в session_state при каждом прогоне.
     track=False используется для HTF-запроса, чтобы не перебивать бейдж основного холста."""
     df, err, source = _resolve_feed(asset_key, interval)
     if track:
         st.session_state["data_feed_source"] = source
+        if source == FEED_BYBIT_PROXY:
+            st.session_state["bybit_active_gw"] = BYBIT_GW_PROXY
+        elif source == FEED_BYBIT:
+            st.session_state["bybit_active_gw"] = BYBIT_GW_DIRECT
     return df, err
 
 
@@ -2260,7 +2304,7 @@ def refresh_button(key):
     if st.button(t("refresh"), key=key, help=t("refresh_help")):
         _resolve_feed.clear()
         fetch_yahoo.clear()
-        fetch_bybit_kline.clear()
+        _bybit_kline_probe.clear()
         _bybit_wallet_probe.clear()
         fetch_account_telemetry.clear()
         st.rerun()
@@ -2268,7 +2312,7 @@ def refresh_button(key):
 
 PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active",
                 "risk_pct", "account_deposit", "entry_mode", "custom_entry",
-                "data_feed_source", "bybit_diag_err"]
+                "data_feed_source", "bybit_diag_err", "bybit_active_gw"]
 
 
 def _on_lang_change():
@@ -2290,6 +2334,7 @@ st.session_state.setdefault("account_deposit", 10000.0)
 st.session_state.setdefault("entry_mode", "hosoda")
 st.session_state.setdefault("data_feed_source", FEED_NONE)
 st.session_state.setdefault("bybit_diag_err", BYBIT_DIAG_NONE)
+st.session_state.setdefault("bybit_active_gw", BYBIT_DIAG_NONE)
 
 # --- Контекст телеметрии: выбирается в сайдбаре по типу активного инструмента ---
 telemetry_live_flag = False
@@ -2342,7 +2387,7 @@ if app_mode == "radar":
     def fetch_radar(route, tf):
         if is_bybit_asset(route):
             base_tf = BYBIT_BASE_TF.get(tf, tf)
-            df, err, _gw = fetch_bybit_kline(route["sym"], BYBIT_TF_MAP[base_tf], route.get("cat", "linear"))
+            df, err = fetch_bybit_kline(route["sym"], BYBIT_TF_MAP[base_tf], route.get("cat", "linear"))
             if df.empty and route.get("yf"):
                 df, err = fetch_yahoo(route["yf"], tf)
         else:
@@ -2789,15 +2834,21 @@ elif app_mode == "terminal":
         _htf_memo = {}
 
         def htf_info():
+            """HTF-ингестия защищена: сбой провайдера на старшем ТФ даёт нейтральный
+            признак, а не падение холста или «Алисы»."""
             if "v" not in _htf_memo:
                 htf_tf = htf_for(asset_name, tf_name)
-                if htf_tf == tf_name:
-                    df_h = df_raw
-                else:
-                    df_h_raw, _htf_err = fetch_smart_data(asset_name, htf_tf, track=False)
-                    df_h = prepare_ohlc(df_h_raw, htf_tf, is_fx, count_weekend, drop_clearing, offset_choice)
-                missing = df_h.empty
-                _htf_memo["v"] = (np.zeros(len(df)) if missing else htf_trend_series(df_h, df.index), htf_tf, missing)
+                try:
+                    if htf_tf == tf_name:
+                        df_h = df_raw
+                    else:
+                        df_h_raw, _htf_err = fetch_smart_data(asset_name, htf_tf, track=False)
+                        df_h = prepare_ohlc(df_h_raw, htf_tf, is_fx, count_weekend, drop_clearing, offset_choice)
+                    missing = df_h.empty or len(df_h) < MIN_HTF_BARS_CRYPTO
+                    _htf_memo["v"] = (np.zeros(len(df)) if missing else htf_trend_series(df_h, df.index),
+                                      htf_tf, missing)
+                except Exception:
+                    _htf_memo["v"] = (np.zeros(len(df)), htf_tf, True)
             return _htf_memo["v"]
 
         st.markdown(f"#### {t('ai_title')}")
