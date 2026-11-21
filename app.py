@@ -1,40 +1,40 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.83. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.84. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 
+CLOUDFLARE EDGE REVERSE PROXY (v1.84): опциональный секрет BYBIT_PROXY_URL (Cloudflare Worker)
+ставится ПЕРВЫМ в списке обхода get_bybit_endpoints(). Запрос идёт через не-датацентровый
+edge Cloudflare и минует CloudFront WAF, блокирующий AWS US-диапазоны Streamlit Cloud.
+Подпись Bybit v5 (timestamp + apiKey + recvWindow + queryString) host-agnostic, поэтому
+остаётся криптографически валидной при форвардинге Воркером.
+Провенанс различает шлюз: «Bybit v5 (Proxy)» против «Bybit v5 (Linear)».
+Имя worker-хоста не раскрывается: в диагностике метка «proxy», в HUD — «Cloudflare Proxy».
+Без BYBIT_PROXY_URL сохраняется прежний прямой обход с fallback на Yahoo.
+
 REGIONAL EEA INGESTION + EXPLICIT DIAGNOSTICS (v1.83):
-  Аккаунты, верифицированные в EEA (напр. Польша), обслуживаются юрисдикцией Bybit EU:
-  их HMAC-ключи привязаны к региональному шлюзу api.bybit.eu. Список обхода расширен:
-  api.bybit.com -> api.bybit.eu -> api.bybit.nl -> api.bytick.com.
-  BYBIT_RECV_WINDOW放宽 до 10000 мс — облачные контейнеры дают дрейф часов,
-  узкое окно 5000 вызывало ложные retCode 10002.
-  Диагностика больше не проглатывается: _bybit_wallet_probe (cache ttl 5) возвращает
-  (wallet | None, diag); некэшированная обёртка fetch_bybit_wallet пишет diag в
-  st.session_state["bybit_diag_err"] при каждом прогоне (внутри cache_data присваивание
-  не выполнялось бы на cache-hit). HUD печатает точную причину:
-  «OFFLINE — нет ответа Bybit API · HTTP 403 (api.bybit.com)» либо «· [10003] API key is invalid».
-  Таймаут одной попытки снижен до 4 с, чтобы худший случай обхода четырёх шлюзов
-  остался в пределах 16 с — как при двух шлюзах с таймаутом 8 с.
+  Аккаунты EEA (напр. Польша) обслуживаются юрисдикцией Bybit EU (api.bybit.eu).
+  Прямой обход: api.bybit.com -> api.bybit.eu -> api.bybit.nl -> api.bytick.com.
+  BYBIT_RECV_WINDOW = 10000 мс — облачные контейнеры дают дрейф часов.
+  _bybit_wallet_probe (cache ttl 5) возвращает (wallet | None, diag); некэшированная обёртка
+  fetch_bybit_wallet пишет diag в session_state при каждом прогоне. HUD печатает точную причину:
+  «HTTP 403 (proxy)» либо «[10003] API key is invalid». Таймаут попытки 4 с.
 
-DATA PROVENANCE (v1.82): терминал показывает ФАКТИЧЕСКИЙ источник свечей.
-  _resolve_feed (cache ttl 60) возвращает (df, err, source); некэшированная обёртка
-  fetch_smart_data фиксирует source в session_state. Бейдж «ПОТОК: …» под графиком:
-  slate для основного канала, приглушённый янтарь для Fallback. Источник дублируется
-  в заголовке PNG-снапшота и в текстовой депеше Telegram. HTF-запрос идёт с track=False.
+DATA PROVENANCE (v1.82): _resolve_feed (cache ttl 60) возвращает (df, err, source);
+  некэшированная обёртка fetch_smart_data фиксирует source в session_state.
+  Бейдж «ПОТОК: …» под графиком: slate для основного канала, янтарь для Fallback.
+  Источник дублируется в заголовке PNG и в депеше Telegram. HTF-запрос идёт с track=False.
 
-GEO-RESILIENCE (v1.81): публичные вызовы Bybit из AWS US-регионов перехватываются CloudFront WAF
-(HTTP 403 + HTML). Проверка r.status_code == 200 ДО r.json(), браузерный User-Agent,
+GEO-RESILIENCE (v1.81): проверка r.status_code == 200 ДО r.json(), браузерный User-Agent,
 накопление last_err, бесшовный fallback на Yahoo в fetch_smart_data и fetch_radar.
 
 BYBIT API v5 (PHASE 1 — MARKET DATA + UTA TELEMETRY):
   /v5/market/kline (category=linear) для BTCUSDT / ETHUSDT / SOLUSDT — непрерывный 24/7 ряд.
   Маппинг ТФ: M1..M30 -> 1/5/15/30, H1/H2/H4 -> 60/120/240, D1/W1/MN1 -> D/W/M.
   H8 агрегируется из H4, MN3/MN6/MN24 — из MN1.
-  /v5/account/wallet-balance?accountType=UNIFIED (HMAC-SHA256):
-  payload = timestamp + apiKey + recvWindow + queryString; подпись пересчитывается
+  /v5/account/wallet-balance?accountType=UNIFIED (HMAC-SHA256); подпись пересчитывается
   на каждой попытке, чтобы не выйти за recvWindow.
   Контекстный HUD: Forex/Индекс -> MT5/Blue Guardian (Supabase); Крипта -> Bybit UTA Wallet.
-  Нулевая казна Bybit ($0.00) обрабатывается штатно: ручной ввод депозита остаётся активным.
+  Нулевая казна ($0.00) обрабатывается штатно: ручной ввод депозита остаётся активным.
   Исполнение приказов в Phase 1 не меняется — шлюз остаётся MT5/Telegram.
 
 SWING EXTREMUM HARDENING (v1.70): тай-брейк полярности фракталов — слева нестрого (>= / <=),
@@ -90,7 +90,8 @@ BY DESIGN: точки A-B-C-O сбрасываются при смене инс�
 
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опц.).
 Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.),
-         SUPABASE_URL, SUPABASE_KEY (опц.), BYBIT_API_KEY, BYBIT_API_SECRET (опц.).
+         SUPABASE_URL, SUPABASE_KEY (опц.), BYBIT_API_KEY, BYBIT_API_SECRET (опц.),
+         BYBIT_PROXY_URL (опц., Cloudflare Worker reverse proxy).
 """
 import gc
 import hashlib
@@ -170,8 +171,8 @@ YF_MAP = {
 BASE_TF = {"H2": "H1", "H4": "H1", "H8": "H1", "D1": "H1", "MN3": "MN1", "MN6": "MN1", "MN24": "MN1"}
 RESAMPLE_RULE = {"H2": "2h", "H4": "4h", "H8": "8h", "D1": "1D", "MN3": "3MS", "MN6": "6MS", "MN24": "24MS"}
 
-# --- Bybit v5: региональные шлюзы (EEA/EU) + обход гео-блокировок CloudFront ---
-BYBIT_ENDPOINTS = [
+# --- Bybit v5: Cloudflare edge proxy (опционально) + региональные шлюзы EEA/EU ---
+BYBIT_DIRECT_ENDPOINTS = [
     "https://api.bybit.com",
     "https://api.bybit.eu",       # Bybit EEA / EU Regional Gateway
     "https://api.bybit.nl",       # Bybit Netherlands / EU Gateway
@@ -179,8 +180,8 @@ BYBIT_ENDPOINTS = [
 ]
 BYBIT_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-BYBIT_RECV_WINDOW = "10000"      #放宽 окно: дрейф часов в облачных контейнерах
-BYBIT_HTTP_TIMEOUT = 4           # одна попытка; 4 шлюза -> худший случай ~16 с
+BYBIT_RECV_WINDOW = "10000"      # дрейф часов в облачных контейнерах
+BYBIT_HTTP_TIMEOUT = 4           # одна попытка обхода
 BYBIT_KLINE_LIMIT = 1000
 BYBIT_TF_MAP = {
     "M1": "1", "M5": "5", "M15": "15", "M30": "30",
@@ -191,9 +192,12 @@ BYBIT_BASE_TF = {"H8": "H4", "MN3": "MN1", "MN6": "MN1", "MN24": "MN1"}
 BYBIT_DIAG_OK = "OK"
 BYBIT_DIAG_NONE = "—"
 BYBIT_DIAG_NOKEYS = "NO_KEYS"
+BYBIT_PROXY_LABEL = "proxy"
+BYBIT_PROXY_GATEWAY = "Cloudflare Proxy"
 
 # --- Метки провенанса (бейдж, PNG-заголовок, депеша Telegram) ---
 FEED_BYBIT = "Bybit v5 (Linear)"
+FEED_BYBIT_PROXY = "Bybit v5 (Proxy)"
 FEED_YAHOO = "Yahoo Finance"
 FEED_YAHOO_FB = "Yahoo Finance (Fallback)"
 FEED_TD = "TwelveData"
@@ -607,7 +611,7 @@ def fmt_err(err):
 def _secret_values():
     vals = [API_KEY]
     for k in ("TELEGRAM_TOKEN", "MT5_SECRET_TOKEN", "SUPABASE_KEY",
-              "BYBIT_API_KEY", "BYBIT_API_SECRET"):
+              "BYBIT_API_KEY", "BYBIT_API_SECRET", "BYBIT_PROXY_URL"):
         try:
             v = st.secrets.get(k, "")
             if v:
@@ -1093,27 +1097,55 @@ def fetch_yahoo(sym, interval):
         return pd.DataFrame(), E("exception", detail=safe_err(e))
 
 
+def bybit_proxy_url():
+    """Нормализованный URL Cloudflare Worker из секретов (только https), либо пустая строка."""
+    try:
+        proxy = str(st.secrets.get("BYBIT_PROXY_URL", "")).strip().rstrip("/")
+    except Exception:
+        return ""
+    return proxy if proxy.startswith("https://") else ""
+
+
+def get_bybit_endpoints():
+    """Приоритет обхода: пользовательский Cloudflare edge proxy -> региональные шлюзы Bybit."""
+    endpoints = []
+    proxy = bybit_proxy_url()
+    if proxy:
+        endpoints.append(proxy)
+    endpoints.extend(BYBIT_DIRECT_ENDPOINTS)
+    return endpoints
+
+
+def bybit_host_label(base_url):
+    """Метка шлюза для диагностики и HUD. Имя worker-хоста не раскрывается."""
+    proxy = bybit_proxy_url()
+    if proxy and base_url.rstrip("/") == proxy:
+        return BYBIT_PROXY_LABEL
+    return base_url.replace("https://", "")
+
+
 @st.cache_data(ttl=30, show_spinner=False)
 def fetch_bybit_kline(sym, interval, category="linear"):
-    """Bybit v5 public Kline: обход региональных шлюзов и гео-блокировок CloudFront.
-    Статус проверяется ДО r.json(), тело WAF (HTML) никогда не попадает в парсер.
+    """Bybit v5 public Kline. Возвращает (df, err, gateway_url).
+    Обход: Cloudflare proxy (если задан) -> api.bybit.com -> .eu -> .nl -> .bytick.com.
+    Статус проверяется ДО r.json(): HTML-страница WAF никогда не попадает в парсер.
     Ряд приходит по убыванию времени — разворачиваем в хронологию. Крипта 24/7.
     """
     params = {"category": category, "symbol": sym, "interval": interval, "limit": BYBIT_KLINE_LIMIT}
     headers = {"User-Agent": BYBIT_UA, "Accept": "application/json"}
     last_err = None
-    for base_url in BYBIT_ENDPOINTS:
-        host = base_url.replace("https://", "")
+    for base_url in get_bybit_endpoints():
+        label = bybit_host_label(base_url)
         try:
             r = requests.get(f"{base_url}/v5/market/kline", params=params,
                              headers=headers, timeout=BYBIT_HTTP_TIMEOUT)
             if r.status_code != 200:
-                last_err = E("bybit", detail=f"HTTP {r.status_code} ({host})")
+                last_err = E("bybit", detail=f"HTTP {r.status_code} ({label})")
                 continue
             try:
                 res = r.json()
             except Exception:
-                last_err = E("bybit", detail=f"HTTP 200 non-JSON ({host})")
+                last_err = E("bybit", detail=f"HTTP 200 non-JSON ({label})")
                 continue
             if res.get("retCode") != 0:
                 last_err = E("bybit", detail=f"[{res.get('retCode')}] {res.get('retMsg')}")
@@ -1142,12 +1174,12 @@ def fetch_bybit_kline(sym, interval, category="linear"):
             if df.empty:
                 last_err = E("bybit_nodata", detail=f"{sym} ({interval})")
                 continue
-            return df, None
+            return df, None, base_url.rstrip("/")
         except Exception as e:
             last_err = E("exception", detail=safe_err(e))
             continue
 
-    return pd.DataFrame(), last_err or E("bybit_nodata", detail=f"{sym} ({interval})")
+    return pd.DataFrame(), last_err or E("bybit_nodata", detail=f"{sym} ({interval})"), ""
 
 
 def _bybit_credentials():
@@ -1160,18 +1192,18 @@ def _bybit_credentials():
 
 @st.cache_data(ttl=5, show_spinner=False)
 def _bybit_wallet_probe():
-    """Bybit v5 UTA wallet-balance: обход региональных шлюзов с ЯВНОЙ диагностикой.
-    Возвращает (wallet_dict | None, diag). Присваивание session_state здесь не делается —
-    на cache-hit тело не выполнялось бы, и диагноз замерзал бы на первом значении.
-    Подпись пересчитывается на каждой попытке (recvWindow).
+    """Bybit v5 UTA wallet-balance: обход через Cloudflare proxy и региональные шлюзы.
+    Возвращает (wallet | None, diag). Подпись host-agnostic и остаётся валидной
+    при форвардинге Воркером; пересчитывается на каждой попытке (recvWindow).
+    Присваивание session_state здесь не делается — на cache-hit тело не выполняется.
     """
     key, secret = _bybit_credentials()
     if not key or not secret:
         return None, BYBIT_DIAG_NOKEYS
     qs = "accountType=UNIFIED"
     diag = BYBIT_DIAG_NONE
-    for base_url in BYBIT_ENDPOINTS:
-        host = base_url.replace("https://", "")
+    for base_url in get_bybit_endpoints():
+        label = bybit_host_label(base_url)
         ts = str(int(time.time() * 1000))
         payload = ts + key + BYBIT_RECV_WINDOW + qs
         try:
@@ -1191,12 +1223,12 @@ def _bybit_wallet_probe():
             r = requests.get(f"{base_url}/v5/account/wallet-balance?{qs}",
                              headers=headers, timeout=BYBIT_HTTP_TIMEOUT)
             if r.status_code != 200:
-                diag = f"HTTP {r.status_code} ({host})"
+                diag = f"HTTP {r.status_code} ({label})"
                 continue
             try:
                 res = r.json()
             except Exception:
-                diag = f"HTTP 200 non-JSON ({host})"
+                diag = f"HTTP 200 non-JSON ({label})"
                 continue
             rc = res.get("retCode")
             if rc != 0:
@@ -1204,7 +1236,7 @@ def _bybit_wallet_probe():
                 continue
             lst = (res.get("result") or {}).get("list") or []
             if not lst:
-                diag = f"empty result ({host})"
+                diag = f"empty result ({label})"
                 continue
             acc = lst[0] or {}
 
@@ -1214,13 +1246,14 @@ def _bybit_wallet_probe():
                 except (TypeError, ValueError):
                     return 0.0
 
+            gateway = BYBIT_PROXY_GATEWAY if label == BYBIT_PROXY_LABEL else label
             return {
                 "equity": _f(acc.get("totalEquity")),
                 "wallet_balance": _f(acc.get("totalWalletBalance")),
                 "avail_margin": _f(acc.get("totalAvailableBalance")),
                 "updated_at": pd.Timestamp.now(tz="UTC"),
                 "status": "LIVE",
-                "gateway": host,
+                "gateway": gateway,
             }, BYBIT_DIAG_OK
         except Exception as e:
             diag = safe_err(e)
@@ -1281,9 +1314,12 @@ def _resolve_feed(asset_key, interval):
     route = ASSET_ROUTER[asset_key]
     if is_bybit_asset(route):
         base_tf = BYBIT_BASE_TF.get(interval, interval)
-        df_bybit, err_bybit = fetch_bybit_kline(route["sym"], BYBIT_TF_MAP[base_tf], route.get("cat", "linear"))
+        df_bybit, err_bybit, gw = fetch_bybit_kline(
+            route["sym"], BYBIT_TF_MAP[base_tf], route.get("cat", "linear"))
         if not df_bybit.empty:
-            return df_bybit, None, FEED_BYBIT
+            proxy = bybit_proxy_url()
+            src = FEED_BYBIT_PROXY if (proxy and gw == proxy) else FEED_BYBIT
+            return df_bybit, None, src
         if route.get("yf"):
             df_yf, err_yf = fetch_yahoo(route["yf"], interval)
             if not df_yf.empty:
@@ -1418,8 +1454,7 @@ def render_telemetry_hud():
 
 def render_bybit_hud():
     """Bybit UTA HUD. Возвращает (is_live, equity_or_None).
-    При отказе печатает ТОЧНУЮ причину из st.session_state['bybit_diag_err']:
-    HTTP-код с именем шлюза либо [retCode] retMsg от Bybit.
+    При отказе печатает ТОЧНУЮ причину из st.session_state['bybit_diag_err'].
     Нулевое эквити — валидное LIVE-состояние: привязка депозита не выполняется."""
     w = fetch_bybit_wallet()
     if w is None:
@@ -2307,7 +2342,7 @@ if app_mode == "radar":
     def fetch_radar(route, tf):
         if is_bybit_asset(route):
             base_tf = BYBIT_BASE_TF.get(tf, tf)
-            df, err = fetch_bybit_kline(route["sym"], BYBIT_TF_MAP[base_tf], route.get("cat", "linear"))
+            df, err, _gw = fetch_bybit_kline(route["sym"], BYBIT_TF_MAP[base_tf], route.get("cat", "linear"))
             if df.empty and route.get("yf"):
                 df, err = fetch_yahoo(route["yf"], tf)
         else:
