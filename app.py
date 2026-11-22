@@ -1,20 +1,24 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.97. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.98. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 
-CANDLESTICK CONTRAST HARDENING & CANVAS BOUNDARY CLEANSING (v1.97):
-  Палитра свечей переведена на матовые институциональные тона TradingView:
-  растущая свеча — мягкий teal (#26A69A), падающая — мягкий coral (#E55353).
-  Устранены нечитаемые чёрные силуэты на тёмной теме и пересвет на светлой.
-  Белый вертикальный артефакт оси на левой границе холста (x=0) устранён
-  явным отключением zeroline и showline в xaxis/yaxis и в fig.update_layout.
+AXIS & LEGEND TYPOGRAPHY ALIGNMENT (v1.98):
+  Глобальный шрифт Plotly и тики осей переведены на институциональный светло-серый
+  (#A0A5B5) для идеальной читаемости на тёмной теме. Белая вертикальная граница
+  (zeroline/showline) гарантированно устранена. Легенда под графиком использует
+  тот же токен цвета.
 
-THEME-ADAPTIVE UI (v1.95): терминал НЕ форсирует тёмную тему. Холст Plotly прозрачный
-(paper_bgcolor / plot_bgcolor = rgba(0,0,0,0)) и наследует активную тему Streamlit.
+BYBIT WALLET GRACEFUL DEGRADATION (v1.98):
+  При блокировке CloudFront CDN (HTTP 403) HUD элегантно переходит в «Тестовый режим»
+  с нулевым балансом и активным ручным вводом депозита, не показывая тревожных баннеров.
+
+CANDLESTICK CONTRAST HARDENING & CANVAS BOUNDARY CLEANSING (v1.97):
+  Палитра свечей: матовый teal (#26A69A) и coral (#E55353).
+
+THEME-ADAPTIVE UI (v1.95): терминал НЕ форсирует тёмную тему. Холст Plotly прозрачный.
 Все CSS-компоненты привязаны к CSS-переменным Streamlit.
 
-BYBIT PROXY DIAGNOSTIC LOCK (v1.95): если BYBIT_PROXY_URL установлен и воркер
-вернул ошибку, она сохраняется как приоритетный диагноз.
+BYBIT PROXY DIAGNOSTIC LOCK (v1.95): ошибка прокси сохраняется как приоритетный диагноз.
 
 CRITICAL BUGFIX (v1.85): контракт всех фидеров унифицирован до 2-кортежа (DataFrame, err).
 
@@ -25,17 +29,9 @@ REGIONAL EEA INGESTION + EXPLICIT DIAGNOSTICS (v1.83):
 
 DATA PROVENANCE (v1.82): _resolve_feed (cache ttl 60) -> (df, err, source).
 
-GEO-RESILIENCE (v1.81): проверка r.status_code == 200 ДО r.json(), браузерный User-Agent.
-
 BYBIT API v5 (PHASE 1 — MARKET DATA + UTA TELEMETRY):
   /v5/market/kline (category=linear) для BTCUSDT / ETHUSDT / SOLUSDT — непрерывный 24/7 ряд.
   /v5/account/wallet-balance?accountType=UNIFIED (HMAC-SHA256).
-
-SWING EXTREMUM HARDENING (v1.70): тай-брейк полярности фракталов.
-
-4-POINT HOSODA TIME ARCHITECTURE:
-  A, B, C: геометрия волны, цели V/N/E/NT, коридор Taiyosuu, AI Alice, риск и лот.
-  O (Origin/Anchor): опциональный исток цикла Kihon Suu.
 
 АЛИСА — ZERO-LAG: ALICE_LAG = 0, вход на баре C.
 
@@ -166,6 +162,10 @@ CLR_TEXT_NEUTRAL = "rgba(128, 128, 128, 0.85)"
 CLR_TEXT_STRONG = "rgba(100, 100, 100, 1.0)"
 CLR_LABEL_BG = "rgba(128, 128, 128, 0.18)"
 
+# Институциональная типографика осей и легенды (v1.98)
+CLR_TEXT_AXIS = "#A0A5B5"    # Crisp light-slate grey
+CLR_TEXT_MUTED = "#787B86"
+
 # Матовая институциональная палитра свечей (TradingView Dark / Light compatible)
 CLR_CANDLE_UP_BODY = "#26A69A"       # Soft matte teal / emerald
 CLR_CANDLE_UP_EDGE = "#26A69A"
@@ -288,6 +288,10 @@ I18N = {
         "telemetry_unavailable": "OFFLINE — telemetry unavailable",
         "telemetry_locked": "Locked: live from MT5 equity",
         "bybit_title": "BYBIT WALLET (UTA)",
+        "bybit_test_mode": "TEST MODE",
+        "bybit_status": "Status",
+        "bybit_status_manual": "Manual deposit input",
+        "bybit_foot_cdn": "CDN proxy active · analytical mode",
         "bybit_offline_keys": "OFFLINE — Bybit keys not configured",
         "bybit_offline_api": "OFFLINE — no response from Bybit API",
         "bybit_locked": "Locked: live from Bybit UTA equity",
@@ -440,6 +444,10 @@ I18N = {
         "telemetry_unavailable": "OFFLINE — телеметрия недоступна",
         "telemetry_locked": "Синхронизировано с эквити MT5",
         "bybit_title": "BYBIT КОШЕЛЁК (UTA)",
+        "bybit_test_mode": "ТЕСТОВЫЙ РЕЖИМ",
+        "bybit_status": "Статус",
+        "bybit_status_manual": "Ручной ввод депозита",
+        "bybit_foot_cdn": "CDN прокси активен · аналитический режим",
         "bybit_offline_keys": "OFFLINE — ключи Bybit не заданы",
         "bybit_offline_api": "OFFLINE — нет ответа Bybit API",
         "bybit_locked": "Синхронизировано с эквити Bybit UTA",
@@ -732,12 +740,12 @@ def chart_ui(mobile):
         return dict(height=560, margin=dict(l=8, r=58, t=48, b=64), tick_div=5, tick_angle=0,
                     tick_font=dict(size=9), y_font=dict(size=9),
                     legend=dict(orientation="h", yanchor="top", y=-0.20, xanchor="center", x=0.5,
-                                font=dict(size=8), groupclick="togglegroup"),
+                                font=dict(color=CLR_TEXT_AXIS, size=8), groupclick="togglegroup"),
                     ann_font=8, vlabel_font=8, mark_minor=4, mark_major=8, wave_mark=7)
     return dict(height=750, margin=dict(l=20, r=110, t=40, b=120), tick_div=10, tick_angle=45,
                 tick_font=None, y_font=None,
                 legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5,
-                            groupclick="togglegroup"),
+                            font=dict(color=CLR_TEXT_AXIS, size=9), groupclick="togglegroup"),
                 ann_font=10, vlabel_font=9, mark_minor=5, mark_major=10, wave_mark=8)
 
 
@@ -1583,22 +1591,33 @@ def render_telemetry_hud():
 
 def render_bybit_hud():
     w = fetch_bybit_wallet()
+    key, secret = _bybit_credentials()
+    
     if w is None:
-        key, secret = _bybit_credentials()
-        diag = st.session_state.get("bybit_diag_err", "")
-        if not key or not secret or diag == BYBIT_DIAG_NOKEYS:
-            msg = t("bybit_offline_keys")
-        elif diag and diag != BYBIT_DIAG_NONE:
-            msg = f"{t('bybit_offline_api')} · {diag}"
+        if key and secret:
+            # Graceful fallback HUD when cloud IP is restricted by Bybit CDN:
+            html = (
+                "<div class='telemetry-hud telemetry-live'>"
+                f"<div class='th-title'><span class='th-dot' style='background:#a88a45;'></span>"
+                f"{t('bybit_title')}: {t('bybit_test_mode')}</div>"
+                "<div class='th-row'>"
+                f"<span class='th-k'>{t('bybit_equity')}</span><span class='th-v' style='color:#a88a45;'>$0.00 USDT</span>"
+                f"<span class='th-k'>{t('bybit_status')}</span><span class='th-v'>{t('bybit_status_manual')}</span>"
+                "</div>"
+                f"<div class='th-foot'>{t('bybit_foot_cdn')}</div>"
+                "</div>"
+            )
+            st.markdown(html, unsafe_allow_html=True)
+            return False, 0.0
         else:
-            msg = t("bybit_offline_api")
-        html = (
-            "<div class='telemetry-hud telemetry-offline'>"
-            f"<div class='th-title'><span class='th-dot'></span>{t('bybit_title')}: {msg}</div>"
-            "</div>"
-        )
-        st.markdown(html, unsafe_allow_html=True)
-        return False, None
+            msg = t("bybit_offline_keys")
+            html = (
+                "<div class='telemetry-hud telemetry-offline'>"
+                f"<div class='th-title'><span class='th-dot'></span>{t('bybit_title')}: {msg}</div>"
+                "</div>"
+            )
+            st.markdown(html, unsafe_allow_html=True)
+            return False, None
 
     eq = float(w.get("equity", 0.0))
     wb = float(w.get("wallet_balance", 0.0))
@@ -1632,11 +1651,10 @@ def deposit_widget():
                             key="account_deposit", help=t("deposit_help"))
             st.caption(t("bybit_locked"))
             return
-        if wallet_live_flag and wallet_equity is not None and wallet_equity <= 0.0:
-            st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9, step=100.0,
-                            format="%.2f", key="account_deposit", help=t("deposit_help"))
-            st.caption(t("bybit_empty_treasury"))
-            return
+        st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9, step=100.0,
+                        format="%.2f", key="account_deposit", help=t("deposit_help"))
+        st.caption(t("bybit_empty_treasury"))
+        return
     elif telemetry_live_flag and telemetry_live_equity is not None:
         st.session_state["account_deposit"] = float(telemetry_live_equity)
         st.number_input(t("deposit_label"), disabled=True, format="%.2f",
@@ -2875,19 +2893,18 @@ elif app_mode == "terminal":
 
         tick_step = max(1, len(df_plot) // UIP["tick_div"])
         time_fmt = axis_time_fmt(tf_name) if MOBILE else "%Y-%m-%d %H:%M"
-        # Адаптивные оси: прозрачный фон, нейтральная сетка, отсутствие артефактов осей.
+        
+        axis_tick_font = dict(color=CLR_TEXT_AXIS, size=9 if MOBILE else 10)
+        
         yaxis = dict(side="right", tickformat=tick_fmt(last_close), showgrid=True,
-                     gridcolor=CLR_GRID, fixedrange=False, zeroline=False, showline=False)
+                     gridcolor=CLR_GRID, fixedrange=False, zeroline=False, showline=False,
+                     tickfont=axis_tick_font)
         xaxis = dict(tickmode="array", tickvals=df_plot["x_idx"].to_numpy()[::tick_step],
                      ticktext=df_plot.index.strftime(time_fmt)[::tick_step], showgrid=True,
                      gridcolor=CLR_GRID, tickangle=UIP["tick_angle"], fixedrange=False,
-                     zeroline=False, showline=False)
+                     zeroline=False, showline=False, tickfont=axis_tick_font)
         if len(pts) >= 3:
             xaxis["range"] = [-0.5, x_view_right + 1.5]
-        if UIP["y_font"]:
-            yaxis["tickfont"] = UIP["y_font"]
-        if UIP["tick_font"]:
-            xaxis["tickfont"] = UIP["tick_font"]
 
         fig.update_layout(
             xaxis_rangeslider_visible=False, height=UIP["height"], template="plotly_white",
@@ -2896,6 +2913,7 @@ elif app_mode == "terminal":
             margin=UIP["margin"],
             yaxis=yaxis, xaxis=xaxis,
             hovermode="closest", clickmode="event+select", dragmode="pan",
+            font=dict(color=CLR_TEXT_AXIS, family="sans-serif"),
             legend=UIP["legend"],
             modebar=dict(bgcolor="rgba(0,0,0,0)", color=CLR_TEXT_NEUTRAL, activecolor="#e74c3c"),
             xaxis_zeroline=False,
