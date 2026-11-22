@@ -1,99 +1,76 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.85. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.95. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 
-CRITICAL BUGFIX (v1.85): контракт всех фидеров унифицирован до 2-кортежа (DataFrame, err).
-fetch_bybit_kline() больше НЕ возвращает gateway третьим элементом — провенанс шлюза
-пишется в st.session_state["bybit_active_gw"] ("proxy" / "direct"), поэтому ни один
-вызывающий код не может получить ValueError/TypeError на распаковке.
-Сетевой обход вынесен в приватный кэшированный _bybit_kline_probe; публичная обёртка
-не кэшируется и фиксирует шлюз при каждом прогоне (внутри cache_data присваивание
-не выполнялось бы на cache-hit). Метка шлюза считается до любого continue и защищена
-от исключений. htf_info() обёрнут в try/except: недоступность старшего ТФ даёт
-нейтральный HTF-признак, а не падение приложения.
+THEME-ADAPTIVE UI (v1.95): терминал НЕ форсирует тёмную тему. Холст Plotly прозрачный
+(paper_bgcolor / plot_bgcolor = rgba(0,0,0,0)) и наследует активную тему Streamlit
+(Settings → Light / Dark / System). Сетка и подписи адаптивные (rgba 128,128,128).
+Все CSS-компоненты (HUD, risk-card, pts-bar pill, feed badge, exec/teleport кнопки)
+привязаны к CSS-переменным Streamlit: --secondary-background-color, --text-color,
+--primary-color, --background-color. Светлая и тёмная темы работают из коробки,
+переключение мгновенное — без перезагрузки.
 
-CLOUDFLARE EDGE REVERSE PROXY (v1.84): опциональный секрет BYBIT_PROXY_URL (Cloudflare Worker)
-ставится ПЕРВЫМ в get_bybit_endpoints(). Запрос идёт через не-датацентровый edge и минует
-CloudFront WAF, блокирующий AWS US-диапазоны Streamlit Cloud. Подпись Bybit v5
-(timestamp + apiKey + recvWindow + queryString) host-agnostic и остаётся валидной
-при форвардинге Воркером. Бейдж различает «Bybit v5 (Proxy)» и «Bybit v5 (Linear)».
-Имя worker-хоста не раскрывается: в диагностике метка «proxy», в HUD — «Cloudflare Proxy».
+BYBIT PROXY DIAGNOSTIC LOCK (v1.95): если BYBIT_PROXY_URL установлен и воркер
+вернул ошибку, она сохраняется как приоритетный диагноз и не перезаписывается
+при последующем падении на прямые эндпоинты (api.bybit.com … api.bytick.com).
+HUD печатает именно ошибку прокси: «OFFLINE — HTTP 403 (proxy)».
+
+CRITICAL BUGFIX (v1.85): контракт всех фидеров унифицирован до 2-кортежа (DataFrame, err).
+fetch_bybit_kline() возвращает строго 2 значения; провенанс шлюза — в session_state.
+htf_info() обёрнут в try/except: недоступность старшего ТФ даёт нейтральный HTF-признак.
+
+CLOUDFLARE EDGE REVERSE PROXY (v1.84): опциональный секрет BYBIT_PROXY_URL.
 
 REGIONAL EEA INGESTION + EXPLICIT DIAGNOSTICS (v1.83):
   Аккаунты EEA обслуживаются юрисдикцией Bybit EU (api.bybit.eu).
   Прямой обход: api.bybit.com -> api.bybit.eu -> api.bybit.nl -> api.bytick.com.
   BYBIT_RECV_WINDOW = 10000 мс — дрейф часов в облачных контейнерах.
-  _bybit_wallet_probe (cache ttl 5) -> (wallet | None, diag); некэшированная обёртка
-  fetch_bybit_wallet пишет diag в session_state. HUD печатает точную причину отказа.
 
 DATA PROVENANCE (v1.82): _resolve_feed (cache ttl 60) -> (df, err, source);
   некэшированная обёртка fetch_smart_data фиксирует source в session_state.
   Бейдж «ПОТОК: …» под графиком: slate для основного канала, янтарь для Fallback.
-  Источник дублируется в заголовке PNG и в депеше Telegram. HTF-запрос идёт с track=False.
 
 GEO-RESILIENCE (v1.81): проверка r.status_code == 200 ДО r.json(), браузерный User-Agent,
 накопление last_err, бесшовный fallback на Yahoo в fetch_smart_data и fetch_radar.
 
 BYBIT API v5 (PHASE 1 — MARKET DATA + UTA TELEMETRY):
   /v5/market/kline (category=linear) для BTCUSDT / ETHUSDT / SOLUSDT — непрерывный 24/7 ряд.
-  Маппинг ТФ: M1..M30 -> 1/5/15/30, H1/H2/H4 -> 60/120/240, D1/W1/MN1 -> D/W/M.
-  H8 агрегируется из H4, MN3/MN6/MN24 — из MN1.
   /v5/account/wallet-balance?accountType=UNIFIED (HMAC-SHA256); подпись пересчитывается
   на каждой попытке, чтобы не выйти за recvWindow.
-  Контекстный HUD: Forex/Индекс -> MT5/Blue Guardian (Supabase); Крипта -> Bybit UTA Wallet.
-  Нулевая казна ($0.00) обрабатывается штатно: ручной ввод депозита остаётся активным.
-  Исполнение приказов в Phase 1 не меняется — шлюз остаётся MT5/Telegram.
 
 SWING EXTREMUM HARDENING (v1.70): тай-брейк полярности фракталов — слева нестрого (>= / <=),
 справа строго (> / <). Абсолютные High/Low видимого окна принудительно получают маркер
 главного фрактала.
 
-TAP-TO-RESET HUD (v1.70): нижняя статус-пилюля — нативная кнопка pts_bar_btn. Один тап
-сбрасывает A, B, C, O и перерисовывает холст начисто. На мобильных зафиксирована внизу.
+TAP-TO-RESET HUD (v1.70): нижняя статус-пилюля — нативная кнопка pts_bar_btn.
 
-ANNOTATION DYNAMIC POLARITY (v1.62): подписи A/B/C/O якорятся над High или под Low свечи,
-синхронно в Plotly и Matplotlib.
-
-BUGFIX v1.61: список точек для Matplotlib-снапшота не обрезается до трёх — сетка Kihon Suu
-в Telegram якорится к Истоку. Ценовые цели и AI строго по abc[:3].
+ANNOTATION DYNAMIC POLARITY (v1.62): подписи A/B/C/O якорятся над High или под Low свечи.
 
 4-POINT HOSODA TIME ARCHITECTURE:
   A, B, C: геометрия волны, цели V/N/E/NT, коридор Taiyosuu, AI Alice, риск и лот.
-  O (Origin/Anchor): опциональный исток цикла Kihon Suu. Fallback — точка A.
+  O (Origin/Anchor): опциональный исток цикла Kihon Suu.
 
 OUTBOUND TELEMETRY (MT5 ➔ Supabase ➔ Streamlit):
   Поллер fetch_account_telemetry() (ttl 4 с) читает public.account_telemetry.
-  ● LIVE при age < 60 с, ○ OFFLINE иначе. При LIVE account_deposit = equity (disabled).
 
-ЛЕГЕНДА-ХАД: группы minor / major, по одной плашке на группу,
-layout.legend.groupclick="togglegroup". Переключение слоёв чисто клиентское.
+ЛЕГЕНДА-ХАД: группы minor / major, layout.legend.groupclick="togglegroup".
 
 КНОПКА ОБНОВЛЕНИЯ ↻: оверлей в верхней полосе графика слева внутри st.container(key="chart_shell").
 
 РАДАР: тренд/Облако/линии/Чикоу — по закрытому бару; зона засады — по активной свече
-с порогом 0.3*ATR. Bybit-пары сканируются тем же движком, с тем же fallback на Yahoo.
-ONE-CLICK TELEPORT: выбор строки в таблице Радара -> перенос в Терминал.
+с порогом 0.3*ATR. ONE-CLICK TELEPORT: выбор строки в таблице Радара -> перенос в Терминал.
 
 ПРЕДВАРИТЕЛЬНАЯ C: маркер размером с малый фрактал, виден ДО расстановки A-B-C.
-Нисходящий тренд (Тенкан < Киджун) — максимум High последних 3 свечей включая активную;
-восходящий — минимум Low. Отступ 0.2*ATR, компактный ховер. Клик ставит точку волны.
 
-ГОРИЗОНТ ПРОЕКЦИИ: +76 баров от точки C (канон Какан). Тот же предел в PNG для Telegram.
+ГОРИЗОНТ ПРОЕКЦИИ: +76 баров от точки C (канон Какан).
 
 ВХОДЫ ПО ПРОБОЮ (trigger_plan): «Хосода: разворот C» — уровень High/Low свечи C, окно 3 свечи;
 «Пробой точки B» — уровень цены B, окно 17 свечей, стоп за ОБЛАКОМ ± 0.2*ATR.
-Подтверждение = ЗАКРЫТИЕ свечи за уровнем. Правило догона: уход <= 1*ATR -> рынок,
-дальше -> ЛИМИТНЫЙ ордер на самый уровень. Нет подтверждения -> наблюдение (watch).
 
 АЛИСА — ZERO-LAG: ALICE_LAG = 0, вход на баре C, все признаки причинны (бары <= C).
 
 РИСК ПОД BLUE GUARDIAN: дефолт 0.5 % на сделку, шаг ввода 0.1 %.
 ЛОТ: pip_value_usd, округление ВНИЗ до шага 0.01.
-ШЛЮЗ: карточка /order {JSON} в Telegram с кнопкой подтверждения; советник получает приказ
-только как callback_query после нажатия трейдером.
-
-BY DESIGN: точки A-B-C-O сбрасываются при смене инструмента, ТФ, серверного времени, raw,
-клиринга, кнопкой «Сбросить точки», тапом по статус-пилюле и при телепорте.
 
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опц.).
 Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.),
@@ -182,8 +159,8 @@ RESAMPLE_RULE = {"H2": "2h", "H4": "4h", "H8": "8h", "D1": "1D", "MN3": "3MS", "
 # --- Bybit v5: Cloudflare edge proxy (опционально) + региональные шлюзы EEA/EU ---
 BYBIT_DIRECT_ENDPOINTS = [
     "https://api.bybit.com",
-    "https://api.bybit.eu",       # Bybit EEA / EU Regional Gateway
-    "https://api.bybit.nl",       # Bybit Netherlands / EU Gateway
+    "https://api.bybit.eu",
+    "https://api.bybit.nl",
     "https://api.bytick.com",
 ]
 BYBIT_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -213,6 +190,25 @@ FEED_YAHOO_FB = "Yahoo Finance (Fallback)"
 FEED_TD = "TwelveData"
 FEED_NONE = "—"
 
+# --- Адаптивные цветовые токены: читаются на обеих темах ---
+CLR_GRID = "rgba(128, 128, 128, 0.15)"
+CLR_TEXT_NEUTRAL = "rgba(128, 128, 128, 0.85)"
+CLR_TEXT_STRONG = "rgba(100, 100, 100, 1.0)"
+CLR_LABEL_BG = "rgba(128, 128, 128, 0.18)"
+CLR_CANDLE_UP = "rgba(100, 100, 100, 0.0)"     # прозрачное тело — фон темы читается через свечу
+CLR_CANDLE_DN = "rgba(40, 40, 40, 0.85)"      # тёмное тело — контрастно на светлом, видно на тёмном
+CLR_CANDLE_EDGE = "rgba(40, 40, 40, 0.85)"     # контур обоих свечей
+CLR_TENKAN = "rgba(41, 128, 185, 0.95)"
+CLR_KIJUN = "rgba(231, 76, 60, 0.95)"
+CLR_CHIKOU = "rgba(30, 132, 73, 0.95)"
+CLR_KUMO_UP = "rgba(46, 204, 113, 0.32)"
+CLR_KUMO_DN = "rgba(231, 76, 60, 0.26)"
+CLR_WAVE = "#f39c12"
+CLR_ORIGIN = "rgba(127, 140, 141, 0.95)"
+CLR_CAND_C = "#a88a45"
+CLR_MINOR = "rgba(149, 165, 166, 0.9)"
+CLR_MAJOR = "rgba(44, 62, 80, 0.95)"
+
 TD_PAGE_SIZE = 5000
 TD_PAGES = {"D1": 3}
 radar_tfs = ["M15", "M30", "H1", "H2", "H4", "H8", "D1", "W1", "MN1", "MN3"]
@@ -228,7 +224,7 @@ MIN_HTF_BARS = 80
 MIN_LTF_BARS_CRYPTO = 60
 MIN_HTF_BARS_CRYPTO = 50
 KIHON_SUU = [9, 17, 26, 33, 42, 52, 65, 76, 129, 172, 226, 257]
-TIME_AXIS_FORWARD_BARS = 76      # горизонт проекции: +76 баров от точки C (канон Какан)
+TIME_AXIS_FORWARD_BARS = 76
 MN_MONTHS = {"MN1": 1, "MN3": 3, "MN6": 6, "MN24": 24}
 KIJUN_ZONE_ATR = 0.3
 STOP_BUFFER_ATR = 0.2
@@ -243,15 +239,11 @@ TRIG_WATCH_BARS = {"hosoda": 3, "break_b": 17}
 ATR_CHASE_LIMIT = 1.0
 CAND_C_BARS = 3
 ACCENT_MUTED = "#a88a45"
-CAND_C_COLOR = ACCENT_MUTED
-CAND_HOVER_BG = "rgba(20, 24, 35, 0.85)"
-CAND_HOVER_BORDER = ACCENT_MUTED
-CAND_HOVER_FONT = "#E8EDF5"
 MINOR_COLOR = "#95a5a6"
 MAJOR_COLOR = "#2c3e50"
 ORIGIN_COLOR = "#7f8c8d"
 WAVE_LABEL_COLOR = "#f39c12"
-LABEL_BG = "rgba(255, 255, 255, 0.75)"
+LABEL_BG = "rgba(128, 128, 128, 0.18)"
 SURFACE = "#fbfcfd"
 BORDER = "#dfe4ea"
 BORDER_HOVER = "#2c3e50"
@@ -582,25 +574,22 @@ def t(key, **kw):
 
 
 def cand_trace_name():
-    """Единый токен слоя Preliminary C: регистрация трейса и детекция клика. Без глифов."""
     return t("chart_cand_c")
 
 
 def feed_source():
-    """Активный источник свечей для бейджа, PNG-заголовка и депеши."""
     return st.session_state.get("data_feed_source", FEED_NONE)
 
 
 def feed_badge_html():
-    """Институциональный бейдж провенанса: slate для основного канала, янтарь для Fallback."""
     src = feed_source()
-    src_color = ACCENT_MUTED if "Fallback" in src else ORIGIN_COLOR
+    # Адаптивный цвет значения: янтарь для Fallback, нейтральный серый для остальных
+    src_color = "#a88a45" if "Fallback" in src else "rgba(100,100,100,1.0)"
     return (f"<div class='feed-badge'>{t('feed_label')} "
             f"<b style='color:{src_color};'>{src}</b></div>")
 
 
 def polar_anchor(df_plot, px, py):
-    """Динамическая полярность подписи точки волны."""
     row = df_plot.iloc[int(px)]
     hi, lo = float(row["High"]), float(row["Low"])
     if abs(py - hi) <= abs(py - lo):
@@ -694,7 +683,6 @@ def _fx_last(sym_yf):
 
 
 def pip_value_usd(asset_key, current_price, psize):
-    """Стоимость 1 пункта/пипса в USD на 1 стандартный лот."""
     route = ASSET_ROUTER.get(asset_key)
     sym = route["sym"] if route else asset_key
     if is_bybit_asset(route) or "BTC" in sym or "ETH" in sym or "SOL" in sym:
@@ -733,12 +721,12 @@ def fmt_points(v, size):
 
 def risk_card_html(head, rows, accent):
     body = "".join(f"<tr><td class='rl'>{k}</td><td class='rv'>{v}</td></tr>" for k, v in rows)
+    # Accent применяется к левой полосе; сама карточка — адаптивная через CSS.
     return (f"<div class='risk-card' style='border-left-color:{accent}'>"
             f"<div class='risk-hd'>{head}</div><table class='risk-tb'>{body}</table></div>")
 
 
 def points_bar_text(n):
-    """Чистая текстовая метка интерактивной статус-пилюли (без HTML)."""
     if n < 3:
         status = t("pts_bar", n=int(n))
     elif n == 3:
@@ -782,7 +770,6 @@ def chart_ui(mobile):
 
 
 def candidate_c_extreme(df_plot, bars=CAND_C_BARS):
-    """Preliminary C: экстремум до формирования фрактала (живой маркер)."""
     n = len(df_plot)
     if n < 2:
         return None
@@ -819,7 +806,6 @@ def candidate_c_extreme(df_plot, bars=CAND_C_BARS):
 
 
 def enforce_visible_extremes(df_plot):
-    """Абсолютные High/Low видимого окна всегда получают маркер главного фрактала."""
     mh = df_plot["Major_High"].to_numpy(dtype=bool).copy()
     ml = df_plot["Major_Low"].to_numpy(dtype=bool).copy()
     if len(df_plot) == 0:
@@ -836,137 +822,236 @@ def enforce_visible_extremes(df_plot):
 
 
 def inject_css(mobile):
-    mobile_rules = (
-        ".block-container { padding-top: 3.2rem !important; padding-left: 0.6rem !important; "
-        "padding-right: 0.6rem !important; padding-bottom: 3.4rem !important; }\n"
-        "h1, h2, h3 { margin-top: 0.2rem !important; line-height: 1.25 !important; overflow-wrap: anywhere; }\n"
-        "h2 { font-size: clamp(1.05rem, 4.5vw, 1.75rem) !important; }\n"
-        ".modebar-btn { padding: 3px 5px !important; }\n"
-        ".risk-tb td { font-size: 0.8rem; }\n"
-        ".lot-line { font-size: 0.88rem; }\n"
-        ".st-key-pts_bar_btn { position: fixed; left: 0.6rem; right: 0.6rem; bottom: 0.4rem; "
-        "z-index: 60; margin: 0 !important; pointer-events: auto !important; }\n"
-        ".st-key-pts_bar_btn button { background: rgba(251,252,253,0.97); "
-        "box-shadow: 0 -1px 6px rgba(44,62,80,0.10); pointer-events: auto !important; }\n"
-        ".st-key-chart_shell .st-key-refresh_term { top: 5px; left: 2px; }\n"
-        '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
-    )
-    tool_css = (
-        ".st-key-chart_shell { position: relative; }\n"
-        ".st-key-refresh_term { display: flex; justify-content: flex-end; margin: 0 0 0.25rem 0; }\n"
-        ".st-key-refresh_term button { height: 28px; width: 30px; min-height: 0 !important; "
-        "display: inline-flex; align-items: center; justify-content: center; "
-        "padding: 0 !important; margin: 0; border: 1px solid #dfe4ea; border-radius: 2px; "
-        "background: rgba(255,255,255,0.92); color: #2c3e50; box-shadow: none; "
-        "transition: background-color .15s ease, border-color .15s ease; }\n"
-        ".st-key-refresh_term button p, .st-key-refresh_term button span { "
-        "font-size: 15px !important; line-height: 1 !important; margin: 0 !important; color: #2c3e50; "
-        'font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif; }\n'
-        ".st-key-refresh_term button:hover { background: #eef2f5; border-color: #2c3e50; color: #2c3e50; }\n"
-        ".st-key-refresh_term button:active { background: #e3e9ee; border-color: #2c3e50; }\n"
-        ".st-key-refresh_term button:focus-visible { outline: 1px solid #2c3e50; outline-offset: 1px; }\n"
-        ".st-key-chart_shell .st-key-refresh_term { position: absolute; top: 6px; left: 4px; "
-        "z-index: 7; display: block; width: 30px; height: 28px; "
-        "margin: 0 !important; padding: 0 !important; pointer-events: none; }\n"
-        ".st-key-chart_shell .st-key-refresh_term button { pointer-events: auto; }\n"
-    )
-    status_css = (
-        ".feed-badge { font-size: 0.75rem; color: #7f8c8d; letter-spacing: 0.04em; "
-        "line-height: 1.2; margin: 0 0 2px 0; white-space: nowrap; overflow: hidden; "
-        "text-overflow: ellipsis; }\n"
-        ".feed-badge b { font-weight: 600; }\n"
-        ".st-key-pts_bar_btn { margin: 2px 0 4px 0; }\n"
-        ".st-key-pts_bar_btn button { width: 100%; height: 28px; min-height: 28px !important; "
-        f"padding: 0 10px !important; background: {SURFACE}; color: {MAJOR_COLOR}; "
-        f"border: 1px solid {BORDER}; border-radius: 2px; box-shadow: none; "
-        "display: inline-flex; align-items: center; justify-content: center; "
-        "font-weight: 500; letter-spacing: 0.01em; "
-        "transition: background-color .15s ease, border-color .15s ease; }\n"
-        ".st-key-pts_bar_btn button p, .st-key-pts_bar_btn button span { "
-        f"font-size: 0.8rem !important; color: {MAJOR_COLOR} !important; margin: 0 !important; "
-        "line-height: 1 !important; font-variant-numeric: tabular-nums; "
-        "white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n"
-        f".st-key-pts_bar_btn button:hover {{ background: {SURFACE_HOVER}; border-color: {BORDER_HOVER}; }}\n"
-        f".st-key-pts_bar_btn button:active {{ background: {SURFACE_ACTIVE}; border-color: {BORDER_HOVER}; }}\n"
-        f".st-key-pts_bar_btn button:focus-visible {{ outline: 1px solid {BORDER_HOVER}; outline-offset: 1px; }}\n"
-    )
-    teleport_css = (
-        ".st-key-teleport_btn { margin: 0.4rem 0 0.2rem 0; }\n"
-        ".st-key-teleport_btn button { width: 100%; min-height: 44px; padding: 0.5rem 1rem !important; "
-        "background: #2c3e50; color: #ffffff; border: 1px solid #2c3e50; border-radius: 2px; "
-        "font-weight: 600; letter-spacing: 0.01em; box-shadow: none; "
-        "transition: background-color .15s ease, border-color .15s ease; }\n"
-        ".st-key-teleport_btn button p, .st-key-teleport_btn button span { "
-        "color: #ffffff !important; font-size: 0.95rem !important; line-height: 1.3 !important; }\n"
-        ".st-key-teleport_btn button:hover { background: #34495e; border-color: #34495e; color: #ffffff; }\n"
-        ".st-key-teleport_btn button:active { background: #22303d; border-color: #22303d; color: #ffffff; }\n"
-        ".st-key-teleport_btn button:focus-visible { outline: 2px solid #2980b9; outline-offset: 2px; }\n"
-    )
-    exec_css = (
-        ".st-key-mt5_send_order { margin: 0.4rem 0 0.2rem 0; }\n"
-        ".st-key-mt5_send_order button { width: 100%; min-height: 44px; padding: 0.5rem 1rem !important; "
-        "background: #2c3e50; color: #ffffff; border: 1px solid #1b2a38; border-radius: 2px; "
-        "font-weight: 600; letter-spacing: 0.01em; box-shadow: none; "
-        "transition: background-color .15s ease, border-color .15s ease; }\n"
-        ".st-key-mt5_send_order button p, .st-key-mt5_send_order button span { "
-        "color: #ffffff !important; font-size: 0.95rem !important; line-height: 1.3 !important; }\n"
-        ".st-key-mt5_send_order button:hover { background: #34495e; border-color: #1b2a38; color: #ffffff; }\n"
-        ".st-key-mt5_send_order button:active { background: #22303d; border-color: #1b2a38; color: #ffffff; }\n"
-        ".st-key-mt5_send_order button:focus-visible { outline: 2px solid #2980b9; outline-offset: 2px; }\n"
-        ".st-key-mt5_send_order button:disabled { background: #eef1f4; border-color: #dfe4ea; "
-        "color: #9aa7b2; cursor: not-allowed; }\n"
-        ".st-key-mt5_send_order button:disabled p, .st-key-mt5_send_order button:disabled span { "
-        "color: #9aa7b2 !important; }\n"
-    )
-    risk_css = (
-        ".risk-card { border: 1px solid #dfe4ea; border-left: 3px solid #2c3e50; background: #fbfcfd; "
-        "padding: 8px 12px; margin: 0.2rem 0 0.5rem 0; border-radius: 2px; }\n"
-        ".risk-hd { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; "
-        "color: #7f8c8d; margin-bottom: 4px; }\n"
-        ".risk-tb { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }\n"
-        ".risk-tb td { padding: 2px 0; font-size: 0.86rem; border-bottom: 1px solid #eef1f4; }\n"
-        ".risk-tb tr:last-child td { border-bottom: none; }\n"
-        ".risk-tb td.rl { color: #7f8c8d; white-space: nowrap; padding-right: 10px; }\n"
-        ".risk-tb td.rv { color: #2c3e50; text-align: right; font-weight: 600; }\n"
-        ".lot-line { border-top: 1px solid #dfe4ea; margin: 2px 0 4px 0; padding-top: 6px; "
-        "font-size: 0.95rem; color: #2c3e50; font-variant-numeric: tabular-nums; }\n"
-        ".lot-line b { font-size: 1.08rem; letter-spacing: 0.01em; }\n"
-    )
-    telemetry_css = (
-        ".telemetry-hud { background: #fbfcfd; border: 1px solid #dfe4ea; border-radius: 2px; "
-        "padding: 8px 12px; margin: 0 0 0.5rem 0; font-size: 0.82rem; "
-        "font-variant-numeric: tabular-nums; }\n"
-        ".telemetry-hud .th-title { font-size: 0.70rem; letter-spacing: 0.08em; "
-        "text-transform: uppercase; color: #7f8c8d; margin-bottom: 6px; "
-        "display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }\n"
-        ".telemetry-hud .th-dot { width: 8px; height: 8px; border-radius: 50%; "
-        "display: inline-block; flex-shrink: 0; }\n"
-        ".telemetry-live .th-dot { background: #3f7d5c; animation: th-pulse 1.4s infinite ease-in-out; }\n"
-        ".telemetry-offline .th-dot { background: #95a5a6; }\n"
-        "@keyframes th-pulse { 0%, 100% { opacity: 1; transform: scale(1); } "
-        "50% { opacity: 0.55; transform: scale(1.25); } }\n"
-        ".telemetry-hud .th-row { display: grid; grid-template-columns: auto 1fr; "
-        "gap: 2px 10px; line-height: 1.55; }\n"
-        ".telemetry-hud .th-k { color: #7f8c8d; white-space: nowrap; }\n"
-        ".telemetry-hud .th-v { color: #2c3e50; text-align: right; font-weight: 600; }\n"
-        ".telemetry-hud .th-foot { margin-top: 4px; font-size: 0.70rem; color: #95a5a6; "
-        "overflow-wrap: anywhere; }\n"
-    )
-    css = (
-        "<style>\n"
-        ".block-container { padding-top: 4rem; padding-bottom: 2rem; max-width: 100%; }\n"
-        ".app-title { color: #2c3e50; font-size: clamp(1.05rem, 4.5vw, 1.75rem); line-height: 1.25; "
-        "margin-top: 0.2rem; overflow-wrap: anywhere; white-space: normal; }\n"
-        ".stPlotlyChart .modebar { opacity: 1; }\n"
-        + tool_css + status_css + teleport_css + exec_css + risk_css + telemetry_css +
-        "@media (max-width: 768px) {\n" + mobile_rules + "}\n"
-        "@media (hover: none) {\n"
-        ".stPlotlyChart .modebar { opacity: 1 !important; }\n"
-        '[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }\n'
-        "}\n"
-        + (mobile_rules if mobile else "")
-        + "</style>"
-    )
+    # Адаптивные CSS-токены: привязка к теме Streamlit через CSS-переменные.
+    # Работает на Light / Dark / System без перезагрузки.
+    base_css = """
+    .block-container { padding-top: 4rem; padding-bottom: 2rem; max-width: 100%; }
+    .app-title {
+        color: var(--text-color);
+        font-size: clamp(1.05rem, 4.5vw, 1.75rem);
+        line-height: 1.25;
+        margin-top: 0.2rem;
+        overflow-wrap: anywhere;
+        white-space: normal;
+    }
+    .stPlotlyChart .modebar { opacity: 1; }
+
+    /* --- Feed badge (адаптивный) --- */
+    .feed-badge {
+        font-size: 0.75rem;
+        color: var(--text-color);
+        opacity: 0.7;
+        letter-spacing: 0.04em;
+        line-height: 1.2;
+        margin: 0 0 2px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .feed-badge b { font-weight: 600; color: var(--text-color); opacity: 1; }
+
+    /* --- Refresh button (в оверлее графика) --- */
+    .st-key-chart_shell { position: relative; }
+    .st-key-refresh_term { display: flex; justify-content: flex-end; margin: 0 0 0.25rem 0; }
+    .st-key-refresh_term button {
+        height: 28px; width: 30px; min-height: 0 !important;
+        display: inline-flex; align-items: center; justify-content: center;
+        padding: 0 !important; margin: 0;
+        border: 1px solid rgba(128, 128, 128, 0.25);
+        border-radius: 2px;
+        background: var(--secondary-background-color);
+        color: var(--text-color);
+        box-shadow: none;
+        transition: background-color .15s ease, border-color .15s ease;
+    }
+    .st-key-refresh_term button p, .st-key-refresh_term button span {
+        font-size: 15px !important; line-height: 1 !important; margin: 0 !important;
+        color: var(--text-color);
+        font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif;
+    }
+    .st-key-refresh_term button:hover {
+        background: var(--background-color);
+        border-color: var(--text-color);
+    }
+    .st-key-refresh_term button:active { background: var(--secondary-background-color); }
+    .st-key-chart_shell .st-key-refresh_term {
+        position: absolute; top: 6px; left: 4px; z-index: 7;
+        display: block; width: 30px; height: 28px;
+        margin: 0 !important; padding: 0 !important; pointer-events: none;
+    }
+    .st-key-chart_shell .st-key-refresh_term button { pointer-events: auto; }
+
+    /* --- Points status bar / pill (адаптивный, нижний HUD) --- */
+    .st-key-pts_bar_btn { margin: 2px 0 4px 0; }
+    .st-key-pts_bar_btn button {
+        width: 100%; height: 28px; min-height: 28px !important;
+        padding: 0 10px !important;
+        background: var(--secondary-background-color);
+        color: var(--text-color);
+        border: 1px solid rgba(128, 128, 128, 0.25);
+        border-radius: 2px;
+        box-shadow: none;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-weight: 500; letter-spacing: 0.01em;
+        transition: background-color .15s ease, border-color .15s ease;
+    }
+    .st-key-pts_bar_btn button p, .st-key-pts_bar_btn button span {
+        font-size: 0.8rem !important; color: var(--text-color) !important;
+        margin: 0 !important; line-height: 1 !important;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .st-key-pts_bar_btn button:hover {
+        background: var(--background-color);
+        border-color: var(--text-color);
+    }
+    .st-key-pts_bar_btn button:active { background: var(--secondary-background-color); }
+
+    /* --- Teleport & Execute buttons (адаптивные, используют --primary-color) --- */
+    .st-key-teleport_btn { margin: 0.4rem 0 0.2rem 0; }
+    .st-key-teleport_btn button {
+        width: 100%; min-height: 44px; padding: 0.5rem 1rem !important;
+        background: var(--primary-color);
+        color: var(--background-color);
+        border: 1px solid var(--primary-color);
+        border-radius: 2px;
+        font-weight: 600; letter-spacing: 0.01em; box-shadow: none;
+        transition: opacity .15s ease;
+    }
+    .st-key-teleport_btn button p, .st-key-teleport_btn button span {
+        color: var(--background-color) !important;
+        font-size: 0.95rem !important; line-height: 1.3 !important;
+    }
+    .st-key-teleport_btn button:hover { opacity: 0.92; }
+
+    .st-key-mt5_send_order { margin: 0.4rem 0 0.2rem 0; }
+    .st-key-mt5_send_order button {
+        width: 100%; min-height: 44px; padding: 0.5rem 1rem !important;
+        background: var(--primary-color);
+        color: var(--background-color);
+        border: 1px solid var(--primary-color);
+        border-radius: 2px;
+        font-weight: 600; letter-spacing: 0.01em; box-shadow: none;
+        transition: opacity .15s ease;
+    }
+    .st-key-mt5_send_order button p, .st-key-mt5_send_order button span {
+        color: var(--background-color) !important;
+        font-size: 0.95rem !important; line-height: 1.3 !important;
+    }
+    .st-key-mt5_send_order button:hover { opacity: 0.92; }
+    .st-key-mt5_send_order button:disabled {
+        background: var(--secondary-background-color);
+        border-color: rgba(128, 128, 128, 0.25);
+        color: var(--text-color);
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+    .st-key-mt5_send_order button:disabled p, .st-key-mt5_send_order button:disabled span {
+        color: var(--text-color) !important;
+        opacity: 0.6;
+    }
+
+    /* --- Risk card (адаптивная) --- */
+    .risk-card {
+        border: 1px solid rgba(128, 128, 128, 0.25);
+        border-left: 3px solid var(--text-color);
+        background: var(--secondary-background-color);
+        padding: 8px 12px;
+        margin: 0.2rem 0 0.5rem 0;
+        border-radius: 2px;
+    }
+    .risk-hd {
+        font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;
+        color: var(--text-color); opacity: 0.6;
+        margin-bottom: 4px;
+    }
+    .risk-tb { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    .risk-tb td {
+        padding: 2px 0; font-size: 0.86rem;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+    }
+    .risk-tb tr:last-child td { border-bottom: none; }
+    .risk-tb td.rl {
+        color: var(--text-color); opacity: 0.65;
+        white-space: nowrap; padding-right: 10px;
+    }
+    .risk-tb td.rv { color: var(--text-color); text-align: right; font-weight: 600; }
+    .lot-line {
+        border-top: 1px solid rgba(128, 128, 128, 0.25);
+        margin: 2px 0 4px 0; padding-top: 6px;
+        font-size: 0.95rem; color: var(--text-color);
+        font-variant-numeric: tabular-nums;
+    }
+    .lot-line b { font-size: 1.08rem; letter-spacing: 0.01em; }
+
+    /* --- Telemetry HUD (адаптивный) --- */
+    .telemetry-hud {
+        background: var(--secondary-background-color);
+        border: 1px solid rgba(128, 128, 128, 0.25);
+        border-radius: 2px;
+        padding: 8px 12px;
+        margin: 0 0 0.5rem 0;
+        font-size: 0.82rem;
+        font-variant-numeric: tabular-nums;
+    }
+    .telemetry-hud .th-title {
+        font-size: 0.70rem; letter-spacing: 0.08em; text-transform: uppercase;
+        color: var(--text-color); opacity: 0.7;
+        margin-bottom: 6px;
+        display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere;
+    }
+    .telemetry-hud .th-dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        display: inline-block; flex-shrink: 0;
+    }
+    .telemetry-live .th-dot { background: #3f7d5c; animation: th-pulse 1.4s infinite ease-in-out; }
+    .telemetry-offline .th-dot { background: #95a5a6; }
+    @keyframes th-pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.55; transform: scale(1.25); }
+    }
+    .telemetry-hud .th-row {
+        display: grid; grid-template-columns: auto 1fr;
+        gap: 2px 10px; line-height: 1.55;
+    }
+    .telemetry-hud .th-k { color: var(--text-color); opacity: 0.65; white-space: nowrap; }
+    .telemetry-hud .th-v { color: var(--text-color); text-align: right; font-weight: 600; }
+    .telemetry-hud .th-foot {
+        margin-top: 4px; font-size: 0.70rem;
+        color: var(--text-color); opacity: 0.55; overflow-wrap: anywhere;
+    }
+    """
+
+    mobile_rules = """
+    .block-container { padding-top: 3.2rem !important; padding-left: 0.6rem !important;
+    padding-right: 0.6rem !important; padding-bottom: 3.4rem !important; }
+    h1, h2, h3 { margin-top: 0.2rem !important; line-height: 1.25 !important; overflow-wrap: anywhere; }
+    h2 { font-size: clamp(1.05rem, 4.5vw, 1.75rem) !important; }
+    .modebar-btn { padding: 3px 5px !important; }
+    .risk-tb td { font-size: 0.8rem; }
+    .lot-line { font-size: 0.88rem; }
+    .st-key-pts_bar_btn { position: fixed; left: 0.6rem; right: 0.6rem; bottom: 0.4rem;
+    z-index: 60; margin: 0 !important; pointer-events: auto !important; }
+    .st-key-pts_bar_btn button {
+        background: var(--secondary-background-color);
+        box-shadow: 0 -1px 6px rgba(0,0,0,0.10);
+        pointer-events: auto !important;
+    }
+    .st-key-chart_shell .st-key-refresh_term { top: 5px; left: 2px; }
+    [data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }
+    """
+
+    css = f"""<style>
+{base_css}
+@media (max-width: 768px) {{
+{mobile_rules}
+}}
+@media (hover: none) {{
+.stPlotlyChart .modebar {{ opacity: 1 !important; }}
+[data-testid="stElementToolbar"] {{ opacity: 1 !important; visibility: visible !important; }}
+}}
+{mobile_rules if mobile else ""}
+</style>"""
     st.markdown(css, unsafe_allow_html=True)
 
 
@@ -1090,7 +1175,6 @@ def prepare_ohlc(df_utc, tf, is_fx, raw, drop_clearing, server_choice):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_yahoo(sym, interval):
-    """Стандартный контракт фидера: (DataFrame, err)."""
     yf_int, per = YF_MAP[interval]
     try:
         df = yf.download(sym, period=per, interval=yf_int, progress=False, auto_adjust=True)
@@ -1109,7 +1193,6 @@ def fetch_yahoo(sym, interval):
 
 
 def bybit_proxy_url():
-    """Нормализованный URL Cloudflare Worker из секретов (только https), либо пустая строка."""
     try:
         proxy = str(st.secrets.get("BYBIT_PROXY_URL", "")).strip().rstrip("/")
     except Exception:
@@ -1118,7 +1201,6 @@ def bybit_proxy_url():
 
 
 def get_bybit_endpoints():
-    """Приоритет обхода: пользовательский Cloudflare edge proxy -> региональные шлюзы Bybit."""
     endpoints = []
     proxy = bybit_proxy_url()
     if proxy:
@@ -1128,8 +1210,6 @@ def get_bybit_endpoints():
 
 
 def bybit_host_label(base_url):
-    """Метка шлюза для диагностики и HUD. Имя worker-хоста не раскрывается.
-    Полностью защищена от исключений: вызывается до любого continue."""
     try:
         proxy = bybit_proxy_url()
         url = str(base_url).rstrip("/")
@@ -1142,36 +1222,58 @@ def bybit_host_label(base_url):
 
 @st.cache_data(ttl=30, show_spinner=False)
 def _bybit_kline_probe(sym, interval, category="linear"):
-    """Приватный сетевой обход Bybit v5 Kline. Возвращает (df, err, gateway_url).
-    Кэшируется только сетевая часть; запись в session_state здесь НЕ делается.
-    Статус проверяется ДО r.json(): HTML-страница WAF не попадает в парсер.
-    Ряд приходит по убыванию времени — разворачиваем в хронологию. Крипта 24/7.
+    """Bybit v5 public Kline с DIAGNOSTIC LOCK для прокси.
+    Если BYBIT_PROXY_URL задан и воркер вернул ошибку, она сохраняется как приоритетный
+    диагноз и не перезаписывается последующими прямыми эндпоинтами.
     """
     params = {"category": category, "symbol": sym, "interval": interval, "limit": BYBIT_KLINE_LIMIT}
     headers = {"User-Agent": BYBIT_UA, "Accept": "application/json"}
-    last_err = None
+    direct_err = None
+    proxy_err = None
+    proxy_endpoint = bybit_proxy_url()
     for base_url in get_bybit_endpoints():
         label = bybit_host_label(base_url)
+        is_proxy = bool(proxy_endpoint and str(base_url).rstrip("/") == proxy_endpoint)
         try:
             r = requests.get(f"{base_url}/v5/market/kline", params=params,
                              headers=headers, timeout=BYBIT_HTTP_TIMEOUT)
             if r.status_code != 200:
-                last_err = E("bybit", detail=f"HTTP {r.status_code} ({label})")
+                err = E("bybit", detail=f"HTTP {r.status_code} ({label})")
+                if is_proxy:
+                    proxy_err = err  # DIAGNOSTIC LOCK: ошибка прокси — приоритет
+                elif direct_err is None:
+                    direct_err = err
                 continue
             try:
                 res = r.json()
             except Exception:
-                last_err = E("bybit", detail=f"HTTP 200 non-JSON ({label})")
+                err = E("bybit", detail=f"HTTP 200 non-JSON ({label})")
+                if is_proxy:
+                    proxy_err = err
+                elif direct_err is None:
+                    direct_err = err
                 continue
             if not isinstance(res, dict):
-                last_err = E("bybit", detail=f"malformed payload ({label})")
+                err = E("bybit", detail=f"malformed payload ({label})")
+                if is_proxy:
+                    proxy_err = err
+                elif direct_err is None:
+                    direct_err = err
                 continue
             if res.get("retCode") != 0:
-                last_err = E("bybit", detail=f"[{res.get('retCode')}] {res.get('retMsg')}")
+                err = E("bybit", detail=f"[{res.get('retCode')}] {res.get('retMsg')}")
+                if is_proxy:
+                    proxy_err = err
+                elif direct_err is None:
+                    direct_err = err
                 continue
             rows = (res.get("result") or {}).get("list") or []
             if not rows:
-                last_err = E("bybit_nodata", detail=f"{sym} ({interval})")
+                err = E("bybit_nodata", detail=f"{sym} ({interval})")
+                if is_proxy:
+                    proxy_err = err
+                elif direct_err is None:
+                    direct_err = err
                 continue
 
             recs = []
@@ -1182,7 +1284,11 @@ def _bybit_kline_probe(sym, interval, category="linear"):
                 except (TypeError, ValueError, IndexError):
                     continue
             if not recs:
-                last_err = E("bybit_nodata", detail=f"{sym} ({interval})")
+                err = E("bybit_nodata", detail=f"{sym} ({interval})")
+                if is_proxy:
+                    proxy_err = err
+                elif direct_err is None:
+                    direct_err = err
                 continue
 
             df = pd.DataFrame(recs, columns=["ms", "Open", "High", "Low", "Close", "Volume"])
@@ -1191,21 +1297,27 @@ def _bybit_kline_probe(sym, interval, category="linear"):
             df = df[~df.index.duplicated(keep="last")].sort_index()
             df = df[(df["High"] >= df["Low"]) & (df["Close"] > 0)]
             if df.empty:
-                last_err = E("bybit_nodata", detail=f"{sym} ({interval})")
+                err = E("bybit_nodata", detail=f"{sym} ({interval})")
+                if is_proxy:
+                    proxy_err = err
+                elif direct_err is None:
+                    direct_err = err
                 continue
             return df, None, str(base_url).rstrip("/")
         except Exception as e:
-            last_err = E("exception", detail=safe_err(e))
+            err = E("exception", detail=safe_err(e))
+            if is_proxy:
+                proxy_err = err
+            elif direct_err is None:
+                direct_err = err
             continue
 
-    return pd.DataFrame(), last_err or E("bybit_nodata", detail=f"{sym} ({interval})"), ""
+    # Приоритет: прокси > прямой > общий no-data
+    final_err = proxy_err or direct_err or E("bybit_nodata", detail=f"{sym} ({interval})")
+    return pd.DataFrame(), final_err, ""
 
 
 def fetch_bybit_kline(sym, interval, category="linear"):
-    """ПУБЛИЧНЫЙ фидер: строго 2-кортеж (DataFrame, err) — как fetch_yahoo и _td_request.
-    Провенанс шлюза пишется в session_state, а не передаётся кортежем.
-    Не кэшируется: присваивание должно выполняться на каждом прогоне.
-    """
     df, err, gw = _bybit_kline_probe(sym, interval, category)
     try:
         if not df.empty:
@@ -1228,17 +1340,20 @@ def _bybit_credentials():
 
 @st.cache_data(ttl=5, show_spinner=False)
 def _bybit_wallet_probe():
-    """Bybit v5 UTA wallet-balance: обход через Cloudflare proxy и региональные шлюзы.
-    Возвращает (wallet | None, diag). Подпись host-agnostic и остаётся валидной
-    при форвардинге Воркером; пересчитывается на каждой попытке (recvWindow).
+    """Bybit v5 UTA wallet-balance с DIAGNOSTIC LOCK для прокси.
+    При установленном BYBIT_PROXY_URL ошибка воркера имеет приоритет над ошибками
+    прямых эндпоинтов — HUD показывает именно причину отказа прокси.
     """
     key, secret = _bybit_credentials()
     if not key or not secret:
         return None, BYBIT_DIAG_NOKEYS
     qs = "accountType=UNIFIED"
-    diag = BYBIT_DIAG_NONE
+    proxy_endpoint = bybit_proxy_url()
+    proxy_err = None
+    direct_err = None
     for base_url in get_bybit_endpoints():
         label = bybit_host_label(base_url)
+        is_proxy = bool(proxy_endpoint and str(base_url).rstrip("/") == proxy_endpoint)
         ts = str(int(time.time() * 1000))
         payload = ts + key + BYBIT_RECV_WINDOW + qs
         try:
@@ -1258,23 +1373,43 @@ def _bybit_wallet_probe():
             r = requests.get(f"{base_url}/v5/account/wallet-balance?{qs}",
                              headers=headers, timeout=BYBIT_HTTP_TIMEOUT)
             if r.status_code != 200:
-                diag = f"HTTP {r.status_code} ({label})"
+                msg = f"HTTP {r.status_code} ({label})"
+                if is_proxy:
+                    proxy_err = msg
+                elif direct_err is None:
+                    direct_err = msg
                 continue
             try:
                 res = r.json()
             except Exception:
-                diag = f"HTTP 200 non-JSON ({label})"
+                msg = f"HTTP 200 non-JSON ({label})"
+                if is_proxy:
+                    proxy_err = msg
+                elif direct_err is None:
+                    direct_err = msg
                 continue
             if not isinstance(res, dict):
-                diag = f"malformed payload ({label})"
+                msg = f"malformed payload ({label})"
+                if is_proxy:
+                    proxy_err = msg
+                elif direct_err is None:
+                    direct_err = msg
                 continue
             rc = res.get("retCode")
             if rc != 0:
-                diag = f"[{rc}] {res.get('retMsg')}"
+                msg = f"[{rc}] {res.get('retMsg')}"
+                if is_proxy:
+                    proxy_err = msg
+                elif direct_err is None:
+                    direct_err = msg
                 continue
             lst = (res.get("result") or {}).get("list") or []
             if not lst:
-                diag = f"empty result ({label})"
+                msg = f"empty result ({label})"
+                if is_proxy:
+                    proxy_err = msg
+                elif direct_err is None:
+                    direct_err = msg
                 continue
             acc = lst[0] or {}
 
@@ -1294,24 +1429,27 @@ def _bybit_wallet_probe():
                 "gateway": gateway,
             }, BYBIT_DIAG_OK
         except Exception as e:
-            diag = safe_err(e)
+            msg = safe_err(e)
+            if is_proxy:
+                proxy_err = msg
+            elif direct_err is None:
+                direct_err = msg
             continue
-    return None, diag
+    # Приоритет: ошибка прокси > прямая ошибка > —
+    return None, (proxy_err or direct_err or BYBIT_DIAG_NONE)
 
 
 def fetch_bybit_wallet():
-    """НЕкэшированная обёртка: фиксирует точный диагноз в session_state при каждом прогоне."""
     w, diag = _bybit_wallet_probe()
     st.session_state["bybit_diag_err"] = diag
     return w
 
 
 class TDError(Exception):
-    """Ошибка страницы Twelve Data: исключения не кэшируются."""
+    pass
 
 
 def _td_request(sym, base_int, end_date=None):
-    """Стандартный контракт фидера: (DataFrame, err)."""
     params = {"symbol": sym, "interval": base_int, "apikey": API_KEY, "outputsize": TD_PAGE_SIZE, "timezone": "UTC"}
     if end_date:
         params["end_date"] = end_date
@@ -1349,8 +1487,6 @@ def _next_monday(ts):
 
 @st.cache_data(ttl=60, show_spinner=False)
 def _resolve_feed(asset_key, interval):
-    """Сетевой резолвер: (df, err, source). Кэшируется дорогая часть.
-    Bybit-ветка вызывает приватный probe, чтобы не писать session_state внутри кэша."""
     route = ASSET_ROUTER[asset_key]
     if is_bybit_asset(route):
         base_tf = BYBIT_BASE_TF.get(interval, interval)
@@ -1395,9 +1531,6 @@ def _resolve_feed(asset_key, interval):
 
 
 def fetch_smart_data(asset_key, interval, track=True):
-    """ПУБЛИЧНЫЙ фидер: строго 2-кортеж (DataFrame, err).
-    Фиксирует источник и активный шлюз в session_state при каждом прогоне.
-    track=False используется для HTF-запроса, чтобы не перебивать бейдж основного холста."""
     df, err, source = _resolve_feed(asset_key, interval)
     if track:
         st.session_state["data_feed_source"] = source
@@ -1410,7 +1543,6 @@ def fetch_smart_data(asset_key, interval, track=True):
 
 @st.cache_data(ttl=4, show_spinner=False)
 def fetch_account_telemetry():
-    """Последняя строка public.account_telemetry (Supabase PostgREST). Тихий отказ -> None."""
     try:
         url = st.secrets.get("SUPABASE_URL", "")
         key = st.secrets.get("SUPABASE_KEY", "")
@@ -1436,7 +1568,6 @@ def fetch_account_telemetry():
 
 
 def render_telemetry_hud():
-    """MT5 / Blue Guardian HUD. Возвращает (is_live, equity_or_None)."""
     row = fetch_account_telemetry()
     if row is None:
         html = (
@@ -1470,9 +1601,9 @@ def render_telemetry_hud():
     if dd_today >= cap:
         dd_color = "#9a5252"
     elif dd_today >= cap * 0.7:
-        dd_color = ACCENT_MUTED
+        dd_color = "#a88a45"
     else:
-        dd_color = MAJOR_COLOR
+        dd_color = "#3f7d5c"
 
     cls = "telemetry-live" if is_live else "telemetry-offline"
     dot_label = t("telemetry_live") if is_live else t("telemetry_offline", m=int(age_sec // 60))
@@ -1497,9 +1628,6 @@ def render_telemetry_hud():
 
 
 def render_bybit_hud():
-    """Bybit UTA HUD. Возвращает (is_live, equity_or_None).
-    При отказе печатает ТОЧНУЮ причину из st.session_state['bybit_diag_err'].
-    Нулевое эквити — валидное LIVE-состояние: привязка депозита не выполняется."""
     w = fetch_bybit_wallet()
     if w is None:
         key, secret = _bybit_credentials()
@@ -1525,7 +1653,7 @@ def render_bybit_hud():
     stamp = ts.strftime("%Y-%m-%d %H:%M:%S UTC") if isinstance(ts, pd.Timestamp) else "—"
     gw = str(w.get("gateway", ""))
     foot = f"{stamp} · {gw}" if gw else stamp
-    eq_color = MAJOR_COLOR if eq > 0.0 else MINOR_COLOR
+    eq_color = "#3f7d5c" if eq > 0.0 else "#a88a45"
 
     html = (
         "<div class='telemetry-hud telemetry-live'>"
@@ -1543,8 +1671,6 @@ def render_bybit_hud():
 
 
 def deposit_widget():
-    """Депозит: авто-привязка к живой телеметрии (MT5 equity / Bybit UTA equity).
-    Bybit equity == 0 -> ручной ввод активен (бумажные расчёты), с поясняющей подписью."""
     if bybit_mode:
         if wallet_live_flag and wallet_equity is not None and wallet_equity > 0.0:
             st.session_state["account_deposit"] = float(wallet_equity)
@@ -1582,7 +1708,6 @@ def add_indicators(df):
     out["senkou_b"] = out["raw_senkou_b"].shift(26)
     out["chikou"] = out["Close"].shift(-26)
 
-    # Фракталы с тай-брейком полярности: слева нестрого, справа строго.
     out["Minor_High"] = (
         (high >= high.shift(1)) & (high > high.shift(2)) &
         (high > high.shift(-1)) & (high > high.shift(-2))
@@ -1688,7 +1813,6 @@ def hosoda_targets(a, b, c):
 
 
 def trigger_plan(df, abc, mode, tf, is_fx, last_close):
-    """Единый план входа по пробою: уровень, окно, стоп и решение рынок/лимит/наблюдение."""
     if mode not in TRIG_WATCH_BARS or len(abc) != 3 or len(df) < 3:
         return None
     rA, rB, rC = abc
@@ -1766,7 +1890,7 @@ ALICE_LAG = {"minor": 0, "major": 0}
 ALICE_MAJOR_RADIUS = 10
 ALICE_SNAP_BARS = 2
 ALICE_MAJOR_TOL_ATR = 0.35
-ALICE_LIGHT_COLORS = {"green": "#3f7d5c", "yellow": ACCENT_MUTED, "red": "#9a5252"}
+ALICE_LIGHT_COLORS = {"green": "#3f7d5c", "yellow": "#a88a45", "red": "#9a5252"}
 ALICE_GREEN_EDGE, ALICE_GREEN_Z, ALICE_GREEN_UPLIFT = 0.05, 2.0, 0.03
 ALICE_RED_EDGE, ALICE_RED_Z = 0.10, 2.0
 ALICE_MIN_RESOLVED = 0.10
@@ -2169,6 +2293,7 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     x = np.arange(len(df_plot))
     o, h, l, c = (df_plot[k].to_numpy(dtype=float) for k in ("Open", "High", "Low", "Close"))
     fig_, ax = plt.subplots(figsize=(14, 7.5), dpi=130)
+    # Matplotlib-снапшот для Telegram: белый фон для читаемости в депеше.
     ax.vlines(x, l, h, color="#2c3e50", linewidth=0.8, zorder=3)
     ax.bar(x, np.abs(c - o), bottom=np.minimum(o, c), width=0.6, color=np.where(c >= o, "white", "#2c3e50"),
            edgecolor="#2c3e50", linewidth=0.8, zorder=4)
@@ -2193,14 +2318,14 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
                 letter, (p_["x"], y_anchor),
                 textcoords="offset points", xytext=(0, y_offset),
                 ha="center", va=va_mode, fontsize=10, fontweight="bold",
-                color=ACCENT_MUTED,
+                color="#a88a45",
                 bbox=dict(boxstyle="round,pad=0.1", facecolor="white", edgecolor="none", alpha=0.7),
             )
         if len(pts) >= 4:
             O_ = pts[3]
             if O_["x"] != A_["x"] or O_["y"] != A_["y"]:
                 ax.plot([O_["x"]], [O_["y"]], marker="D", markersize=7,
-                        color=ORIGIN_COLOR, linestyle="none", zorder=6, clip_on=True)
+                        color="#7f8c8d", linestyle="none", zorder=6, clip_on=True)
                 bar_row = df_plot.iloc[int(O_["x"])]
                 is_high = abs(O_["y"] - float(bar_row["High"])) <= abs(O_["y"] - float(bar_row["Low"]))
                 y_anchor = float(bar_row["High"]) if is_high else float(bar_row["Low"])
@@ -2210,7 +2335,7 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
                     "O", (O_["x"], y_anchor),
                     textcoords="offset points", xytext=(0, y_offset),
                     ha="center", va=va_mode, fontsize=10, fontweight="bold",
-                    color=ORIGIN_COLOR,
+                    color="#7f8c8d",
                     bbox=dict(boxstyle="round,pad=0.1", facecolor="white", edgecolor="none", alpha=0.7),
                 )
     colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
@@ -2251,7 +2376,7 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     cand_ = candidate_c_extreme(df_plot)
     if cand_:
         ax.plot([cand_["x"]], [cand_["y"]], marker="o", markersize=4,
-                color=CAND_C_COLOR, linestyle="none", zorder=6, clip_on=True)
+                color="#a88a45", linestyle="none", zorder=6, clip_on=True)
 
     ax.set_xlim(-1.5, x_right + max(2.0, 0.01 * (x_right + 1.0)))
     step = max(1, len(df_plot) // 10)
@@ -2300,7 +2425,6 @@ def send_telegram(token, chat_id, text, png):
 
 
 def refresh_button(key):
-    """Иконка ↻: чистит кэши котировок и телеметрии, точки и цели сохраняет."""
     if st.button(t("refresh"), key=key, help=t("refresh_help")):
         _resolve_feed.clear()
         fetch_yahoo.clear()
@@ -2336,7 +2460,7 @@ st.session_state.setdefault("data_feed_source", FEED_NONE)
 st.session_state.setdefault("bybit_diag_err", BYBIT_DIAG_NONE)
 st.session_state.setdefault("bybit_active_gw", BYBIT_DIAG_NONE)
 
-# --- Контекст телеметрии: выбирается в сайдбаре по типу активного инструмента ---
+# --- Контекст телеметрии ---
 telemetry_live_flag = False
 telemetry_live_equity = None
 bybit_mode = False
@@ -2364,7 +2488,6 @@ with st.sidebar:
     count_weekend = st.checkbox(t("raw"), help=t("raw_help"), key="w_raw")
     drop_clearing = st.checkbox(t("clearing"), disabled=count_weekend, help=t("clearing_help"), key="w_clear")
 
-    # --- КОНТЕКСТНЫЙ HUD: Forex/Индекс -> MT5 (Supabase); Крипта -> Bybit UTA ---
     if app_mode == "terminal":
         st.markdown("---")
         _sym_key = st.session_state.get("w_symbol", list(ASSET_ROUTER.keys())[0])
@@ -2625,8 +2748,13 @@ elif app_mode == "terminal":
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
             x=df_plot["x_idx"], open=df_plot["Open"], high=df_plot["High"], low=df_plot["Low"], close=df_plot["Close"],
-            increasing_line_color="#2c3e50", increasing_fillcolor="white", increasing_line_width=1,
-            decreasing_line_color="#2c3e50", decreasing_fillcolor="#2c3e50", decreasing_line_width=1, name=t("chart_price"),
+            increasing_line_color=CLR_CANDLE_EDGE,
+            increasing_fillcolor=CLR_CANDLE_UP,
+            increasing_line_width=1,
+            decreasing_line_color=CLR_CANDLE_EDGE,
+            decreasing_fillcolor=CLR_CANDLE_DN,
+            decreasing_line_width=1,
+            name=t("chart_price"),
         ))
 
         last_close = float(df_plot["Close"].iloc[-1])
@@ -2647,29 +2775,31 @@ elif app_mode == "terminal":
 
         minor_high = df_plot["Minor_High"].to_numpy(dtype=bool) & ~major_high_mask
         minor_low = df_plot["Minor_Low"].to_numpy(dtype=bool) & ~major_low_mask
-        fig.add_trace(marker_trace(minor_high, "High", "High", 0.2, UIP["mark_minor"], MINOR_COLOR, t("chart_minor_high"), "minor"))
-        fig.add_trace(marker_trace(minor_low, "Low", "Low", 0.2, UIP["mark_minor"], MINOR_COLOR, t("chart_minor_low"), "minor"))
-        fig.add_trace(marker_trace(major_high_mask, "High", "High", 0.5, UIP["mark_major"], MAJOR_COLOR, t("chart_major_high"), "major"))
-        fig.add_trace(marker_trace(major_low_mask, "Low", "Low", 0.5, UIP["mark_major"], MAJOR_COLOR, t("chart_major_low"), "major"))
+        fig.add_trace(marker_trace(minor_high, "High", "High", 0.2, UIP["mark_minor"], CLR_MINOR, t("chart_minor_high"), "minor"))
+        fig.add_trace(marker_trace(minor_low, "Low", "Low", 0.2, UIP["mark_minor"], CLR_MINOR, t("chart_minor_low"), "minor"))
+        fig.add_trace(marker_trace(major_high_mask, "High", "High", 0.5, UIP["mark_major"], CLR_MAJOR, t("chart_major_high"), "major"))
+        fig.add_trace(marker_trace(major_low_mask, "Low", "Low", 0.5, UIP["mark_major"], CLR_MAJOR, t("chart_major_low"), "major"))
 
         fig.add_trace(go.Scatter(
             x=[None], y=[None], mode="markers",
-            marker=dict(size=UIP["mark_minor"], color=MINOR_COLOR),
+            marker=dict(size=UIP["mark_minor"], color=CLR_MINOR),
             name=t("chart_minor_group"), legendgroup="minor", showlegend=True, hoverinfo="skip",
         ))
         fig.add_trace(go.Scatter(
             x=[None], y=[None], mode="markers",
-            marker=dict(size=UIP["mark_major"], color=MAJOR_COLOR),
+            marker=dict(size=UIP["mark_major"], color=CLR_MAJOR),
             name=t("chart_major_group"), legendgroup="major", showlegend=True, hoverinfo="skip",
         ))
 
-        fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["tenkan"], line=dict(color="#2980b9", width=1.5), name="Tenkan-sen"))
-        fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["kijun"], line=dict(color="#e74c3c", width=2), name="Kijun-sen"))
-        fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["chikou"], line=dict(color="#1e8449", width=1.2), name="Chikou Span"))
+        fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["tenkan"], line=dict(color=CLR_TENKAN, width=1.5), name="Tenkan-sen"))
+        fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["kijun"], line=dict(color=CLR_KIJUN, width=2), name="Kijun-sen"))
+        fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["chikou"], line=dict(color=CLR_CHIKOU, width=1.2), name="Chikou Span"))
 
         x_cloud = np.arange(len(df_plot)) + 26
         sa, sb = df_plot["raw_senkou_a"].to_numpy(dtype=float), df_plot["raw_senkou_b"].to_numpy(dtype=float)
-        fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", fill="toself", fillcolor="rgba(128,128,128,0.3)", line=dict(width=0), name=t("chart_kumo"), legendgroup="cloud", showlegend=True, hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", fill="toself",
+                                 fillcolor="rgba(128,128,128,0.25)", line=dict(width=0),
+                                 name=t("chart_kumo"), legendgroup="cloud", showlegend=True, hoverinfo="skip"))
 
         i, n = 0, len(sa)
         while i < n:
@@ -2684,8 +2814,9 @@ elif app_mode == "terminal":
             if end - i >= 2:
                 xs = np.concatenate([x_cloud[i:end], x_cloud[i:end][::-1]])
                 ys = np.concatenate([sa[i:end], sb[i:end][::-1]])
-                color = "rgba(46, 204, 113, 0.35)" if is_up else "rgba(231, 76, 60, 0.28)"
-                fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", fill="toself", fillcolor=color, line=dict(width=0), showlegend=False, legendgroup="cloud", hoverinfo="skip"))
+                color = CLR_KUMO_UP if is_up else CLR_KUMO_DN
+                fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", fill="toself", fillcolor=color,
+                                         line=dict(width=0), showlegend=False, legendgroup="cloud", hoverinfo="skip"))
             i = j
 
         pts = []
@@ -2704,9 +2835,11 @@ elif app_mode == "terminal":
             A, B, C = pts[:3]
             tg = hosoda_targets(A["y"], B["y"], C["y"])
             V, N, E, NT = tg["V"], tg["N"], tg["E"], tg["NT"]
-            colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
+            colors = {"V": "#f39c12", "N": "#3f7d5c", "E": "#9a5252", "NT": "#7f8c8d"}
             for name, val in {"V": V, "N": N, "E": E, "NT": NT}.items():
-                fig.add_hline(y=val, line_dash="dash", line_color=colors[name], annotation_text=f"{name} {fmt_price(val)}", annotation_position="right", annotation_font_size=UIP["ann_font"], annotation_font_color=colors[name])
+                fig.add_hline(y=val, line_dash="dash", line_color=colors[name],
+                              annotation_text=f"{name} {fmt_price(val)}", annotation_position="right",
+                              annotation_font_size=UIP["ann_font"], annotation_font_color=colors[name])
             time_ab, time_ac = abs(B["x"] - A["x"]), abs(C["x"] - A["x"])
             clock = _forecast_clock(df_plot, tf_name, is_fx)
             x_view_right = float(max(len(df_plot) - 1, C["x"] + TIME_AXIS_FORWARD_BARS))
@@ -2715,7 +2848,7 @@ elif app_mode == "terminal":
                 fig.add_annotation(
                     x=x, y=y, xref="x", yref="paper", text=text, textangle=-90, showarrow=False,
                     xanchor="center", yanchor="middle", font=dict(size=UIP["vlabel_font"], color=color),
-                    bgcolor="rgba(255,255,255,0.75)", borderpad=1,
+                    bgcolor=CLR_LABEL_BG, borderpad=1,
                 )
 
             def time_line(x_pos, base, color, dash, y_zone, hover_head, opacity=1.0):
@@ -2725,8 +2858,8 @@ elif app_mode == "terminal":
                 tt_x.append(x_pos)
                 tt_text.append(hover_head + f"<br>{ts_:%Y-%m-%d %H:%M}" + (f" ({t('hover_forecast')})" if fc_ else ""))
 
-            for x_pos, nm, n_bars, col in ((C["x"] + time_ab, "AB", time_ab, "blue"),
-                                           (C["x"] + time_ac, "AC", time_ac, "teal")):
+            for x_pos, nm, n_bars, col in ((C["x"] + time_ab, "AB", time_ab, "#3f7d5c"),
+                                           (C["x"] + time_ac, "AC", time_ac, "#2980b9")):
                 time_line(x_pos, f"{nm} {int(n_bars)}", col, "dot", 0.30,
                           t("hover_taiyosuu", name=nm, n=int(n_bars)))
             origin_x = pts[3]["x"] if len(pts) >= 4 else pts[0]["x"]
@@ -2736,15 +2869,19 @@ elif app_mode == "terminal":
                     continue
                 time_line(xk, str(k), "#7f8c8d", "dash", 0.78, t("hover_kihon", k=k), opacity=0.35)
 
-            fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]], mode="lines+markers", line=dict(color="#f39c12", width=2), marker=dict(size=UIP["wave_mark"]), name=t("chart_wave"), hovertemplate=f"%{{y:{pfmt}}}<extra>{t('chart_wave')}</extra>"))
+            fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]],
+                                     mode="lines+markers", line=dict(color=CLR_WAVE, width=2),
+                                     marker=dict(size=UIP["wave_mark"]),
+                                     name=t("chart_wave"),
+                                     hovertemplate=f"%{{y:{pfmt}}}<extra>{t('chart_wave')}</extra>"))
 
             for letter, P_ in zip(("A", "B", "C"), pts[:3]):
                 ya, ys, yanch, _off, _va = polar_anchor(df_plot, P_["x"], P_["y"])
                 fig.add_annotation(
                     x=P_["x"], y=ya, text=letter, showarrow=False,
                     yshift=ys, yanchor=yanch,
-                    font=dict(size=11, color=WAVE_LABEL_COLOR, family="sans-serif"),
-                    bgcolor=LABEL_BG, borderpad=1,
+                    font=dict(size=11, color=CLR_WAVE, family="sans-serif"),
+                    bgcolor=CLR_LABEL_BG, borderpad=1,
                 )
 
             if len(pts) >= 4:
@@ -2752,7 +2889,7 @@ elif app_mode == "terminal":
                 if O_["x"] != A["x"] or O_["y"] != A["y"]:
                     fig.add_trace(go.Scatter(
                         x=[O_["x"]], y=[O_["y"]], mode="markers",
-                        marker=dict(size=7, color=ORIGIN_COLOR, symbol="diamond"),
+                        marker=dict(size=7, color=CLR_ORIGIN, symbol="diamond"),
                         name=t("chart_origin"),
                         customdata=[O_["y"]],
                         hovertemplate=t("origin_hover"),
@@ -2762,8 +2899,8 @@ elif app_mode == "terminal":
                     fig.add_annotation(
                         x=O_["x"], y=ya, text="O", showarrow=False,
                         yshift=ys, yanchor=yanch,
-                        font=dict(size=11, color=ORIGIN_COLOR),
-                        bgcolor=LABEL_BG, borderpad=1,
+                        font=dict(size=11, color=CLR_ORIGIN),
+                        bgcolor=CLR_LABEL_BG, borderpad=1,
                     )
 
         if tt_x:
@@ -2776,20 +2913,22 @@ elif app_mode == "terminal":
         if cand:
             fig.add_trace(go.Scatter(
                 x=[cand["x"]], y=[cand["y"]], mode="markers",
-                marker=dict(size=UIP["mark_minor"], color=CAND_C_COLOR),
+                marker=dict(size=UIP["mark_minor"], color=CLR_CAND_C),
                 name=cand_trace_name(), showlegend=True,
                 customdata=[cand["price"]],
                 hovertemplate=t("cand_hover"),
-                hoverlabel=dict(bgcolor=CAND_HOVER_BG, bordercolor=CAND_HOVER_BORDER,
-                                font=dict(size=11, color=CAND_HOVER_FONT), namelength=0),
+                hoverlabel=dict(bgcolor=CLR_LABEL_BG, bordercolor=CLR_CAND_C,
+                                font=dict(size=11, color=CLR_CAND_C), namelength=0),
             ))
 
         tick_step = max(1, len(df_plot) // UIP["tick_div"])
         time_fmt = axis_time_fmt(tf_name) if MOBILE else "%Y-%m-%d %H:%M"
-        yaxis = dict(side="right", tickformat=tick_fmt(last_close), showgrid=True, gridcolor="#f0f0f0", fixedrange=False)
+        # Адаптивные оси: прозрачный фон, нейтральная сетка. Текст наследует тему.
+        yaxis = dict(side="right", tickformat=tick_fmt(last_close), showgrid=True,
+                     gridcolor=CLR_GRID, fixedrange=False)
         xaxis = dict(tickmode="array", tickvals=df_plot["x_idx"].to_numpy()[::tick_step],
-                     ticktext=df_plot.index.strftime(time_fmt)[::tick_step], showgrid=True, gridcolor="#f0f0f0",
-                     tickangle=UIP["tick_angle"], fixedrange=False)
+                     ticktext=df_plot.index.strftime(time_fmt)[::tick_step], showgrid=True,
+                     gridcolor=CLR_GRID, tickangle=UIP["tick_angle"], fixedrange=False)
         if len(pts) >= 3:
             xaxis["range"] = [-0.5, x_view_right + 1.5]
         if UIP["y_font"]:
@@ -2799,13 +2938,13 @@ elif app_mode == "terminal":
 
         fig.update_layout(
             xaxis_rangeslider_visible=False, height=UIP["height"], template="plotly_white",
-            plot_bgcolor="#ffffff", paper_bgcolor="#ffffff",
+            plot_bgcolor="rgba(0,0,0,0)",   # прозрачный — наследует тему Streamlit
+            paper_bgcolor="rgba(0,0,0,0)",  # прозрачный — наследует тему Streamlit
             margin=UIP["margin"],
             yaxis=yaxis, xaxis=xaxis,
             hovermode="closest", clickmode="event+select", dragmode="pan",
-            font=dict(color="#2c3e50"),
             legend=UIP["legend"],
-            modebar=dict(bgcolor="rgba(255,255,255,0.9)", color="#2c3e50", activecolor="#e74c3c"),
+            modebar=dict(bgcolor="rgba(0,0,0,0)", color=CLR_TEXT_NEUTRAL, activecolor="#e74c3c"),
         )
 
         with st.container(key="chart_shell"):
@@ -2834,8 +2973,6 @@ elif app_mode == "terminal":
         _htf_memo = {}
 
         def htf_info():
-            """HTF-ингестия защищена: сбой провайдера на старшем ТФ даёт нейтральный
-            признак, а не падение холста или «Алисы»."""
             if "v" not in _htf_memo:
                 htf_tf = htf_for(asset_name, tf_name)
                 try:
