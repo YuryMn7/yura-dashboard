@@ -1,73 +1,43 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.95. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v1.97. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 
+CANDLESTICK CONTRAST HARDENING & CANVAS BOUNDARY CLEANSING (v1.97):
+  Палитра свечей переведена на матовые институциональные тона TradingView:
+  растущая свеча — мягкий teal (#26A69A), падающая — мягкий coral (#E55353).
+  Устранены нечитаемые чёрные силуэты на тёмной теме и пересвет на светлой.
+  Белый вертикальный артефакт оси на левой границе холста (x=0) устранён
+  явным отключением zeroline и showline в xaxis/yaxis и в fig.update_layout.
+
 THEME-ADAPTIVE UI (v1.95): терминал НЕ форсирует тёмную тему. Холст Plotly прозрачный
-(paper_bgcolor / plot_bgcolor = rgba(0,0,0,0)) и наследует активную тему Streamlit
-(Settings → Light / Dark / System). Сетка и подписи адаптивные (rgba 128,128,128).
-Все CSS-компоненты (HUD, risk-card, pts-bar pill, feed badge, exec/teleport кнопки)
-привязаны к CSS-переменным Streamlit: --secondary-background-color, --text-color,
---primary-color, --background-color. Светлая и тёмная темы работают из коробки,
-переключение мгновенное — без перезагрузки.
+(paper_bgcolor / plot_bgcolor = rgba(0,0,0,0)) и наследует активную тему Streamlit.
+Все CSS-компоненты привязаны к CSS-переменным Streamlit.
 
 BYBIT PROXY DIAGNOSTIC LOCK (v1.95): если BYBIT_PROXY_URL установлен и воркер
-вернул ошибку, она сохраняется как приоритетный диагноз и не перезаписывается
-при последующем падении на прямые эндпоинты (api.bybit.com … api.bytick.com).
-HUD печатает именно ошибку прокси: «OFFLINE — HTTP 403 (proxy)».
+вернул ошибку, она сохраняется как приоритетный диагноз.
 
 CRITICAL BUGFIX (v1.85): контракт всех фидеров унифицирован до 2-кортежа (DataFrame, err).
-fetch_bybit_kline() возвращает строго 2 значения; провенанс шлюза — в session_state.
-htf_info() обёрнут в try/except: недоступность старшего ТФ даёт нейтральный HTF-признак.
 
 CLOUDFLARE EDGE REVERSE PROXY (v1.84): опциональный секрет BYBIT_PROXY_URL.
 
 REGIONAL EEA INGESTION + EXPLICIT DIAGNOSTICS (v1.83):
   Аккаунты EEA обслуживаются юрисдикцией Bybit EU (api.bybit.eu).
-  Прямой обход: api.bybit.com -> api.bybit.eu -> api.bybit.nl -> api.bytick.com.
-  BYBIT_RECV_WINDOW = 10000 мс — дрейф часов в облачных контейнерах.
 
-DATA PROVENANCE (v1.82): _resolve_feed (cache ttl 60) -> (df, err, source);
-  некэшированная обёртка fetch_smart_data фиксирует source в session_state.
-  Бейдж «ПОТОК: …» под графиком: slate для основного канала, янтарь для Fallback.
+DATA PROVENANCE (v1.82): _resolve_feed (cache ttl 60) -> (df, err, source).
 
-GEO-RESILIENCE (v1.81): проверка r.status_code == 200 ДО r.json(), браузерный User-Agent,
-накопление last_err, бесшовный fallback на Yahoo в fetch_smart_data и fetch_radar.
+GEO-RESILIENCE (v1.81): проверка r.status_code == 200 ДО r.json(), браузерный User-Agent.
 
 BYBIT API v5 (PHASE 1 — MARKET DATA + UTA TELEMETRY):
   /v5/market/kline (category=linear) для BTCUSDT / ETHUSDT / SOLUSDT — непрерывный 24/7 ряд.
-  /v5/account/wallet-balance?accountType=UNIFIED (HMAC-SHA256); подпись пересчитывается
-  на каждой попытке, чтобы не выйти за recvWindow.
+  /v5/account/wallet-balance?accountType=UNIFIED (HMAC-SHA256).
 
-SWING EXTREMUM HARDENING (v1.70): тай-брейк полярности фракталов — слева нестрого (>= / <=),
-справа строго (> / <). Абсолютные High/Low видимого окна принудительно получают маркер
-главного фрактала.
-
-TAP-TO-RESET HUD (v1.70): нижняя статус-пилюля — нативная кнопка pts_bar_btn.
-
-ANNOTATION DYNAMIC POLARITY (v1.62): подписи A/B/C/O якорятся над High или под Low свечи.
+SWING EXTREMUM HARDENING (v1.70): тай-брейк полярности фракталов.
 
 4-POINT HOSODA TIME ARCHITECTURE:
   A, B, C: геометрия волны, цели V/N/E/NT, коридор Taiyosuu, AI Alice, риск и лот.
   O (Origin/Anchor): опциональный исток цикла Kihon Suu.
 
-OUTBOUND TELEMETRY (MT5 ➔ Supabase ➔ Streamlit):
-  Поллер fetch_account_telemetry() (ttl 4 с) читает public.account_telemetry.
-
-ЛЕГЕНДА-ХАД: группы minor / major, layout.legend.groupclick="togglegroup".
-
-КНОПКА ОБНОВЛЕНИЯ ↻: оверлей в верхней полосе графика слева внутри st.container(key="chart_shell").
-
-РАДАР: тренд/Облако/линии/Чикоу — по закрытому бару; зона засады — по активной свече
-с порогом 0.3*ATR. ONE-CLICK TELEPORT: выбор строки в таблице Радара -> перенос в Терминал.
-
-ПРЕДВАРИТЕЛЬНАЯ C: маркер размером с малый фрактал, виден ДО расстановки A-B-C.
-
-ГОРИЗОНТ ПРОЕКЦИИ: +76 баров от точки C (канон Какан).
-
-ВХОДЫ ПО ПРОБОЮ (trigger_plan): «Хосода: разворот C» — уровень High/Low свечи C, окно 3 свечи;
-«Пробой точки B» — уровень цены B, окно 17 свечей, стоп за ОБЛАКОМ ± 0.2*ATR.
-
-АЛИСА — ZERO-LAG: ALICE_LAG = 0, вход на баре C, все признаки причинны (бары <= C).
+АЛИСА — ZERO-LAG: ALICE_LAG = 0, вход на баре C.
 
 РИСК ПОД BLUE GUARDIAN: дефолт 0.5 % на сделку, шаг ввода 0.1 %.
 ЛОТ: pip_value_usd, округление ВНИЗ до шага 0.01.
@@ -195,9 +165,13 @@ CLR_GRID = "rgba(128, 128, 128, 0.15)"
 CLR_TEXT_NEUTRAL = "rgba(128, 128, 128, 0.85)"
 CLR_TEXT_STRONG = "rgba(100, 100, 100, 1.0)"
 CLR_LABEL_BG = "rgba(128, 128, 128, 0.18)"
-CLR_CANDLE_UP = "rgba(100, 100, 100, 0.0)"     # прозрачное тело — фон темы читается через свечу
-CLR_CANDLE_DN = "rgba(40, 40, 40, 0.85)"      # тёмное тело — контрастно на светлом, видно на тёмном
-CLR_CANDLE_EDGE = "rgba(40, 40, 40, 0.85)"     # контур обоих свечей
+
+# Матовая институциональная палитра свечей (TradingView Dark / Light compatible)
+CLR_CANDLE_UP_BODY = "#26A69A"       # Soft matte teal / emerald
+CLR_CANDLE_UP_EDGE = "#26A69A"
+CLR_CANDLE_DN_BODY = "#E55353"       # Soft matte coral / terracotta
+CLR_CANDLE_DN_EDGE = "#E55353"
+
 CLR_TENKAN = "rgba(41, 128, 185, 0.95)"
 CLR_KIJUN = "rgba(231, 76, 60, 0.95)"
 CLR_CHIKOU = "rgba(30, 132, 73, 0.95)"
@@ -583,7 +557,6 @@ def feed_source():
 
 def feed_badge_html():
     src = feed_source()
-    # Адаптивный цвет значения: янтарь для Fallback, нейтральный серый для остальных
     src_color = "#a88a45" if "Fallback" in src else "rgba(100,100,100,1.0)"
     return (f"<div class='feed-badge'>{t('feed_label')} "
             f"<b style='color:{src_color};'>{src}</b></div>")
@@ -721,7 +694,6 @@ def fmt_points(v, size):
 
 def risk_card_html(head, rows, accent):
     body = "".join(f"<tr><td class='rl'>{k}</td><td class='rv'>{v}</td></tr>" for k, v in rows)
-    # Accent применяется к левой полосе; сама карточка — адаптивная через CSS.
     return (f"<div class='risk-card' style='border-left-color:{accent}'>"
             f"<div class='risk-hd'>{head}</div><table class='risk-tb'>{body}</table></div>")
 
@@ -822,8 +794,6 @@ def enforce_visible_extremes(df_plot):
 
 
 def inject_css(mobile):
-    # Адаптивные CSS-токены: привязка к теме Streamlit через CSS-переменные.
-    # Работает на Light / Dark / System без перезагрузки.
     base_css = """
     .block-container { padding-top: 4rem; padding-bottom: 2rem; max-width: 100%; }
     .app-title {
@@ -836,7 +806,6 @@ def inject_css(mobile):
     }
     .stPlotlyChart .modebar { opacity: 1; }
 
-    /* --- Feed badge (адаптивный) --- */
     .feed-badge {
         font-size: 0.75rem;
         color: var(--text-color);
@@ -850,7 +819,6 @@ def inject_css(mobile):
     }
     .feed-badge b { font-weight: 600; color: var(--text-color); opacity: 1; }
 
-    /* --- Refresh button (в оверлее графика) --- */
     .st-key-chart_shell { position: relative; }
     .st-key-refresh_term { display: flex; justify-content: flex-end; margin: 0 0 0.25rem 0; }
     .st-key-refresh_term button {
@@ -881,7 +849,6 @@ def inject_css(mobile):
     }
     .st-key-chart_shell .st-key-refresh_term button { pointer-events: auto; }
 
-    /* --- Points status bar / pill (адаптивный, нижний HUD) --- */
     .st-key-pts_bar_btn { margin: 2px 0 4px 0; }
     .st-key-pts_bar_btn button {
         width: 100%; height: 28px; min-height: 28px !important;
@@ -907,7 +874,6 @@ def inject_css(mobile):
     }
     .st-key-pts_bar_btn button:active { background: var(--secondary-background-color); }
 
-    /* --- Teleport & Execute buttons (адаптивные, используют --primary-color) --- */
     .st-key-teleport_btn { margin: 0.4rem 0 0.2rem 0; }
     .st-key-teleport_btn button {
         width: 100%; min-height: 44px; padding: 0.5rem 1rem !important;
@@ -951,7 +917,6 @@ def inject_css(mobile):
         opacity: 0.6;
     }
 
-    /* --- Risk card (адаптивная) --- */
     .risk-card {
         border: 1px solid rgba(128, 128, 128, 0.25);
         border-left: 3px solid var(--text-color);
@@ -984,7 +949,6 @@ def inject_css(mobile):
     }
     .lot-line b { font-size: 1.08rem; letter-spacing: 0.01em; }
 
-    /* --- Telemetry HUD (адаптивный) --- */
     .telemetry-hud {
         background: var(--secondary-background-color);
         border: 1px solid rgba(128, 128, 128, 0.25);
@@ -1222,10 +1186,6 @@ def bybit_host_label(base_url):
 
 @st.cache_data(ttl=30, show_spinner=False)
 def _bybit_kline_probe(sym, interval, category="linear"):
-    """Bybit v5 public Kline с DIAGNOSTIC LOCK для прокси.
-    Если BYBIT_PROXY_URL задан и воркер вернул ошибку, она сохраняется как приоритетный
-    диагноз и не перезаписывается последующими прямыми эндпоинтами.
-    """
     params = {"category": category, "symbol": sym, "interval": interval, "limit": BYBIT_KLINE_LIMIT}
     headers = {"User-Agent": BYBIT_UA, "Accept": "application/json"}
     direct_err = None
@@ -1240,7 +1200,7 @@ def _bybit_kline_probe(sym, interval, category="linear"):
             if r.status_code != 200:
                 err = E("bybit", detail=f"HTTP {r.status_code} ({label})")
                 if is_proxy:
-                    proxy_err = err  # DIAGNOSTIC LOCK: ошибка прокси — приоритет
+                    proxy_err = err
                 elif direct_err is None:
                     direct_err = err
                 continue
@@ -1312,7 +1272,6 @@ def _bybit_kline_probe(sym, interval, category="linear"):
                 direct_err = err
             continue
 
-    # Приоритет: прокси > прямой > общий no-data
     final_err = proxy_err or direct_err or E("bybit_nodata", detail=f"{sym} ({interval})")
     return pd.DataFrame(), final_err, ""
 
@@ -1340,10 +1299,6 @@ def _bybit_credentials():
 
 @st.cache_data(ttl=5, show_spinner=False)
 def _bybit_wallet_probe():
-    """Bybit v5 UTA wallet-balance с DIAGNOSTIC LOCK для прокси.
-    При установленном BYBIT_PROXY_URL ошибка воркера имеет приоритет над ошибками
-    прямых эндпоинтов — HUD показывает именно причину отказа прокси.
-    """
     key, secret = _bybit_credentials()
     if not key or not secret:
         return None, BYBIT_DIAG_NOKEYS
@@ -1435,7 +1390,6 @@ def _bybit_wallet_probe():
             elif direct_err is None:
                 direct_err = msg
             continue
-    # Приоритет: ошибка прокси > прямая ошибка > —
     return None, (proxy_err or direct_err or BYBIT_DIAG_NONE)
 
 
@@ -2293,7 +2247,6 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     x = np.arange(len(df_plot))
     o, h, l, c = (df_plot[k].to_numpy(dtype=float) for k in ("Open", "High", "Low", "Close"))
     fig_, ax = plt.subplots(figsize=(14, 7.5), dpi=130)
-    # Matplotlib-снапшот для Telegram: белый фон для читаемости в депеше.
     ax.vlines(x, l, h, color="#2c3e50", linewidth=0.8, zorder=3)
     ax.bar(x, np.abs(c - o), bottom=np.minimum(o, c), width=0.6, color=np.where(c >= o, "white", "#2c3e50"),
            edgecolor="#2c3e50", linewidth=0.8, zorder=4)
@@ -2460,7 +2413,6 @@ st.session_state.setdefault("data_feed_source", FEED_NONE)
 st.session_state.setdefault("bybit_diag_err", BYBIT_DIAG_NONE)
 st.session_state.setdefault("bybit_active_gw", BYBIT_DIAG_NONE)
 
-# --- Контекст телеметрии ---
 telemetry_live_flag = False
 telemetry_live_equity = None
 bybit_mode = False
@@ -2748,11 +2700,11 @@ elif app_mode == "terminal":
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
             x=df_plot["x_idx"], open=df_plot["Open"], high=df_plot["High"], low=df_plot["Low"], close=df_plot["Close"],
-            increasing_line_color=CLR_CANDLE_EDGE,
-            increasing_fillcolor=CLR_CANDLE_UP,
+            increasing_line_color=CLR_CANDLE_UP_EDGE,
+            increasing_fillcolor=CLR_CANDLE_UP_BODY,
             increasing_line_width=1,
-            decreasing_line_color=CLR_CANDLE_EDGE,
-            decreasing_fillcolor=CLR_CANDLE_DN,
+            decreasing_line_color=CLR_CANDLE_DN_EDGE,
+            decreasing_fillcolor=CLR_CANDLE_DN_BODY,
             decreasing_line_width=1,
             name=t("chart_price"),
         ))
@@ -2923,12 +2875,13 @@ elif app_mode == "terminal":
 
         tick_step = max(1, len(df_plot) // UIP["tick_div"])
         time_fmt = axis_time_fmt(tf_name) if MOBILE else "%Y-%m-%d %H:%M"
-        # Адаптивные оси: прозрачный фон, нейтральная сетка. Текст наследует тему.
+        # Адаптивные оси: прозрачный фон, нейтральная сетка, отсутствие артефактов осей.
         yaxis = dict(side="right", tickformat=tick_fmt(last_close), showgrid=True,
-                     gridcolor=CLR_GRID, fixedrange=False)
+                     gridcolor=CLR_GRID, fixedrange=False, zeroline=False, showline=False)
         xaxis = dict(tickmode="array", tickvals=df_plot["x_idx"].to_numpy()[::tick_step],
                      ticktext=df_plot.index.strftime(time_fmt)[::tick_step], showgrid=True,
-                     gridcolor=CLR_GRID, tickangle=UIP["tick_angle"], fixedrange=False)
+                     gridcolor=CLR_GRID, tickangle=UIP["tick_angle"], fixedrange=False,
+                     zeroline=False, showline=False)
         if len(pts) >= 3:
             xaxis["range"] = [-0.5, x_view_right + 1.5]
         if UIP["y_font"]:
@@ -2938,13 +2891,15 @@ elif app_mode == "terminal":
 
         fig.update_layout(
             xaxis_rangeslider_visible=False, height=UIP["height"], template="plotly_white",
-            plot_bgcolor="rgba(0,0,0,0)",   # прозрачный — наследует тему Streamlit
-            paper_bgcolor="rgba(0,0,0,0)",  # прозрачный — наследует тему Streamlit
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
             margin=UIP["margin"],
             yaxis=yaxis, xaxis=xaxis,
             hovermode="closest", clickmode="event+select", dragmode="pan",
             legend=UIP["legend"],
             modebar=dict(bgcolor="rgba(0,0,0,0)", color=CLR_TEXT_NEUTRAL, activecolor="#e74c3c"),
+            xaxis_zeroline=False,
+            yaxis_zeroline=False,
         )
 
         with st.container(key="chart_shell"):
