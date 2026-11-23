@@ -1,6 +1,17 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v2.01 (HOTFIX APPLIED). Стиль: strict institutional minimalist, zero-clutter.
+SPEC v2.02 (VISUAL ERGONOMICS & CONTRAST POLISH). Стиль: strict institutional minimalist, zero-clutter.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
+
+v2.02 (VISUAL ERGONOMICS & CONTRAST POLISH):
+  1. Адаптивный контраст осей и легенды: светлая тема — графит #2C3E50, тёмная — #A0A5B5
+     (Python-слой, корректный экспорт PNG) + CSS-оверлей xtick/ytick/legendtext через
+     var(--text-color) для смены темы на лету. Семантические цвета подписей V/N/E/NT,
+     A/B/C/O и временных целей НЕ переопределяются.
+  2. Lock opacity выбранных/невыбранных маркеров = 1.0 на всех scatter-трейсах:
+     клик по графику больше не гасит фракталы до 20 %. Candlestick не имеет
+     selected/unselected в plotly.py и в selection-затухании не участвует.
+  3. Динамическая точность лота в lot_line: max(2, round(-log10(active_step))) —
+     BTC 0.001 отображается как «0.001», а не «0.00».
 
 HOTFIX v2.01:
   1. MT5 'watch' больше не блокирует кнопку ордера — EA корректно получает карточку.
@@ -157,6 +168,7 @@ CLR_TEXT_STRONG = "rgba(100, 100, 100, 1.0)"
 CLR_LABEL_BG = "rgba(128, 128, 128, 0.18)"
 
 CLR_TEXT_AXIS = "#A0A5B5"
+CLR_TEXT_AXIS_LIGHT = "#2C3E50"
 CLR_TEXT_MUTED = "#787B86"
 
 CLR_CANDLE_UP_BODY = "#26A69A"
@@ -741,17 +753,26 @@ def detect_mobile_ua():
     return bool(re.search(r"Android|iPhone|iPod|Windows Phone|IEMobile|Mobile Safari", ua, re.I))
 
 
+def plotly_text_color():
+    """v2.02: graphite on light canvas, institutional grey on dark (export-safe)."""
+    try:
+        base = st.get_option("theme.base")
+    except Exception:
+        base = None
+    return CLR_TEXT_AXIS if base == "dark" else CLR_TEXT_AXIS_LIGHT
+
+
 def chart_ui(mobile):
     if mobile:
         return dict(height=560, margin=dict(l=8, r=58, t=48, b=64), tick_div=5, tick_angle=0,
                     tick_font=dict(size=9), y_font=dict(size=9),
                     legend=dict(orientation="h", yanchor="top", y=-0.20, xanchor="center", x=0.5,
-                                font=dict(color=CLR_TEXT_AXIS, size=8), groupclick="togglegroup"),
+                                font=dict(color=plotly_text_color(), size=8), groupclick="togglegroup"),
                     ann_font=8, vlabel_font=8, mark_minor=4, mark_major=8, wave_mark=7)
     return dict(height=750, margin=dict(l=20, r=110, t=40, b=120), tick_div=10, tick_angle=45,
                 tick_font=None, y_font=None,
                 legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5,
-                            font=dict(color=CLR_TEXT_AXIS, size=9), groupclick="togglegroup"),
+                            font=dict(color=plotly_text_color(), size=9), groupclick="togglegroup"),
                 ann_font=10, vlabel_font=9, mark_minor=5, mark_major=10, wave_mark=8)
 
 
@@ -819,6 +840,11 @@ def inject_css(mobile):
         white-space: normal;
     }
     .stPlotlyChart .modebar { opacity: 1; }
+
+    /* v2.02: adaptive axis/legend contrast, safe for runtime theme switch.
+       Semantic annotation colors (V/N/E/NT, A/B/C/O, time targets) are NOT overridden. */
+    .stPlotlyChart .xtick text, .stPlotlyChart .ytick text { fill: var(--text-color) !important; }
+    .stPlotlyChart .legendtext { fill: var(--text-color) !important; }
 
     .feed-badge {
         font-size: 0.75rem;
@@ -1002,17 +1028,16 @@ def inject_css(mobile):
         color: var(--text-color); opacity: 0.55; overflow-wrap: anywhere;
     }
     """
-
     mobile_rules = """
     .block-container { padding-top: 3.2rem !important; padding-left: 0.6rem !important;
-    padding-right: 0.6rem !important; padding-bottom: 3.4rem !important; }
+        padding-right: 0.6rem !important; padding-bottom: 3.4rem !important; }
     h1, h2, h3 { margin-top: 0.2rem !important; line-height: 1.25 !important; overflow-wrap: anywhere; }
     h2 { font-size: clamp(1.05rem, 4.5vw, 1.75rem) !important; }
     .modebar-btn { padding: 3px 5px !important; }
     .risk-tb td { font-size: 0.8rem; }
     .lot-line { font-size: 0.88rem; }
     .st-key-pts_bar_btn { position: fixed; left: 0.6rem; right: 0.6rem; bottom: 0.4rem;
-    z-index: 60; margin: 0 !important; pointer-events: auto !important; }
+        z-index: 60; margin: 0 !important; pointer-events: auto !important; }
     .st-key-pts_bar_btn button {
         background: var(--secondary-background-color);
         box-shadow: 0 -1px 6px rgba(0,0,0,0.10);
@@ -1021,7 +1046,6 @@ def inject_css(mobile):
     .st-key-chart_shell .st-key-refresh_term { top: 5px; left: 2px; }
     [data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }
     """
-
     css = f"""<style>
 {base_css}
 @media (max-width: 768px) {{
@@ -1136,19 +1160,19 @@ def prepare_ohlc(df_utc, tf, is_fx, raw, drop_clearing, server_choice):
     df = df_utc.copy()
     if tf in ("W1", "MN1", "MN3", "MN6", "MN24"):
         df.index = df.index.tz_localize(None)
-        if tf in RESAMPLE_RULE:
-            df = resample_ohlc(df, RESAMPLE_RULE[tf])
+    if tf in RESAMPLE_RULE:
+        df = resample_ohlc(df, RESAMPLE_RULE[tf])
     else:
         if filter_on:
             df = drop_weekend_ny(df)
         if not df.empty:
             df = to_server_time(df, server_choice)
-            if filter_on and drop_clearing:
-                df = drop_clearing_hour(df, server_choice)
-            if tf in RESAMPLE_RULE:
-                df = resample_ohlc(df, RESAMPLE_RULE[tf])
-            if tf == "D1" and filter_on:
-                df = glue_sunday(df)
+        if filter_on and drop_clearing:
+            df = drop_clearing_hour(df, server_choice)
+    if tf in RESAMPLE_RULE:
+        df = resample_ohlc(df, RESAMPLE_RULE[tf])
+    if tf == "D1" and filter_on:
+        df = glue_sunday(df)
     if not df.empty:
         df = df[~df.index.duplicated(keep="last")].sort_index()
     return df
@@ -1252,7 +1276,6 @@ def _bybit_kline_probe(sym, interval, category="linear"):
                 elif direct_err is None:
                     direct_err = err
                 continue
-
             recs = []
             for row in rows:
                 try:
@@ -1267,7 +1290,6 @@ def _bybit_kline_probe(sym, interval, category="linear"):
                 elif direct_err is None:
                     direct_err = err
                 continue
-
             df = pd.DataFrame(recs, columns=["ms", "Open", "High", "Low", "Close", "Volume"])
             df.index = pd.to_datetime(df["ms"], unit="ms", utc=True)
             df = df.drop(columns=["ms"])
@@ -1288,7 +1310,6 @@ def _bybit_kline_probe(sym, interval, category="linear"):
             elif direct_err is None:
                 direct_err = err
             continue
-
     final_err = proxy_err or direct_err or E("bybit_nodata", detail=f"{sym} ({interval})")
     return pd.DataFrame(), final_err, ""
 
@@ -1428,7 +1449,6 @@ def send_bybit_order(sym, side, order_type, qty, price, sl, tp, order_id):
     key, secret = _bybit_credentials()
     if not key or not secret:
         return False, "NO_KEYS", "Missing API credentials"
-        
     body = {
         "category": "linear",
         "symbol": sym,
@@ -1445,9 +1465,7 @@ def send_bybit_order(sym, side, order_type, qty, price, sl, tp, order_id):
     }
     if order_type == "Limit" and price is not None:
         body["price"] = str(price)
-        
     raw_json = json.dumps(body, separators=(',', ':'))
-    
     for base_url in get_bybit_endpoints():
         ts = str(int(time.time() * 1000))
         payload = ts + key + BYBIT_RECV_WINDOW + raw_json
@@ -1455,7 +1473,6 @@ def send_bybit_order(sym, side, order_type, qty, price, sl, tp, order_id):
             sign = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
         except Exception as e:
             return False, "SIGN_ERR", safe_err(e)
-            
         headers = {
             "User-Agent": BYBIT_UA,
             "Accept": "application/json",
@@ -1465,7 +1482,6 @@ def send_bybit_order(sym, side, order_type, qty, price, sl, tp, order_id):
             "X-BAPI-SIGN": sign,
             "Content-Type": "application/json",
         }
-        
         try:
             r = requests.post(f"{base_url}/v5/order/create", data=raw_json, headers=headers, timeout=BYBIT_HTTP_TIMEOUT)
             if r.status_code != 200:
@@ -1474,7 +1490,6 @@ def send_bybit_order(sym, side, order_type, qty, price, sl, tp, order_id):
                 res = r.json()
             except Exception:
                 continue
-            
             rc = res.get("retCode")
             if rc == 0:
                 return True, None, None
@@ -1482,7 +1497,6 @@ def send_bybit_order(sym, side, order_type, qty, price, sl, tp, order_id):
                 return False, str(rc), res.get("retMsg", "Unknown error")
         except Exception:
             continue
-            
     return False, "NETWORK_ERR", "No response from Bybit endpoints"
 
 
@@ -1545,7 +1559,6 @@ def _resolve_feed(asset_key, interval):
     if route["prov"] == "yahoo":
         df, err = fetch_yahoo(route["yf"], interval)
         return df, err, (FEED_YAHOO if not df.empty else FEED_NONE)
-
     base_int = TF_MAP[BASE_TF.get(interval, interval)]
     df, err = _td_request(route["sym"], base_int)
     if err or df.empty:
@@ -1619,7 +1632,6 @@ def render_telemetry_hud():
         )
         st.markdown(html, unsafe_allow_html=True)
         return False, None
-
     try:
         updated_at = pd.to_datetime(row.get("updated_at"), utc=True, errors="coerce")
     except Exception:
@@ -1627,7 +1639,6 @@ def render_telemetry_hud():
     now = pd.Timestamp.now(tz="UTC")
     age_sec = float((now - updated_at).total_seconds()) if pd.notna(updated_at) else 99999.0
     is_live = age_sec < TELEMETRY_LIVE_SECONDS
-
     account = row.get("account_id", "—")
     try:
         balance = float(row.get("balance", 0.0))
@@ -1637,7 +1648,6 @@ def render_telemetry_hud():
     except (TypeError, ValueError):
         balance, equity, dd_today, dd_total = 0.0, 0.0, 0.0, 0.0
     status = str(row.get("status", "—"))
-
     cap = TELEMETRY_DAILY_CAP
     if dd_today >= cap:
         dd_color = "#9a5252"
@@ -1645,11 +1655,9 @@ def render_telemetry_hud():
         dd_color = "#a88a45"
     else:
         dd_color = "#3f7d5c"
-
     cls = "telemetry-live" if is_live else "telemetry-offline"
     dot_label = t("telemetry_live") if is_live else t("telemetry_offline", m=int(age_sec // 60))
     foot = updated_at.strftime("%Y-%m-%d %H:%M:%S UTC") if pd.notna(updated_at) else "—"
-
     html = (
         f"<div class='telemetry-hud {cls}'>"
         f"<div class='th-title'><span class='th-dot'></span>{t('telemetry_title')}: {dot_label}</div>"
@@ -1671,7 +1679,6 @@ def render_telemetry_hud():
 def render_bybit_hud():
     w = fetch_bybit_wallet()
     key, secret = _bybit_credentials()
-    
     if w is None:
         if key and secret:
             html = (
@@ -1696,7 +1703,6 @@ def render_bybit_hud():
             )
             st.markdown(html, unsafe_allow_html=True)
             return False, None
-
     eq = float(w.get("equity", 0.0))
     wb = float(w.get("wallet_balance", 0.0))
     am = float(w.get("avail_margin", 0.0))
@@ -1705,7 +1711,6 @@ def render_bybit_hud():
     gw = str(w.get("gateway", ""))
     foot = f"{stamp} · {gw}" if gw else stamp
     eq_color = "#3f7d5c" if eq > 0.0 else "#a88a45"
-
     html = (
         "<div class='telemetry-hud telemetry-live'>"
         f"<div class='th-title'><span class='th-dot'></span>{t('bybit_title')}: {t('telemetry_live')}</div>"
@@ -1757,7 +1762,6 @@ def add_indicators(df):
     out["senkou_a"] = out["raw_senkou_a"].shift(26)
     out["senkou_b"] = out["raw_senkou_b"].shift(26)
     out["chikou"] = out["Close"].shift(-26)
-
     out["Minor_High"] = (
         (high >= high.shift(1)) & (high > high.shift(2)) &
         (high > high.shift(-1)) & (high > high.shift(-2))
@@ -1873,13 +1877,11 @@ def trigger_plan(df, abc, mode, tf, is_fx, last_close):
         return {"ok": False, "why": "ref_missing"}
     rp = int(df.index.get_loc(ref_t))
     rb = df.iloc[rp]
-
     atr_last = float(df["ATR"].iloc[-2])
     if not np.isfinite(atr_last):
         atr_last = float(df["ATR"].iloc[-1])
     atr_now = atr_last if np.isfinite(atr_last) else 0.0
     atr_ref = float(rb["ATR"]) if np.isfinite(rb["ATR"]) else atr_now
-
     if mode == "hosoda":
         level = float(rb["High"]) if buy else float(rb["Low"])
         buf = STOP_BUFFER_ATR * atr_ref
@@ -1894,7 +1896,6 @@ def trigger_plan(df, abc, mode, tf, is_fx, last_close):
         buf = STOP_BUFFER_ATR * atr_now
         stop = min(sa_v, sb_v) - buf if buy else max(sa_v, sb_v) + buf
         stop_src = "cloud"
-
     conf_t = None
     if rp + 1 < len(df) - 1:
         seg = df.iloc[rp + 1:-1]
@@ -1902,7 +1903,6 @@ def trigger_plan(df, abc, mode, tf, is_fx, last_close):
         hits = np.flatnonzero(mask.to_numpy())
         if len(hits):
             conf_t = df.index[rp + 1 + int(hits[0])]
-
     clock = _forecast_clock(df, tf, is_fx)
     step = clock[0] if clock else pd.Timedelta(hours=1)
     now_ts = df.index[-1]
@@ -1910,11 +1910,9 @@ def trigger_plan(df, abc, mode, tf, is_fx, last_close):
         expire = bar_time_at(df, len(df) - 1 + bars, tf, is_fx, clock)[0]
     else:
         expire = bar_time_at(df, rp + bars, tf, is_fx, clock)[0] + step
-
     away = abs(last_close - level)
     dist_atr = (away / atr_now) if atr_now > 0 else None
     at_or_better = (last_close <= level) if buy else (last_close >= level)
-
     if conf_t is not None:
         if at_or_better or (atr_now > 0 and away <= ATR_CHASE_LIMIT * atr_now):
             dec, entry_eff = "market", last_close
@@ -1925,7 +1923,6 @@ def trigger_plan(df, abc, mode, tf, is_fx, last_close):
             dec, entry_eff = "watch", level
         else:
             dec, entry_eff = "expired", level
-
     return {"ok": True, "buy": buy, "level": level, "stop": stop, "stop_src": stop_src,
             "ref_t": ref_t, "bars": bars, "expire": expire, "conf_t": conf_t,
             "atr_now": atr_now, "atr_ref": atr_ref, "buf": buf,
@@ -2339,7 +2336,6 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-
     x = np.arange(len(df_plot))
     o, h, l, c = (df_plot[k].to_numpy(dtype=float) for k in ("Open", "High", "Low", "Close"))
     fig_, ax = plt.subplots(figsize=(14, 7.5), dpi=130)
@@ -2375,24 +2371,23 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
             if O_["x"] != A_["x"] or O_["y"] != A_["y"]:
                 ax.plot([O_["x"]], [O_["y"]], marker="D", markersize=7,
                         color="#7f8c8d", linestyle="none", zorder=6, clip_on=True)
-                bar_row = df_plot.iloc[int(O_["x"])]
-                is_high = abs(O_["y"] - float(bar_row["High"])) <= abs(O_["y"] - float(bar_row["Low"]))
-                y_anchor = float(bar_row["High"]) if is_high else float(bar_row["Low"])
-                y_offset = 8 if is_high else -12
-                va_mode = "bottom" if is_high else "top"
-                ax.annotate(
-                    "O", (O_["x"], y_anchor),
-                    textcoords="offset points", xytext=(0, y_offset),
-                    ha="center", va=va_mode, fontsize=10, fontweight="bold",
-                    color="#7f8c8d",
-                    bbox=dict(boxstyle="round,pad=0.1", facecolor="white", edgecolor="none", alpha=0.7),
-                )
+            bar_row = df_plot.iloc[int(O_["x"])]
+            is_high = abs(O_["y"] - float(bar_row["High"])) <= abs(O_["y"] - float(bar_row["Low"]))
+            y_anchor = float(bar_row["High"]) if is_high else float(bar_row["Low"])
+            y_offset = 8 if is_high else -12
+            va_mode = "bottom" if is_high else "top"
+            ax.annotate(
+                "O", (O_["x"], y_anchor),
+                textcoords="offset points", xytext=(0, y_offset),
+                ha="center", va=va_mode, fontsize=10, fontweight="bold",
+                color="#7f8c8d",
+                bbox=dict(boxstyle="round,pad=0.1", facecolor="white", edgecolor="none", alpha=0.7),
+            )
     colors = {"V": "orange", "N": "green", "E": "red", "NT": "purple"}
     for name, val in (targets or {}).items():
         ax.axhline(val, color=colors.get(name, "gray"), linestyle="--", linewidth=1.0, zorder=2)
         ax.text(1.0, val, f" {name} {fmt_price(val)}", transform=ax.get_yaxis_transform(),
                 va="center", fontsize=9, color=colors.get(name, "gray"))
-
     x_right = float(len(df_plot) - 1)
     if len(pts) >= 3:
         A_, B_, C_ = pts[:3]
@@ -2421,12 +2416,10 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
             ts_, fc_ = bar_time_at(df_plot, xk, tf, is_fx, clock)
             ax.axvline(xk, color="gray", linestyle="--", linewidth=0.8, alpha=0.35, zorder=2)
             vlabel(xk, time_target_label(str(k), ts_, fc_, tf, mobile), "#7f8c8d", 0.78, 7)
-
     cand_ = candidate_c_extreme(df_plot)
     if cand_:
         ax.plot([cand_["x"]], [cand_["y"]], marker="o", markersize=4,
                 color="#a88a45", linestyle="none", zorder=6, clip_on=True)
-
     ax.set_xlim(-1.5, x_right + max(2.0, 0.01 * (x_right + 1.0)))
     step = max(1, len(df_plot) // 10)
     ax.set_xticks(x[::step])
@@ -2535,7 +2528,6 @@ with st.sidebar:
     offset_choice = st.selectbox(t("server_time"), SERVER_CHOICES, key="w_server")
     count_weekend = st.checkbox(t("raw"), help=t("raw_help"), key="w_raw")
     drop_clearing = st.checkbox(t("clearing"), disabled=count_weekend, help=t("clearing_help"), key="w_clear")
-
     if app_mode == "terminal":
         st.markdown("---")
         _sym_key = st.session_state.get("w_symbol", list(ASSET_ROUTER.keys())[0])
@@ -2596,13 +2588,11 @@ if app_mode == "radar":
             c_v = cur[["Close", "High", "Low"]].astype(float)
             if h_v.isna().any() or l_v.isna().any() or p_v.isna().any() or c_v.isna().any():
                 return None, E("nan")
-
             h_kumo_top = max(h_v["senkou_a"], h_v["senkou_b"])
             h_kumo_bot = min(h_v["senkou_a"], h_v["senkou_b"])
             htf_bullish = h_v["Close"] > h_kumo_top and h_v["tenkan"] >= h_v["kijun"]
             htf_bearish = h_v["Close"] < h_kumo_bot and h_v["tenkan"] <= h_v["kijun"]
             trend_code = "up" if htf_bullish else ("down" if htf_bearish else "flat")
-
             pr, kijun = l_v["Close"], l_v["kijun"]
             zone = l_v["ATR"] * KIJUN_ZONE_ATR
             l_kumo_top = max(l_v["senkou_a"], l_v["senkou_b"])
@@ -2613,18 +2603,15 @@ if app_mode == "radar":
             chikou_sell = pr < p_v["Low"] and pr < p_kumo_bot
             bullish = l_v["tenkan"] > kijun and pr > l_kumo_top and chikou_buy
             bearish = l_v["tenkan"] < kijun and pr < l_kumo_bot and chikou_sell
-
             pr_live, high_live, low_live = float(c_v["Close"]), float(c_v["High"]), float(c_v["Low"])
             in_zone = abs(pr_live - kijun) <= zone
             near_buy = in_zone or (low_live <= kijun + zone and pr_live >= kijun - zone)
             near_sell = in_zone or (high_live >= kijun - zone and pr_live <= kijun + zone)
-
             sig = "wait"
             if bullish and near_buy:
                 sig = "strong_buy" if htf_bullish else "local_buy"
             elif bearish and near_sell:
                 sig = "strong_sell" if htf_bearish else "local_sell"
-
             diag = None
             if sig == "wait":
                 dist = abs(pr_live - kijun)
@@ -2641,7 +2628,6 @@ if app_mode == "radar":
                         fails = [f for f, ok in (("kumo", ok_kumo), ("chikou", ok_chikou)) if not ok]
                         if fails:
                             diag = ("zone", {"fails": fails})
-
             return {
                 "asset": asset_name, "tf": tf, "sig": sig, "trend": trend_code,
                 "price": fmt_price(pr_live), "kijun": fmt_price(kijun), "diag": diag,
@@ -2679,9 +2665,7 @@ if app_mode == "radar":
             "ctx": ("ALL", offset_choice, count_weekend, drop_clearing),
             "all": True, "results": res, "skipped": sk,
         }
-
     only_active = st.checkbox(t("filter_active"), key="w_radar_active")
-
     out = st.session_state.get("radar_out2")
     if out:
         scan_tag = "ALL" if out["all"] else radar_tf
@@ -2738,7 +2722,6 @@ if app_mode == "radar":
                 st.dataframe(sk_df, hide_index=True, **WIDE)
 
 elif app_mode == "terminal":
-
     with st.sidebar:
         st.markdown("---")
         st.markdown(f"### {t('terminal_settings')}")
@@ -2758,13 +2741,11 @@ elif app_mode == "terminal":
                 st.success(f"{labels[i]}: {fmt_price(p['y'])}  ({p['t']:%Y-%m-%d %H:%M})")
             else:
                 st.info(t("awaiting", label=labels[i]))
-
         if len(st.session_state.abc_points) >= 4:
             p = st.session_state.abc_points[3]
             st.success(f"{t('pt_o')}: {fmt_price(p['y'])}  ({p['t']:%Y-%m-%d %H:%M})")
         elif len(st.session_state.abc_points) == 3:
             st.info(t("awaiting_origin"))
-
         if st.button(t("clear_points"), **WIDE):
             reset_points()
             st.rerun()
@@ -2772,10 +2753,8 @@ elif app_mode == "terminal":
     is_fx = is_fx_asset(ASSET_ROUTER[asset_name])
     df_raw, fetch_err = fetch_smart_data(asset_name, tf_name)
     df_raw = prepare_ohlc(df_raw, tf_name, is_fx, count_weekend, drop_clearing, offset_choice)
-
     if is_crypto_asset(ASSET_ROUTER[asset_name]) and tf_name in ("MN3", "MN6", "MN24") and 0 < len(df_raw) < MIN_LTF_BARS:
         st.info(t("crypto_hist_note", tf=tf_name, n=len(df_raw)))
-
     if df_raw.empty:
         refresh_button("refresh_term")
         st.warning(t("no_data"))
@@ -2788,7 +2767,6 @@ elif app_mode == "terminal":
         df_plot = df.tail(250).copy()
         df_plot["x_idx"] = np.arange(len(df_plot))
         UIP = chart_ui(MOBILE)
-
         major_high_mask, major_low_mask = enforce_visible_extremes(df_plot)
         df_plot["Major_High"] = major_high_mask
         df_plot["Major_Low"] = major_low_mask
@@ -2804,7 +2782,6 @@ elif app_mode == "terminal":
             decreasing_line_width=1,
             name=t("chart_price"),
         ))
-
         last_close = float(df_plot["Close"].iloc[-1])
         pfmt = tick_fmt(last_close)
         time_txt = df_plot.index.strftime("%Y-%m-%d %H:%M").to_numpy()
@@ -2827,7 +2804,6 @@ elif app_mode == "terminal":
         fig.add_trace(marker_trace(minor_low, "Low", "Low", 0.2, UIP["mark_minor"], CLR_MINOR, t("chart_minor_low"), "minor"))
         fig.add_trace(marker_trace(major_high_mask, "High", "High", 0.5, UIP["mark_major"], CLR_MAJOR, t("chart_major_high"), "major"))
         fig.add_trace(marker_trace(major_low_mask, "Low", "Low", 0.5, UIP["mark_major"], CLR_MAJOR, t("chart_major_low"), "major"))
-
         fig.add_trace(go.Scatter(
             x=[None], y=[None], mode="markers",
             marker=dict(size=UIP["mark_minor"], color=CLR_MINOR),
@@ -2838,17 +2814,14 @@ elif app_mode == "terminal":
             marker=dict(size=UIP["mark_major"], color=CLR_MAJOR),
             name=t("chart_major_group"), legendgroup="major", showlegend=True, hoverinfo="skip",
         ))
-
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["tenkan"], line=dict(color=CLR_TENKAN, width=1.5), name="Tenkan-sen"))
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["kijun"], line=dict(color=CLR_KIJUN, width=2), name="Kijun-sen"))
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["chikou"], line=dict(color=CLR_CHIKOU, width=1.2), name="Chikou Span"))
-
         x_cloud = np.arange(len(df_plot)) + 26
         sa, sb = df_plot["raw_senkou_a"].to_numpy(dtype=float), df_plot["raw_senkou_b"].to_numpy(dtype=float)
         fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", fill="toself",
                                  fillcolor="rgba(128,128,128,0.25)", line=dict(width=0),
                                  name=t("chart_kumo"), legendgroup="cloud", showlegend=True, hoverinfo="skip"))
-
         i, n = 0, len(sa)
         while i < n:
             if not (np.isfinite(sa[i]) and np.isfinite(sb[i])):
@@ -2871,14 +2844,13 @@ elif app_mode == "terminal":
         for p in st.session_state.abc_points:
             if p["t"] in df_plot.index:
                 pts.append({"x": int(df_plot.index.get_loc(p["t"])), "y": p["y"]})
-
         abc = st.session_state.abc_points
         mode_now = st.session_state.get("entry_mode", "hosoda")
         armed = trigger_plan(df, abc[:3], mode_now, tf_name, is_fx, last_close) if len(abc) >= 3 else None
         cand = candidate_c_extreme(df_plot)
-
         tt_x, tt_text = [], []
         x_view_right = float(len(df_plot) - 1)
+
         if len(pts) >= 3:
             A, B, C = pts[:3]
             tg = hosoda_targets(A["y"], B["y"], C["y"])
@@ -2916,13 +2888,11 @@ elif app_mode == "terminal":
                 if xk > x_view_right:
                     continue
                 time_line(xk, str(k), "#7f8c8d", "dash", 0.78, t("hover_kihon", k=k), opacity=0.35)
-
             fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]],
                                      mode="lines+markers", line=dict(color=CLR_WAVE, width=2),
                                      marker=dict(size=UIP["wave_mark"]),
                                      name=t("chart_wave"),
                                      hovertemplate=f"%{{y:{pfmt}}}<extra>{t('chart_wave')}</extra>"))
-
             for letter, P_ in zip(("A", "B", "C"), pts[:3]):
                 ya, ys, yanch, _off, _va = polar_anchor(df_plot, P_["x"], P_["y"])
                 fig.add_annotation(
@@ -2931,7 +2901,6 @@ elif app_mode == "terminal":
                     font=dict(size=11, color=CLR_WAVE, family="sans-serif"),
                     bgcolor=CLR_LABEL_BG, borderpad=1,
                 )
-
             if len(pts) >= 4:
                 O_ = pts[3]
                 if O_["x"] != A["x"] or O_["y"] != A["y"]:
@@ -2943,21 +2912,19 @@ elif app_mode == "terminal":
                         hovertemplate=t("origin_hover"),
                         showlegend=False,
                     ))
-                    ya, ys, yanch, _off, _va = polar_anchor(df_plot, O_["x"], O_["y"])
-                    fig.add_annotation(
-                        x=O_["x"], y=ya, text="O", showarrow=False,
-                        yshift=ys, yanchor=yanch,
-                        font=dict(size=11, color=CLR_ORIGIN),
-                        bgcolor=CLR_LABEL_BG, borderpad=1,
-                    )
-
+                ya, ys, yanch, _off, _va = polar_anchor(df_plot, O_["x"], O_["y"])
+                fig.add_annotation(
+                    x=O_["x"], y=ya, text="O", showarrow=False,
+                    yshift=ys, yanchor=yanch,
+                    font=dict(size=11, color=CLR_ORIGIN),
+                    bgcolor=CLR_LABEL_BG, borderpad=1,
+                )
         if tt_x:
             y_top = float(df_plot["High"].max())
             fig.add_trace(go.Scatter(
                 x=tt_x, y=[y_top] * len(tt_x), mode="markers", marker=dict(size=16, color="rgba(0,0,0,0)"),
                 name=t("chart_time_targets"), showlegend=False, text=tt_text, hovertemplate="%{text}<extra></extra>",
             ))
-
         if cand:
             fig.add_trace(go.Scatter(
                 x=[cand["x"]], y=[cand["y"]], mode="markers",
@@ -2968,12 +2935,9 @@ elif app_mode == "terminal":
                 hoverlabel=dict(bgcolor=CLR_LABEL_BG, bordercolor=CLR_CAND_C,
                                 font=dict(size=11, color=CLR_CAND_C), namelength=0),
             ))
-
         tick_step = max(1, len(df_plot) // UIP["tick_div"])
         time_fmt = axis_time_fmt(tf_name) if MOBILE else "%Y-%m-%d %H:%M"
-        
-        axis_tick_font = dict(color=CLR_TEXT_AXIS, size=9 if MOBILE else 10)
-        
+        axis_tick_font = dict(color=plotly_text_color(), size=9 if MOBILE else 10)
         yaxis = dict(side="right", tickformat=tick_fmt(last_close), showgrid=True,
                      gridcolor=CLR_GRID, fixedrange=False, zeroline=False, showline=False,
                      tickfont=axis_tick_font)
@@ -2984,6 +2948,14 @@ elif app_mode == "terminal":
         if len(pts) >= 3:
             xaxis["range"] = [-0.5, x_view_right + 1.5]
 
+        # v2.02: lock selection opacity — a click must not dim unselected markers.
+        # Candlestick has no selected/unselected in plotly.py and does not dim.
+        fig.update_traces(
+            selected=dict(marker=dict(opacity=1.0)),
+            unselected=dict(marker=dict(opacity=1.0)),
+            selector=dict(type="scatter"),
+        )
+
         fig.update_layout(
             xaxis_rangeslider_visible=False, height=UIP["height"], template="plotly_white",
             plot_bgcolor="rgba(0,0,0,0)",
@@ -2991,13 +2963,12 @@ elif app_mode == "terminal":
             margin=UIP["margin"],
             yaxis=yaxis, xaxis=xaxis,
             hovermode="closest", clickmode="event+select", dragmode="pan",
-            font=dict(color=CLR_TEXT_AXIS, family="sans-serif"),
+            font=dict(color=plotly_text_color(), family="sans-serif"),
             legend=UIP["legend"],
             modebar=dict(bgcolor="rgba(0,0,0,0)", color=CLR_TEXT_NEUTRAL, activecolor="#e74c3c"),
             xaxis_zeroline=False,
             yaxis_zeroline=False,
         )
-
         with st.container(key="chart_shell"):
             refresh_button("refresh_term")
             event = st.plotly_chart(
@@ -3010,14 +2981,11 @@ elif app_mode == "terminal":
                 theme=None,
                 **WIDE,
             )
-
         st.markdown(feed_badge_html(), unsafe_allow_html=True)
-
         status_label = points_bar_text(len(abc))
         if st.button(status_label, key="pts_bar_btn", help=t("pts_reset_tip"), **WIDE):
             reset_points()
             st.rerun()
-
         if len(abc) >= 3 and len(pts) < 3:
             st.caption(t("points_outside"))
 
@@ -3087,20 +3055,20 @@ elif app_mode == "terminal":
                                 auc_txt = f"{r['auc']:.2f}" if r["auc"] is not None else t("ai_na")
                                 st.caption(t("ai_stats", n=r["n"], neff=r["n_eff"], ft=pc(r["freq"]["target"]),
                                              fs=pc(r["freq"]["stop"]), f0=pc(r["freq"]["timeout"]), auc=auc_txt))
-                            st.caption(t("ai_fractals", a=t("ai_fr_" + r["a_st"]), b=t("ai_fr_" + r["b_st"]),
-                                         c=t("ai_fr_" + r["c_st"])))
-                            st.caption(t("ai_setup", lag=r["lag"], h=r["h"], hmin=ALICE_HORIZON,
-                                         ab=t("ai_cls_" + r["ab"]), cls=t("ai_cls_" + r["cls"])))
-                            if r["freq_only"]:
-                                st.caption(t("ai_freq_only", k=int(round(r["freq"]["target"] * r["n"])), n=r["n"]))
-                            if r["pooled"]:
-                                st.caption(t("ai_pooled"))
-                            if not r["strict"] and r["cls"] == "minor":
-                                st.caption(t("ai_live"))
-                            if r["uplift"] is not None:
-                                st.caption(t("ai_uplift", v=f"{r['uplift']:+.2f}"))
-                            st.caption(t("ai_rel_" + r["reliability"]))
-                        st.caption(t("ai_disclaimer"))
+                                st.caption(t("ai_fractals", a=t("ai_fr_" + r["a_st"]), b=t("ai_fr_" + r["b_st"]),
+                                             c=t("ai_fr_" + r["c_st"])))
+                                st.caption(t("ai_setup", lag=r["lag"], h=r["h"], hmin=ALICE_HORIZON,
+                                             ab=t("ai_cls_" + r["ab"]), cls=t("ai_cls_" + r["cls"])))
+                                if r["freq_only"]:
+                                    st.caption(t("ai_freq_only", k=int(round(r["freq"]["target"] * r["n"])), n=r["n"]))
+                                if r["pooled"]:
+                                    st.caption(t("ai_pooled"))
+                                if not r["strict"] and r["cls"] == "minor":
+                                    st.caption(t("ai_live"))
+                                if r["uplift"] is not None:
+                                    st.caption(t("ai_uplift", v=f"{r['uplift']:+.2f}"))
+                                st.caption(t("ai_rel_" + r["reliability"]))
+                            st.caption(t("ai_disclaimer"))
 
         if len(abc) >= 3:
             rA, rB, rC = abc[:3]
@@ -3111,7 +3079,6 @@ elif app_mode == "terminal":
             psize, pkey = point_size(route_r)
             unit = t(pkey)
             pval = pip_value_usd(asset_name, last_close, psize)
-
             atr_last = float(df["ATR"].iloc[-1])
             atr_c = atr_last if np.isfinite(atr_last) else 0.0
             if rC["t"] in df.index:
@@ -3120,14 +3087,11 @@ elif app_mode == "terminal":
                     atr_c = float(cb["ATR"])
             stop_buf = STOP_BUFFER_ATR * atr_c
             stop_c = float(rC["y"]) - stop_buf if side_buy else float(rC["y"]) + stop_buf
-
             entry_mode = st.selectbox(t("entry_mode"), ["hosoda", "break_b", "market", "custom"],
                                       format_func=lambda k: t("entry_" + k), key="entry_mode")
-
             plan = armed if entry_mode == mode_now else trigger_plan(df, abc[:3], entry_mode, tf_name, is_fx, last_close)
             entry_px, stop_px, dec, conf_txt, expire_ts, bars_n, level_px = None, stop_c, "market", None, None, 0, None
             atr_show, buf_show, stop_src = atr_c, stop_buf, "c"
-
             if entry_mode in TRIG_WATCH_BARS:
                 if plan is None or not plan.get("ok"):
                     why = (plan or {}).get("why", "ref_missing")
@@ -3153,18 +3117,16 @@ elif app_mode == "terminal":
                                                  step=10.0 ** (-dec_c), format=f"%.{dec_c}f", key="custom_entry"))
                 if entry_px <= 0:
                     entry_px = None
-                    st.caption(t("entry_custom_hint"))
-
+                st.caption(t("entry_custom_hint"))
             risk_dist = abs(entry_px - stop_px) if (entry_px is not None and stop_px is not None) else None
             reward_dist = abs(target_px - entry_px) if entry_px is not None else None
             rr = (reward_dist / risk_dist) if (risk_dist is not None and risk_dist > 0) else None
-
             risk_rows = []
             if level_px is not None:
                 risk_rows.append((t("trig_level"), fmt_price(level_px)))
-                risk_rows.append((t("trig_decision"), t("dec_" + dec)))
-                if plan and plan.get("ok") and plan["dist_atr"] is not None:
-                    risk_rows.append((t("trig_dist"), f"{plan['dist_atr']:.2f} ATR"))
+            risk_rows.append((t("trig_decision"), t("dec_" + dec)))
+            if plan and plan.get("ok") and plan["dist_atr"] is not None:
+                risk_rows.append((t("trig_dist"), f"{plan['dist_atr']:.2f} ATR"))
             if entry_px is not None:
                 lbl = t("risk_entry_plan") if dec in ("limit", "watch") else t("risk_entry")
                 risk_rows.append((lbl, fmt_price(entry_px)))
@@ -3189,11 +3151,9 @@ elif app_mode == "terminal":
             accent = ALICE_LIGHT_COLORS["green" if side_buy else "red"]
             head = t("risk_title") + " · " + t("risk_buy" if side_buy else "risk_sell")
             st.markdown(risk_card_html(head, risk_rows, accent), unsafe_allow_html=True)
-
             if dec == "watch" and level_px is not None:
                 st.info(t("risk_wait", dir=t("risk_wait_above" if side_buy else "risk_wait_below"),
                           level=fmt_price(level_px)))
-
             if MOBILE:
                 st.number_input(t("risk_pct_label"), min_value=0.1, max_value=100.0,
                                 step=RISK_PCT_STEP, format="%.1f", key="risk_pct",
@@ -3207,7 +3167,6 @@ elif app_mode == "terminal":
                                     help=t("risk_pct_help"))
                 with rc2:
                     deposit_widget()
-
             risk_pct = float(st.session_state.get("risk_pct", RISK_PCT_DEFAULT))
             lot_ready = (entry_px is not None and rr is not None and pval > 0.0)
             lots, risk_usd, gain_usd = 0.0, 0.0, 0.0
@@ -3222,14 +3181,15 @@ elif app_mode == "terminal":
                 raw_lots = (risk_usd / loss_per_lot) if loss_per_lot > 0.0 else 0.0
                 lots = float(np.floor(raw_lots / active_step) * active_step)
                 gain_usd = lots * pips_reward * pval
+                lot_decimals = max(2, int(round(-np.log10(active_step))))
+                lot_str = f"{lots:.{lot_decimals}f}"
                 st.markdown(
-                    "<div class='lot-line'>" + t("lot_line", lots=f"{lots:.2f}",
+                    "<div class='lot-line'>" + t("lot_line", lots=lot_str,
                                                  risk=fmt_money(lots * loss_per_lot, "USD"),
                                                  gain=fmt_money(gain_usd, "USD")) + "</div>",
                     unsafe_allow_html=True)
             elif entry_px is not None:
                 st.caption(t("risk_zero") if rr is None else t("lot_no_value"))
-
             send_clicked = False
             bybit_arm = False
             sym_clean_btn = mt5_symbol(asset_name)
@@ -3243,20 +3203,16 @@ elif app_mode == "terminal":
                 btn_label = t("mt5_exec_btn")
                 # MT5 EA DOES execute on 'watch' (arms pending trap): only block on expired/invalid
                 btn_disabled = (not lot_ready) or (lots < active_step_btn) or (dec in ("expired", "invalid"))
-
             send_clicked = st.button(btn_label, key="exec_order_btn", disabled=btn_disabled, **WIDE)
-            
             if not lot_ready and dec not in ("expired", "invalid"):
                 st.caption(t("mt5_need_entry"))
             if bybit_mode and lot_ready and not bybit_arm:
                 st.caption(t("bybit_arm_required"))
-
             if send_clicked:
                 sym_clean = mt5_symbol(asset_name)
                 side_txt = "BUY" if side_buy else "SELL"
                 order_id = f"{sym_clean}-{tf_name}-{int(pd.Timestamp.now().timestamp())}"
                 dg = price_digits(last_close)
-                
                 if dec == "market":
                     otype_str = "Market"
                     exec_price = None
@@ -3266,26 +3222,21 @@ elif app_mode == "terminal":
                 else:
                     otype_str = "Market"
                     exec_price = None
-
                 if bybit_mode:
                     bybit_side = "Buy" if side_buy else "Sell"
                     step = bybit_qty_step(sym_clean)
-                    
                     deposit_val = float(st.session_state.get("account_deposit", 0.0))
                     risk_usd = deposit_val * (risk_pct / 100.0)
                     pips_risk = risk_dist / psize
                     loss_per_lot = pips_risk * pval
                     raw_lots = (risk_usd / loss_per_lot) if loss_per_lot > 0.0 else 0.0
-                    
                     qty_eff = float(np.floor(raw_lots / step) * step)
                     if qty_eff < step:
                         qty_eff = step
-                        
                     decimals = max(0, int(round(-np.log10(step))))
                     qty_str = f"{qty_eff:.{decimals}f}"
                     sl_str = f"{round(float(stop_px), dg):.{dg}f}"
                     tp_str = f"{round(float(target_px), dg):.{dg}f}"
-                    
                     key, secret = _bybit_credentials()
                     is_dry_run = False
                     if not key or not secret:
@@ -3294,7 +3245,6 @@ elif app_mode == "terminal":
                         is_dry_run = True
                     elif wallet_equity is not None and wallet_equity <= 0.0:
                         is_dry_run = True
-                        
                     if is_dry_run:
                         st.warning(t("bybit_sim_banner", sym=sym_clean, side=bybit_side, qty=qty_str))
                     else:
@@ -3342,33 +3292,32 @@ elif app_mode == "terminal":
                         st.caption(t("mt5_confirm_note"))
                     else:
                         st.error(t("mt5_err", detail=err))
-
-        if st.button(t("tg_button"), key="tg_send", **WIDE):
-            token, chat_id = _tg_credentials()
-            if not token or not chat_id:
-                st.error(t("tg_no_secrets"))
-            else:
-                with st.spinner(t("tg_sending")):
-                    tg_pts = [{"x": p_["x"], "y": p_["y"]} for p_ in pts] if len(pts) >= 3 else []
-                    tg_abc = st.session_state.abc_points[:3]
-                    tg_targets = hosoda_targets(*(p_["y"] for p_ in tg_abc)) if len(tg_abc) == 3 else {}
-                    htf_arr_t, htf_tf_t, htf_missing_t = htf_info()
-                    trend_key = {1.0: "tg_up", -1.0: "tg_down", 0.0: "tg_flat"}[float(htf_arr_t[-1])] if not htf_missing_t else "tg_na"
-                    report = t(
-                        "tg_report", symbol=asset_label(asset_name), tf=tf_name, bar=f"{df_plot.index[-1]:%Y-%m-%d %H:%M}",
-                        price=fmt_price(last_close), htf=htf_tf_t, trend=t(trend_key),
-                        target=fmt_price(tg_targets["N"]) if tg_targets else t("tg_na"),
-                        verdict=t("ai_light_" + ai_light) if ai_light else t("tg_na"),
-                        feed=feed_source())
-                    png, _engine = render_chart_png(fig, df_plot, tg_pts, tg_targets,
-                                                    f"{asset_label(asset_name)} | {tf_name}", tf_name, is_fx, MOBILE)
-                    ok, err = send_telegram(token, chat_id, report, png)
-                if not ok:
-                    st.error(t("tg_err", detail=err))
-                elif png is None:
-                    st.warning(t("tg_sent_text"))
+            if st.button(t("tg_button"), key="tg_send", **WIDE):
+                token, chat_id = _tg_credentials()
+                if not token or not chat_id:
+                    st.error(t("tg_no_secrets"))
                 else:
-                    st.success(t("tg_sent"))
+                    with st.spinner(t("tg_sending")):
+                        tg_pts = [{"x": p_["x"], "y": p_["y"]} for p_ in pts] if len(pts) >= 3 else []
+                        tg_abc = st.session_state.abc_points[:3]
+                        tg_targets = hosoda_targets(*(p_["y"] for p_ in tg_abc)) if len(tg_abc) == 3 else {}
+                        htf_arr_t, htf_tf_t, htf_missing_t = htf_info()
+                        trend_key = {1.0: "tg_up", -1.0: "tg_down", 0.0: "tg_flat"}[float(htf_arr_t[-1])] if not htf_missing_t else "tg_na"
+                        report = t(
+                            "tg_report", symbol=asset_label(asset_name), tf=tf_name, bar=f"{df_plot.index[-1]:%Y-%m-%d %H:%M}",
+                            price=fmt_price(last_close), htf=htf_tf_t, trend=t(trend_key),
+                            target=fmt_price(tg_targets["N"]) if tg_targets else t("tg_na"),
+                            verdict=t("ai_light_" + ai_light) if ai_light else t("tg_na"),
+                            feed=feed_source())
+                        png, _engine = render_chart_png(fig, df_plot, tg_pts, tg_targets,
+                                                        f"{asset_label(asset_name)} | {tf_name}", tf_name, is_fx, MOBILE)
+                        ok, err = send_telegram(token, chat_id, report, png)
+                    if not ok:
+                        st.error(t("tg_err", detail=err))
+                    elif png is None:
+                        st.warning(t("tg_sent_text"))
+                    else:
+                        st.success(t("tg_sent"))
 
         if (event and event.selection and event.selection.get("points")
                 and len(event.selection["points"]) == 1 and len(st.session_state.abc_points) < 4):
@@ -3398,4 +3347,5 @@ elif app_mode == "terminal":
                     if price is not None and not any(p["t"] == row.name for p in st.session_state.abc_points):
                         st.session_state.abc_points.append({"t": row.name, "y": price})
                         st.rerun()
-        gc.collect()
+
+gc.collect()
