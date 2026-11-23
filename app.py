@@ -1,23 +1,25 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v2.03 (SINGLE SOURCE OF TRUTH THEME FIX). Стиль: strict institutional minimalist, zero-clutter.
+SPEC v2.04 (DEFINITIVE NATIVE THEME FIX). Стиль: strict institutional minimalist, zero-clutter.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 
+v2.04 (DEFINITIVE NATIVE THEME FIX):
+  1. st.plotly_chart(..., theme="streamlit") — нативный движок Streamlit красит оси,
+     подписи времени и легенду: светлые на Dark, графитовые на Light, мгновенно
+     при переключении темы в верхнем меню (Settings -> Theme) и при OS auto-theme.
+  2. template="plotly_white" удалён из fig.update_layout() — он принудительно запекал
+     тёмно-синий #2A3F5F в шрифты осей и перебивал нативную тему на Dark.
+  3. CSS-оверлей xtick/ytick/legendtext удалён из inject_css() — при theme="streamlit"
+     он не нужен: Streamlit нативно перекрашивает SVG без !important-костылей.
+  4. Сохранены без изменений: opacity-lock scatter-трейсов (selected/unselected = 1.0),
+     динамический шаг лота Bybit (BTC 0.001 / ETH 0.01 / SOL 0.1) и динамическая
+     точность lot_line, двойная маршрутизация MT5 (Telegram 2FA) / Bybit v5.
+
 v2.03 (SINGLE SOURCE OF TRUTH THEME FIX):
-  1. Единственный источник цвета текста графика — CSS var(--text-color).
-     Функция plotly_text_color() удалена полностью; Python больше не задаёт цвет
-     шрифта легенды, тиков осей и layout. Нативный переключатель темы Streamlit
-     (Settings -> Theme) и OS auto-theme перекрашивают SVG мгновенно, без перезапуска.
-  2. CSS-селекторы обновлены под современный DOM Streamlit:
-     [data-testid="stPlotlyChart"] + legacy .stPlotlyChart (xtick / ytick / legendtext).
-     Семантические цвета подписей V/N/E/NT, A/B/C/O и временных целей НЕ переопределяются.
-  3. Сохранены правки v2.02: opacity-lock scatter-трейсов (клик не гасит фракталы)
-     и динамическая точность лота max(2, round(-log10(active_step))).
-  4. Никаких кнопок темы в сайдбаре — верхнее меню остаётся единственной властью.
-  5. Побочный выигрыш: PNG-экспорт (kaleido) берёт цвет из шаблона plotly_white,
-     поэтому подписи осей на белом снапшоте читаемы без Python-костылей.
+  Удалены plotly_text_color() и Python-цвета шрифтов; CSS-оверлей заменён нативной
+  темой в v2.04. Opacity-lock и динамическая точность лота сохранены.
 
 v2.02 (VISUAL ERGONOMICS & CONTRAST POLISH):
-  1. Адаптивный контраст осей и легенды (Python-слой заменён на CSS в v2.03).
+  1. Адаптивный контраст осей и легенды (Python-слой заменён нативной темой в v2.04).
   2. Lock opacity выбранных/невыбранных маркеров = 1.0 на всех scatter-трейсах.
      Candlestick не имеет selected/unselected в plotly.py и в затухании не участвует.
   3. Динамическая точность лота в lot_line: BTC 0.001 отображается как «0.001».
@@ -34,7 +36,7 @@ BYBIT v5 DUAL-ROUTED EXECUTION GATEWAY (v2.00):
   Graceful Dry-Run: при отсутствии ключей, блокировке CDN или нулевом балансе
   выполняется симуляция ордера без риска для капитала.
 
-AXIS & LEGEND TYPOGRAPHY ALIGNMENT (v1.98): историческая запись, отменена v2.03.
+AXIS & LEGEND TYPOGRAPHY ALIGNMENT (v1.98): историческая запись, отменена v2.03/v2.04.
 
 BYBIT WALLET GRACEFUL DEGRADATION (v1.98):
   При блокировке CloudFront CDN HUD переходит в «Тестовый режим».
@@ -837,18 +839,6 @@ def inject_css(mobile):
         white-space: normal;
     }
     .stPlotlyChart .modebar { opacity: 1; }
-
-    /* v2.03: SINGLE SOURCE OF TRUTH — Streamlit's own --text-color drives every
-       Plotly axis tick, time label and legend text. Modern + legacy DOM selectors.
-       Semantic annotation colors (V/N/E/NT, A/B/C/O, time targets) are NOT overridden. */
-    [data-testid="stPlotlyChart"] .xtick text,
-    [data-testid="stPlotlyChart"] .ytick text,
-    [data-testid="stPlotlyChart"] .legendtext,
-    .stPlotlyChart .xtick text,
-    .stPlotlyChart .ytick text,
-    .stPlotlyChart .legendtext {
-        fill: var(--text-color) !important;
-    }
 
     .feed-badge {
         font-size: 0.75rem;
@@ -2952,7 +2942,7 @@ elif app_mode == "terminal":
         if len(pts) >= 3:
             xaxis["range"] = [-0.5, x_view_right + 1.5]
 
-        # v2.02 (kept in v2.03): lock selection opacity — a click must not dim markers.
+        # v2.02 (kept): lock selection opacity — a click must not dim markers.
         # Candlestick has no selected/unselected in plotly.py and does not dim.
         fig.update_traces(
             selected=dict(marker=dict(opacity=1.0)),
@@ -2961,7 +2951,7 @@ elif app_mode == "terminal":
         )
 
         fig.update_layout(
-            xaxis_rangeslider_visible=False, height=UIP["height"], template="plotly_white",
+            xaxis_rangeslider_visible=False, height=UIP["height"],
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             margin=UIP["margin"],
@@ -2982,7 +2972,7 @@ elif app_mode == "terminal":
                 selection_mode=("points", "box", "lasso"),
                 config={"scrollZoom": False, "displayModeBar": True, "displaylogo": False,
                         "modeBarButtonsToAdd": ["toggleSpikelines"], "modeBarButtonsToRemove": []},
-                theme=None,
+                theme="streamlit",
                 **WIDE,
             )
         st.markdown(feed_badge_html(), unsafe_allow_html=True)
