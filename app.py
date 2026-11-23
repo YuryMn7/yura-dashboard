@@ -1,22 +1,29 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v1.98. Стиль: strict institutional minimalist, zero-clutter, zero-emoji на холсте.
+SPEC v2.01 (HOTFIX APPLIED). Стиль: strict institutional minimalist, zero-clutter.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 
+HOTFIX v2.01:
+  1. MT5 'watch' больше не блокирует кнопку ордера — EA корректно получает карточку.
+  2. Динамический шаг лота (0.001 для BTC, 0.01 для ETH, 0.1 для SOL) вместо хардкода 0.01.
+  3. Спиннер Bybit показывает «Передача ордера в Bybit API v5…» вместо Telegram-текста.
+
+BYBIT v5 DUAL-ROUTED EXECUTION GATEWAY (v2.00):
+  Традиционные активы (Forex, Gold, Indices) -> MT5 через Telegram 2FA.
+  Крипто-перпетуумы (BTCUSDT, ETHUSDT, SOLUSDT) -> Bybit API v5 POST /v5/order/create.
+  Нативная поддержка Hosoda TP и ATR-буферизованного SL.
+  Graceful Dry-Run: при отсутствии ключей, блокировке CDN или нулевом балансе
+  выполняется симуляция ордера без риска для капитала.
+
 AXIS & LEGEND TYPOGRAPHY ALIGNMENT (v1.98):
-  Глобальный шрифт Plotly и тики осей переведены на институциональный светло-серый
-  (#A0A5B5) для идеальной читаемости на тёмной теме. Белая вертикальная граница
-  (zeroline/showline) гарантированно устранена. Легенда под графиком использует
-  тот же токен цвета.
+  Глобальный шрифт Plotly и тики осей: институциональный светло-серый (#A0A5B5).
 
 BYBIT WALLET GRACEFUL DEGRADATION (v1.98):
-  При блокировке CloudFront CDN (HTTP 403) HUD элегантно переходит в «Тестовый режим»
-  с нулевым балансом и активным ручным вводом депозита, не показывая тревожных баннеров.
+  При блокировке CloudFront CDN HUD переходит в «Тестовый режим».
 
 CANDLESTICK CONTRAST HARDENING & CANVAS BOUNDARY CLEANSING (v1.97):
   Палитра свечей: матовый teal (#26A69A) и coral (#E55353).
 
 THEME-ADAPTIVE UI (v1.95): терминал НЕ форсирует тёмную тему. Холст Plotly прозрачный.
-Все CSS-компоненты привязаны к CSS-переменным Streamlit.
 
 BYBIT PROXY DIAGNOSTIC LOCK (v1.95): ошибка прокси сохраняется как приоритетный диагноз.
 
@@ -24,19 +31,9 @@ CRITICAL BUGFIX (v1.85): контракт всех фидеров унифици
 
 CLOUDFLARE EDGE REVERSE PROXY (v1.84): опциональный секрет BYBIT_PROXY_URL.
 
-REGIONAL EEA INGESTION + EXPLICIT DIAGNOSTICS (v1.83):
-  Аккаунты EEA обслуживаются юрисдикцией Bybit EU (api.bybit.eu).
-
-DATA PROVENANCE (v1.82): _resolve_feed (cache ttl 60) -> (df, err, source).
-
-BYBIT API v5 (PHASE 1 — MARKET DATA + UTA TELEMETRY):
-  /v5/market/kline (category=linear) для BTCUSDT / ETHUSDT / SOLUSDT — непрерывный 24/7 ряд.
-  /v5/account/wallet-balance?accountType=UNIFIED (HMAC-SHA256).
-
 АЛИСА — ZERO-LAG: ALICE_LAG = 0, вход на баре C.
 
 РИСК ПОД BLUE GUARDIAN: дефолт 0.5 % на сделку, шаг ввода 0.1 %.
-ЛОТ: pip_value_usd, округление ВНИЗ до шага 0.01.
 
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опц.).
 Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.),
@@ -122,7 +119,6 @@ YF_MAP = {
 BASE_TF = {"H2": "H1", "H4": "H1", "H8": "H1", "D1": "H1", "MN3": "MN1", "MN6": "MN1", "MN24": "MN1"}
 RESAMPLE_RULE = {"H2": "2h", "H4": "4h", "H8": "8h", "D1": "1D", "MN3": "3MS", "MN6": "6MS", "MN24": "24MS"}
 
-# --- Bybit v5: Cloudflare edge proxy (опционально) + региональные шлюзы EEA/EU ---
 BYBIT_DIRECT_ENDPOINTS = [
     "https://api.bybit.com",
     "https://api.bybit.eu",
@@ -148,7 +144,6 @@ BYBIT_PROXY_GATEWAY = "Cloudflare Proxy"
 BYBIT_GW_PROXY = "proxy"
 BYBIT_GW_DIRECT = "direct"
 
-# --- Метки провенанса (бейдж, PNG-заголовок, депеша Telegram) ---
 FEED_BYBIT = "Bybit v5 (Linear)"
 FEED_BYBIT_PROXY = "Bybit v5 (Proxy)"
 FEED_YAHOO = "Yahoo Finance"
@@ -156,20 +151,17 @@ FEED_YAHOO_FB = "Yahoo Finance (Fallback)"
 FEED_TD = "TwelveData"
 FEED_NONE = "—"
 
-# --- Адаптивные цветовые токены: читаются на обеих темах ---
 CLR_GRID = "rgba(128, 128, 128, 0.15)"
 CLR_TEXT_NEUTRAL = "rgba(128, 128, 128, 0.85)"
 CLR_TEXT_STRONG = "rgba(100, 100, 100, 1.0)"
 CLR_LABEL_BG = "rgba(128, 128, 128, 0.18)"
 
-# Институциональная типографика осей и легенды (v1.98)
-CLR_TEXT_AXIS = "#A0A5B5"    # Crisp light-slate grey
+CLR_TEXT_AXIS = "#A0A5B5"
 CLR_TEXT_MUTED = "#787B86"
 
-# Матовая институциональная палитра свечей (TradingView Dark / Light compatible)
-CLR_CANDLE_UP_BODY = "#26A69A"       # Soft matte teal / emerald
+CLR_CANDLE_UP_BODY = "#26A69A"
 CLR_CANDLE_UP_EDGE = "#26A69A"
-CLR_CANDLE_DN_BODY = "#E55353"       # Soft matte coral / terracotta
+CLR_CANDLE_DN_BODY = "#E55353"
 CLR_CANDLE_DN_EDGE = "#E55353"
 
 CLR_TENKAN = "rgba(41, 128, 185, 0.95)"
@@ -297,6 +289,13 @@ I18N = {
         "bybit_locked": "Locked: live from Bybit UTA equity",
         "bybit_empty_treasury": "Bybit treasury is empty ($0.00) — manual deposit input is active for testing.",
         "bybit_equity": "Equity", "bybit_wallet": "Wallet", "bybit_avail": "Available",
+        "bybit_exec_btn": "➔ Execute order on Bybit v5 (Linear)",
+        "bybit_confirm_trade": "Arm Bybit live order execution",
+        "bybit_order_success": "Bybit order executed successfully! Order ID: {oid}",
+        "bybit_order_err": "Bybit execution rejected: [{code}] {msg}",
+        "bybit_sim_banner": "[TEST MODE] Bybit simulated execution successful: {sym} {side} {qty} lots",
+        "bybit_arm_required": "Check the confirmation box to authorize Bybit order dispatch.",
+        "bybit_sending": "Transmitting order to Bybit API v5...",
         "risk_title": "Trade parameters (calculated)", "risk_buy": "BUY", "risk_sell": "SELL",
         "entry_mode": "Entry point",
         "entry_hosoda": "Hosoda: C reversal", "entry_break_b": "Point B breakout",
@@ -324,7 +323,7 @@ I18N = {
         "deposit_label": "Deposit, $",
         "deposit_help": "Account equity used to convert the risk percentage into money risk. Auto-bound to MT5 equity or Bybit UTA equity when telemetry is LIVE.",
         "lot_line": "Recommended lot: <b>{lots}</b> (Risk: -{risk} | Target N: +{gain})",
-        "lot_too_small": "Calculated size is below 0.01 lot - the EA will reject this order. Reduce the risk distance or increase the deposit.",
+        "lot_too_small": "Calculated size is below minimum step - the EA will reject this order. Reduce the risk distance or increase the deposit.",
         "lot_no_value": "Point value in USD is unavailable for this instrument - lot size cannot be calculated.",
         "risk_outcome": "At {pct}% risk: stop -{loss}% of equity, target +{gain}% of equity. Break-even win rate: {be}%.",
         "risk_units": "Units: Forex - pip 0.0001 (JPY 0.01), others - 1.0 price unit. Point value per 1 lot ~ {pv} USD. ATR used = {atr}.",
@@ -453,6 +452,13 @@ I18N = {
         "bybit_locked": "Синхронизировано с эквити Bybit UTA",
         "bybit_empty_treasury": "Bybit казна пуста ($0.00) — активен ручной ввод депозита для тестов.",
         "bybit_equity": "Эквити", "bybit_wallet": "Кошелёк", "bybit_avail": "Доступно",
+        "bybit_exec_btn": "➔ Исполнить ордер на Bybit v5 (Linear)",
+        "bybit_confirm_trade": "Подтвердить отправку ордера на Bybit",
+        "bybit_order_success": "Ордер Bybit успешно выставлен! ID: {oid}",
+        "bybit_order_err": "Bybit отклонил приказ: [{code}] {msg}",
+        "bybit_sim_banner": "[ТЕСТОВЫЙ РЕЖИМ] Симуляция ордера Bybit успешна: {sym} {side} {qty} лот",
+        "bybit_arm_required": "Отметьте подтверждение для отправки ордера на Bybit.",
+        "bybit_sending": "Передача ордера в Bybit API v5...",
         "risk_title": "Параметры сделки (расчет)", "risk_buy": "ПОКУПКА", "risk_sell": "ПРОДАЖА",
         "entry_mode": "Точка входа",
         "entry_hosoda": "Хосода: разворот C", "entry_break_b": "Пробой точки B",
@@ -480,7 +486,7 @@ I18N = {
         "deposit_label": "Депозит, $",
         "deposit_help": "Эквити счета для перевода процента риска в денежный риск. При LIVE-телеметрии подставляется автоматически из MT5 или Bybit UTA.",
         "lot_line": "Рекомендуемый лот: <b>{lots}</b> (Риск: −{risk} | Цель N: +{gain})",
-        "lot_too_small": "Расчетный объем меньше 0.01 лота — советник отклонит приказ. Уменьшите дистанцию риска или увеличьте депозит.",
+        "lot_too_small": "Расчетный объем меньше минимального шага — советник отклонит приказ. Уменьшите дистанцию риска или увеличьте депозит.",
         "lot_no_value": "Стоимость пункта в USD для этого инструмента недоступна — лот рассчитать нельзя.",
         "risk_outcome": "При риске {pct}%: стоп −{loss}% депозита, цель +{gain}% депозита. Безубыточная доля прибыльных: {be}%.",
         "risk_units": "Пункты: Форекс — пипс 0.0001 (JPY 0.01), прочие — 1.0 ед. цены. Стоимость пункта на 1 лот ≈ {pv} USD. Использованный ATR = {atr}.",
@@ -899,7 +905,8 @@ def inject_css(mobile):
     .st-key-teleport_btn button:hover { opacity: 0.92; }
 
     .st-key-mt5_send_order { margin: 0.4rem 0 0.2rem 0; }
-    .st-key-mt5_send_order button {
+    .st-key-exec_order_btn { margin: 0.4rem 0 0.2rem 0; }
+    .st-key-mt5_send_order button, .st-key-exec_order_btn button {
         width: 100%; min-height: 44px; padding: 0.5rem 1rem !important;
         background: var(--primary-color);
         color: var(--background-color);
@@ -908,19 +915,21 @@ def inject_css(mobile):
         font-weight: 600; letter-spacing: 0.01em; box-shadow: none;
         transition: opacity .15s ease;
     }
-    .st-key-mt5_send_order button p, .st-key-mt5_send_order button span {
+    .st-key-mt5_send_order button p, .st-key-mt5_send_order button span,
+    .st-key-exec_order_btn button p, .st-key-exec_order_btn button span {
         color: var(--background-color) !important;
         font-size: 0.95rem !important; line-height: 1.3 !important;
     }
-    .st-key-mt5_send_order button:hover { opacity: 0.92; }
-    .st-key-mt5_send_order button:disabled {
+    .st-key-mt5_send_order button:hover, .st-key-exec_order_btn button:hover { opacity: 0.92; }
+    .st-key-mt5_send_order button:disabled, .st-key-exec_order_btn button:disabled {
         background: var(--secondary-background-color);
         border-color: rgba(128, 128, 128, 0.25);
         color: var(--text-color);
         opacity: 0.45;
         cursor: not-allowed;
     }
-    .st-key-mt5_send_order button:disabled p, .st-key-mt5_send_order button:disabled span {
+    .st-key-mt5_send_order button:disabled p, .st-key-mt5_send_order button:disabled span,
+    .st-key-exec_order_btn button:disabled p, .st-key-exec_order_btn button:disabled span {
         color: var(--text-color) !important;
         opacity: 0.6;
     }
@@ -1407,6 +1416,76 @@ def fetch_bybit_wallet():
     return w
 
 
+def bybit_qty_step(sym):
+    sym = sym.upper()
+    if sym == "BTCUSDT": return 0.001
+    if sym == "ETHUSDT": return 0.01
+    if sym == "SOLUSDT": return 0.1
+    return 0.01
+
+
+def send_bybit_order(sym, side, order_type, qty, price, sl, tp, order_id):
+    key, secret = _bybit_credentials()
+    if not key or not secret:
+        return False, "NO_KEYS", "Missing API credentials"
+        
+    body = {
+        "category": "linear",
+        "symbol": sym,
+        "side": side,
+        "orderType": order_type,
+        "qty": str(qty),
+        "stopLoss": str(sl),
+        "takeProfit": str(tp),
+        "tpslMode": "Full",
+        "tpOrderType": "Market",
+        "slOrderType": "Market",
+        "positionIdx": 0,
+        "orderLinkId": order_id
+    }
+    if order_type == "Limit" and price is not None:
+        body["price"] = str(price)
+        
+    raw_json = json.dumps(body, separators=(',', ':'))
+    
+    for base_url in get_bybit_endpoints():
+        ts = str(int(time.time() * 1000))
+        payload = ts + key + BYBIT_RECV_WINDOW + raw_json
+        try:
+            sign = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        except Exception as e:
+            return False, "SIGN_ERR", safe_err(e)
+            
+        headers = {
+            "User-Agent": BYBIT_UA,
+            "Accept": "application/json",
+            "X-BAPI-API-KEY": key,
+            "X-BAPI-TIMESTAMP": ts,
+            "X-BAPI-RECV-WINDOW": BYBIT_RECV_WINDOW,
+            "X-BAPI-SIGN": sign,
+            "Content-Type": "application/json",
+        }
+        
+        try:
+            r = requests.post(f"{base_url}/v5/order/create", data=raw_json, headers=headers, timeout=BYBIT_HTTP_TIMEOUT)
+            if r.status_code != 200:
+                continue
+            try:
+                res = r.json()
+            except Exception:
+                continue
+            
+            rc = res.get("retCode")
+            if rc == 0:
+                return True, None, None
+            else:
+                return False, str(rc), res.get("retMsg", "Unknown error")
+        except Exception:
+            continue
+            
+    return False, "NETWORK_ERR", "No response from Bybit endpoints"
+
+
 class TDError(Exception):
     pass
 
@@ -1595,7 +1674,6 @@ def render_bybit_hud():
     
     if w is None:
         if key and secret:
-            # Graceful fallback HUD when cloud IP is restricted by Bybit CDN:
             html = (
                 "<div class='telemetry-hud telemetry-live'>"
                 f"<div class='th-title'><span class='th-dot' style='background:#a88a45;'></span>"
@@ -3133,6 +3211,8 @@ elif app_mode == "terminal":
             risk_pct = float(st.session_state.get("risk_pct", RISK_PCT_DEFAULT))
             lot_ready = (entry_px is not None and rr is not None and pval > 0.0)
             lots, risk_usd, gain_usd = 0.0, 0.0, 0.0
+            sym_clean_pre = mt5_symbol(asset_name)
+            active_step = bybit_qty_step(sym_clean_pre) if bybit_mode else LOT_STEP
             if lot_ready:
                 deposit_val = float(st.session_state.get("account_deposit", 0.0))
                 risk_usd = deposit_val * (risk_pct / 100.0)
@@ -3140,7 +3220,7 @@ elif app_mode == "terminal":
                 pips_reward = reward_dist / psize
                 loss_per_lot = pips_risk * pval
                 raw_lots = (risk_usd / loss_per_lot) if loss_per_lot > 0.0 else 0.0
-                lots = float(np.floor(raw_lots / LOT_STEP) * LOT_STEP)
+                lots = float(np.floor(raw_lots / active_step) * active_step)
                 gain_usd = lots * pips_reward * pval
                 st.markdown(
                     "<div class='lot-line'>" + t("lot_line", lots=f"{lots:.2f}",
@@ -3150,63 +3230,118 @@ elif app_mode == "terminal":
             elif entry_px is not None:
                 st.caption(t("risk_zero") if rr is None else t("lot_no_value"))
 
-            send_clicked = st.button(t("mt5_exec_btn"), key="mt5_send_order",
-                                     disabled=(not lot_ready), **WIDE)
+            send_clicked = False
+            bybit_arm = False
+            sym_clean_btn = mt5_symbol(asset_name)
+            active_step_btn = bybit_qty_step(sym_clean_btn) if bybit_mode else LOT_STEP
+            if bybit_mode:
+                bybit_arm = st.checkbox(t("bybit_confirm_trade"), key="bybit_confirm_arm")
+                btn_label = t("bybit_exec_btn")
+                # Bybit cannot wait for candle close natively: disable on watch, expired, invalid
+                btn_disabled = (not lot_ready) or (lots < active_step_btn) or (not bybit_arm) or (dec in ("expired", "invalid", "watch"))
+            else:
+                btn_label = t("mt5_exec_btn")
+                # MT5 EA DOES execute on 'watch' (arms pending trap): only block on expired/invalid
+                btn_disabled = (not lot_ready) or (lots < active_step_btn) or (dec in ("expired", "invalid"))
+
+            send_clicked = st.button(btn_label, key="exec_order_btn", disabled=btn_disabled, **WIDE)
+            
             if not lot_ready and dec not in ("expired", "invalid"):
                 st.caption(t("mt5_need_entry"))
-
-            if lot_ready:
-                if lots < LOT_STEP:
-                    st.caption(t("lot_too_small"))
-                st.caption(t("risk_outcome", pct=f"{risk_pct:.1f}", loss=f"{risk_pct:.1f}",
-                             gain=f"{risk_pct * rr:.1f}", be=f"{100.0 / (1.0 + rr):.1f}"))
-                if not ((stop_px < entry_px < target_px) if side_buy else (target_px < entry_px < stop_px)):
-                    st.caption(t("risk_geom_bad"))
-            pv_txt = f"{pval:.4f}" if 0.0 < pval < 10.0 else f"{pval:.2f}"
-            st.caption(t("risk_units", pv=pv_txt, atr=fmt_dist(atr_show)))
-            if entry_mode in TRIG_WATCH_BARS and plan and plan.get("ok"):
-                st.caption(t("trig_rule_note", lim=f"{ATR_CHASE_LIMIT:.1f}",
-                             atr=fmt_dist(plan["atr_now"]), buf=fmt_dist(buf_show)))
+            if bybit_mode and lot_ready and not bybit_arm:
+                st.caption(t("bybit_arm_required"))
 
             if send_clicked:
                 sym_clean = mt5_symbol(asset_name)
                 side_txt = "BUY" if side_buy else "SELL"
                 order_id = f"{sym_clean}-{tf_name}-{int(pd.Timestamp.now().timestamp())}"
                 dg = price_digits(last_close)
-                otype = dec if dec in ("market", "limit", "watch") else "market"
-                payload = {
-                    "token": _mt5_secret(),
-                    "id": order_id,
-                    "symbol": sym_clean,
-                    "side": side_txt,
-                    "tf": tf_name,
-                    "order_type": otype,
-                    "trigger": round(float(level_px if level_px is not None else entry_px), dg),
-                    "entry": round(float(entry_px), dg),
-                    "sl": round(float(stop_px), dg),
-                    "tp": round(float(target_px), dg),
-                    "risk_percent": float(risk_pct),
-                    "atr": round(float(atr_show), 8),
-                    "comment": "Hosoda N",
-                }
-                if plan and plan.get("ok"):
-                    payload["ref_time"] = f"{plan['ref_t']:%Y-%m-%d %H:%M}"
-                if expire_ts is not None:
-                    payload["expire"] = f"{expire_ts:%Y-%m-%d %H:%M}"
-                confirm_label = t("tg_confirm_btn", sym=sym_clean, side=side_txt, lots=f"{lots:.2f}")
-                with st.spinner(t("mt5_sending")):
-                    ok, err = send_mt5_order(payload, confirm_label)
-                if ok:
-                    st.success(t("mt5_sent"))
-                    st.caption(t("mt5_sent_id", oid=order_id, sym=sym_clean, side=side_txt,
-                                 dec=t("dec_" + dec), lots=f"{lots:.2f}", risk=f"{risk_pct:.2f}"))
-                    if otype == "watch":
-                        st.caption(t("mt5_after_watch"))
-                    elif otype == "limit":
-                        st.caption(t("mt5_after_limit"))
-                    st.caption(t("mt5_confirm_note"))
+                
+                if dec == "market":
+                    otype_str = "Market"
+                    exec_price = None
+                elif dec == "limit":
+                    otype_str = "Limit"
+                    exec_price = round(float(entry_px), dg)
                 else:
-                    st.error(t("mt5_err", detail=err))
+                    otype_str = "Market"
+                    exec_price = None
+
+                if bybit_mode:
+                    bybit_side = "Buy" if side_buy else "Sell"
+                    step = bybit_qty_step(sym_clean)
+                    
+                    deposit_val = float(st.session_state.get("account_deposit", 0.0))
+                    risk_usd = deposit_val * (risk_pct / 100.0)
+                    pips_risk = risk_dist / psize
+                    loss_per_lot = pips_risk * pval
+                    raw_lots = (risk_usd / loss_per_lot) if loss_per_lot > 0.0 else 0.0
+                    
+                    qty_eff = float(np.floor(raw_lots / step) * step)
+                    if qty_eff < step:
+                        qty_eff = step
+                        
+                    decimals = max(0, int(round(-np.log10(step))))
+                    qty_str = f"{qty_eff:.{decimals}f}"
+                    sl_str = f"{round(float(stop_px), dg):.{dg}f}"
+                    tp_str = f"{round(float(target_px), dg):.{dg}f}"
+                    
+                    key, secret = _bybit_credentials()
+                    is_dry_run = False
+                    if not key or not secret:
+                        is_dry_run = True
+                    elif not wallet_live_flag:
+                        is_dry_run = True
+                    elif wallet_equity is not None and wallet_equity <= 0.0:
+                        is_dry_run = True
+                        
+                    if is_dry_run:
+                        st.warning(t("bybit_sim_banner", sym=sym_clean, side=bybit_side, qty=qty_str))
+                    else:
+                        with st.spinner(t("bybit_sending")):
+                            ok, code, msg = send_bybit_order(
+                                sym=sym_clean, side=bybit_side, order_type=otype_str,
+                                qty=qty_str, price=exec_price, sl=sl_str, tp=tp_str, order_id=order_id
+                            )
+                        if ok:
+                            st.success(t("bybit_order_success", oid=order_id))
+                        else:
+                            st.error(t("bybit_order_err", code=code, msg=msg))
+                else:
+                    otype = dec if dec in ("market", "limit", "watch") else "market"
+                    payload = {
+                        "token": _mt5_secret(),
+                        "id": order_id,
+                        "symbol": sym_clean,
+                        "side": side_txt,
+                        "tf": tf_name,
+                        "order_type": otype,
+                        "trigger": round(float(level_px if level_px is not None else entry_px), dg),
+                        "entry": round(float(entry_px), dg),
+                        "sl": round(float(stop_px), dg),
+                        "tp": round(float(target_px), dg),
+                        "risk_percent": float(risk_pct),
+                        "atr": round(float(atr_show), 8),
+                        "comment": "Hosoda N",
+                    }
+                    if plan and plan.get("ok"):
+                        payload["ref_time"] = f"{plan['ref_t']:%Y-%m-%d %H:%M}"
+                    if expire_ts is not None:
+                        payload["expire"] = f"{expire_ts:%Y-%m-%d %H:%M}"
+                    confirm_label = t("tg_confirm_btn", sym=sym_clean, side=side_txt, lots=f"{lots:.2f}")
+                    with st.spinner(t("mt5_sending")):
+                        ok, err = send_mt5_order(payload, confirm_label)
+                    if ok:
+                        st.success(t("mt5_sent"))
+                        st.caption(t("mt5_sent_id", oid=order_id, sym=sym_clean, side=side_txt,
+                                     dec=t("dec_" + dec), lots=f"{lots:.2f}", risk=f"{risk_pct:.2f}"))
+                        if otype == "watch":
+                            st.caption(t("mt5_after_watch"))
+                        elif otype == "limit":
+                            st.caption(t("mt5_after_limit"))
+                        st.caption(t("mt5_confirm_note"))
+                    else:
+                        st.error(t("mt5_err", detail=err))
 
         if st.button(t("tg_button"), key="tg_send", **WIDE):
             token, chat_id = _tg_credentials()
