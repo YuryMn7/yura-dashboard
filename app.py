@@ -1,12 +1,16 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v2.05 (TIME-TAG CONTRAST). Стиль: strict institutional minimalist, zero-clutter.
+SPEC v2.06 (TIME-TAG LINE GAP). Стиль: strict institutional minimalist, zero-clutter.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 
-v2.05 (TIME-TAG CONTRAST):
-  Вертикальные метки времени (AB / AC и числа Kihon suu) больше не сливаются с линией:
-  подложка бирки непрозрачная, её цвет = цвет линии, затемнённый до контраста >= 4.5:1,
-  текст белый. Линия под биркой не просвечивает. Работает и на Dark, и на Light.
-  Затронуты только функция _readable_tag_bg() и вложенная vlabel() в ветке terminal.
+v2.06 (TIME-TAG LINE GAP):
+  Вертикальные линии временных целей (AB / AC и числа Kihon suu) рисуются двумя
+  сегментами с разрывом ровно под подписью: линия не проходит сквозь буквы.
+  Сами подписи возвращены к прежнему виду — цвет текста = цвет линии,
+  полупрозрачная подложка CLR_LABEL_BG, borderpad=1. Сплошные бирки v2.05 отменены,
+  helper _readable_tag_bg() удалён. Размер разрыва считается от длины подписи,
+  кегля и высоты области построения, поэтому подходит и к мобильной раскладке.
+
+v2.05 (TIME-TAG CONTRAST): сплошные цветные бирки — отменены в v2.06.
 
 v2.04 (DEFINITIVE NATIVE THEME FIX):
   1. st.plotly_chart(..., theme="streamlit") — нативный движок Streamlit красит оси,
@@ -831,31 +835,6 @@ def enforce_visible_extremes(df_plot):
     mh[hi_pos] = True
     ml[lo_pos] = True
     return mh, ml
-
-
-def _readable_tag_bg(hex_color, min_contrast=4.5):
-    """v2.05: непрозрачная подложка вертикальных меток времени.
-    Фон = цвет линии, затемнённый до контраста >= 4.5:1 с белым текстом,
-    чтобы надпись не сливалась с линией ни на Dark, ни на Light."""
-    try:
-        r = int(hex_color[1:3], 16) / 255.0
-        g = int(hex_color[3:5], 16) / 255.0
-        b = int(hex_color[5:7], 16) / 255.0
-    except Exception:
-        return "#4A5456"
-
-    def _lum(rr, gg, bb):
-        def _f(c):
-            return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
-        return 0.2126 * _f(rr) + 0.7152 * _f(gg) + 0.0722 * _f(bb)
-
-    for _ in range(24):
-        if 1.05 / (_lum(r, g, b) + 0.05) >= min_contrast:
-            break
-        r *= 0.9
-        g *= 0.9
-        b *= 0.9
-    return "#%02X%02X%02X" % (int(round(r * 255)), int(round(g * 255)), int(round(b * 255)))
 
 
 def inject_css(mobile):
@@ -2892,15 +2871,25 @@ elif app_mode == "terminal":
             def vlabel(x, text, color, y):
                 fig.add_annotation(
                     x=x, y=y, xref="x", yref="paper", text=text, textangle=-90, showarrow=False,
-                    xanchor="center", yanchor="middle",
-                    font=dict(size=UIP["vlabel_font"], color="#FFFFFF"),
-                    bgcolor=_readable_tag_bg(color), borderpad=2,
+                    xanchor="center", yanchor="middle", font=dict(size=UIP["vlabel_font"], color=color),
+                    bgcolor=CLR_LABEL_BG, borderpad=1,
                 )
 
             def time_line(x_pos, base, color, dash, y_zone, hover_head, opacity=1.0):
                 ts_, fc_ = bar_time_at(df_plot, x_pos, tf_name, is_fx, clock)
-                fig.add_vline(x=x_pos, line_dash=dash, line_color=color, opacity=opacity)
-                vlabel(x_pos, time_target_label(base, ts_, fc_, tf_name, MOBILE), color, y_zone)
+                label = time_target_label(base, ts_, fc_, tf_name, MOBILE)
+                fs = UIP["vlabel_font"]
+                plot_h = max(120.0, float(UIP["height"] - UIP["margin"]["t"] - UIP["margin"]["b"]))
+                half = (len(label) * fs * 0.55 / 2.0 + fs * 0.9) / plot_h
+                gap_lo = max(0.0, y_zone - half)
+                gap_hi = min(1.0, y_zone + half)
+                for seg_lo, seg_hi in ((0.0, gap_lo), (gap_hi, 1.0)):
+                    if seg_hi > seg_lo:
+                        fig.add_shape(type="line", xref="x", yref="paper",
+                                      x0=x_pos, x1=x_pos, y0=seg_lo, y1=seg_hi,
+                                      line=dict(color=color, width=1, dash=dash),
+                                      opacity=opacity, layer="above")
+                vlabel(x_pos, label, color, y_zone)
                 tt_x.append(x_pos)
                 tt_text.append(hover_head + f"<br>{ts_:%Y-%m-%d %H:%M}" + (f" ({t('hover_forecast')})" if fc_ else ""))
 
