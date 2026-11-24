@@ -1,72 +1,46 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v3.01 (SUPABASE AUTH & ACCESS GATING). Стиль: strict institutional minimalist, zero-clutter.
+SPEC v3.02 (AUTH HARDENING & OWNER ACCESS). Стиль: strict institutional minimalist, zero-clutter.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
+v3.02 (AUTH HARDENING):
+1. OWNER_EMAILS — хозяин получает бессрочный PRO независимо от чтения profiles.
+2. auth_fetch_profile — два способа чтения (user token, затем app key) + видимая
+   диагностика auth_diag под плашкой HUD. Тихих подмен на триал больше нет.
+3. Счётчик дней триала округляется вверх (math.ceil): свежий триал показывает 7.
+4. Ответ «Email not confirmed» превращается в понятную подсказку на двух языках.
 v3.01 (SUPABASE AUTH & ACCESS GATING):
-Врата доступа: неавторизованный пользователь видит только экран Вход/Регистрация,
-далее ст.стоп() — аналитика и график не исполняются. Supabase GoTrue REST API
-через нативный requests, ноль новых зависимостей. Таблица profiles с RLS и
-триггером автопрофиля. В сайдбаре HUD пользователя: email, бейдж подписки
-(PRO / TRIAL с остатком дней / ИСТЕКЛА) и кнопка Выйти. Пейволл: при истёкшей
-подписке исполнительные кнопки MT5 и Bybit блокируются информационным баннером.
-Торговый стек сохранён нетронутым: Plotly native theme, MT5 2FA, Bybit v5, Alice RF.
+Врата доступа: неавторизованный видит только Вход/Регистрация, далее st.stop().
+Supabase GoTrue REST API через нативный requests, ноль новых зависимостей.
+Таблица profiles с RLS и триггером автопрофиля. HUD в сайдбаре: email, бейдж
+подписки, кнопка Выйти. Пейволл блокирует кнопки MT5 и Bybit при истёкшей подписке.
 v2.06 (TIME-TAG LINE GAP):
-Вертикальные линии временных целей (AB / AC и числа Kihon suu) рисуются двумя
-сегментами с разрывом ровно под подписью: линия не проходит сквозь буквы.
-Сами подписи возвращены к прежнему виду — цвет текста = цвет линии,
-полупрозрачная подложка CLR_LABEL_BG, borderpad=1. Сплошные бирки v2.05 отменены,
-helper _readable_tag_bg() удалён. Размер разрыва считается от длины подписи,
-кегля и высоты области построения, поэтому подходит и к мобильной раскладке.
-v2.05 (TIME-TAG CONTRAST): сплошные цветные бирки — отменены в v2.06.
+Вертикальные линии временных целей рисуются двумя сегментами с разрывом под подписью.
+Подписи: цвет текста = цвет линии, подложка CLR_LABEL_BG, borderpad=1.
 v2.04 (DEFINITIVE NATIVE THEME FIX):
-1. st.plotly_chart(..., theme="streamlit") — нативный движок Streamlit красит оси,
-подписи времени и легенду: светлые на Dark, графитовые на Light, мгновенно
-при переключении темы в верхнем меню (Settings -> Theme) и при OS auto-theme.
-2. template="plotly_white" удалён из fig.update_layout() — он принудительно запекал
-тёмно-синий #2A3F5F в шрифты осей и перебивал нативную тему на Dark.
-3. CSS-оверлей xtick/ytick/legendtext удалён из inject_css() — при theme="streamlit"
-он не нужен: Streamlit нативно перекрашивает SVG без !important-костылей.
-4. Сохранены без изменений: opacity-lock scatter-трейсов (selected/unselected = 1.0),
-динамический шаг лота Bybit (BTC 0.001 / ETH 0.01 / SOL 0.1) и динамическая
-точность lot_line, двойная маршрутизация MT5 (Telegram 2FA) / Bybit v5.
-v2.03 (SINGLE SOURCE OF TRUTH THEME FIX):
-Удалены plotly_text_color() и Python-цвета шрифтов; CSS-оверлей заменён нативной
-темой в v2.04. Opacity-lock и динамическая точность лота сохранены.
-v2.02 (VISUAL ERGONOMICS & CONTRAST POLISH):
-1. Адаптивный контраст осей и легенды (Python-слой заменён нативной темой в v2.04).
-2. Lock opacity выбранных/невыбранных маркеров = 1.0 на всех scatter-трейсах.
-Candlestick не имеет selected/unselected в plotly.py и в затухании не участвует.
-3. Динамическая точность лота в lot_line: BTC 0.001 отображается как «0.001».
-HOTFIX v2.01:
-1. MT5 'watch' больше не блокирует кнопку ордера — EA корректно получает карточку.
-2. Динамический шаг лота (0.001 для BTC, 0.01 для ETH, 0.1 для SOL) вместо хардкода 0.01.
-3. Спиннер Bybit показывает «Передача ордера в Bybit API v5…» вместо Telegram-текста.
+st.plotly_chart(..., theme="streamlit") — нативный движок красит оси и легенду.
+template="plotly_white" удалён. CSS-оверлей осей удалён.
+Сохранены: opacity-lock scatter (selected/unselected = 1.0), динамический шаг лота
+Bybit (BTC 0.001 / ETH 0.01 / SOL 0.1), маршрутизация MT5 (Telegram 2FA) / Bybit v5.
+HOTFIX v2.01: MT5 'watch' не блокирует кнопку; динамический шаг лота; спиннер Bybit.
 BYBIT v5 DUAL-ROUTED EXECUTION GATEWAY (v2.00):
-Традиционные активы (Forex, Gold, Indices) -> MT5 через Telegram 2FA.
-Крипто-перпетуумы (BTCUSDT, ETHUSDT, SOLUSDT) -> Bybit API v5 POST /v5/order/create.
-Нативная поддержка Hosoda TP и ATR-буферизованного SL.
-Graceful Dry-Run: при отсутствии ключей, блокировке CDN или нулевом балансе
-выполняется симуляция ордера без риска для капитала.
-AXIS & LEGEND TYPOGRAPHY ALIGNMENT (v1.98): историческая запись, отменена v2.03/v2.04.
-BYBIT WALLET GRACEFUL DEGRADATION (v1.98):
-При блокировке CloudFront CDN HUD переходит в «Тестовый режим».
-CANDLESTICK CONTRAST HARDENING & CANVAS BOUNDARY CLEANSING (v1.97):
-Палитра свечей: матовый teal (#26A69A) и coral (#E55353).
-THEME-ADAPTIVE UI (v1.95): терминал НЕ форсирует тёмную тему. Холст Plotly прозрачный.
-BYBIT PROXY DIAGNOSTIC LOCK (v1.95): ошибка прокси сохраняется как приоритетный диагноз.
-CRITICAL BUGFIX (v1.85): контракт всех фидеров унифицирован до 2-кортежа (DataFrame, err).
+Традиционные активы -> MT5 через Telegram 2FA. Крипто -> Bybit API v5.
+Graceful Dry-Run при отсутствии ключей, блокировке CDN или нулевом балансе.
+CANDLESTICK CONTRAST (v1.97): матовый teal (#26A69A) и coral (#E55353).
+THEME-ADAPTIVE UI (v1.95): терминал НЕ форсирует тёмную тему. Холст прозрачный.
+CRITICAL BUGFIX (v1.85): контракт фидеров — 2-кортеж (DataFrame, err).
 CLOUDFLARE EDGE REVERSE PROXY (v1.84): опциональный секрет BYBIT_PROXY_URL.
 АЛИСА — ZERO-LAG: ALICE_LAG = 0, вход на баре C.
 РИСК ПОД BLUE GUARDIAN: дефолт 0.5 % на сделку, шаг ввода 0.1 %.
-Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опц.).
+Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn.
 Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.),
 SUPABASE_URL, SUPABASE_KEY (опц.), BYBIT_API_KEY, BYBIT_API_SECRET (опц.),
-BYBIT_PROXY_URL (опц., Cloudflare Worker reverse proxy).
+BYBIT_PROXY_URL (опц.).
 """
 import gc
 import hashlib
 import hmac
 import io
 import json
+import math
 import re
 import time
 from datetime import timedelta, timezone
@@ -95,11 +69,10 @@ st.session_state.setdefault("chart_ver", 0)
 st.session_state.setdefault("data_feed_source", "—")
 st.session_state.setdefault("bybit_diag_err", "—")
 st.session_state.setdefault("bybit_active_gw", "—")
-# ===== SPEC v3.01 (SUPABASE AUTH) — session keys =====
 st.session_state.setdefault("auth_user", None)
 st.session_state.setdefault("auth_token", None)
 st.session_state.setdefault("auth_profile", None)
-# ===== /SPEC v3.01 =====
+st.session_state.setdefault("auth_diag", "")
 
 
 def reset_points():
@@ -239,6 +212,9 @@ SURFACE_HOVER = "#eef2f5"
 SURFACE_ACTIVE = "#e3e9ee"
 TELEMETRY_LIVE_SECONDS = 60
 TELEMETRY_DAILY_CAP = 3.0
+
+# ===== SPEC v3.02: хозяева терминала. Бессрочный PRO без чтения profiles. =====
+OWNER_EMAILS = {"yurymn@gmail.com"}
 
 LANGS = {"English": "en", "Русский": "ru"}
 DEFAULT_LANG = "Русский"
@@ -413,9 +389,11 @@ I18N = {
         "auth_btn_in": "Sign In", "auth_btn_up": "Create Account",
         "auth_err_creds": "Invalid email or password.",
         "auth_err_exists": "User already registered. Please sign in.",
+        "auth_err_not_confirmed": "Email is not confirmed yet. Open the confirmation link from our email, then sign in again. If the link has expired, register again to receive a fresh one.",
         "auth_signup_confirm": "Account created. Check your email to confirm, then sign in.",
         "auth_logout": "Log Out",
         "auth_sub_pro": "PRO", "auth_sub_trial": "TRIAL", "auth_sub_expired": "EXPIRED",
+        "auth_sub_owner": "PRO · OWNER",
         "auth_trial_days": "{d} days left",
         "auth_paywall": "Your subscription has expired. Please contact the administrator to renew access.",
         "auth_no_config": "Supabase Auth is not configured (SUPABASE_URL / SUPABASE_KEY missing).",
@@ -588,14 +566,18 @@ I18N = {
         "auth_btn_in": "Войти", "auth_btn_up": "Создать аккаунт",
         "auth_err_creds": "Неверный email или пароль.",
         "auth_err_exists": "Пользователь уже зарегистрирован. Пожалуйста, войдите.",
+        "auth_err_not_confirmed": "Почта ещё не подтверждена. Откройте ссылку из нашего письма и войдите снова. Если ссылка устарела — зарегистрируйтесь заново, придёт свежая.",
         "auth_signup_confirm": "Аккаунт создан. Проверьте почту для подтверждения, затем войдите.",
         "auth_logout": "Выйти",
         "auth_sub_pro": "PRO", "auth_sub_trial": "TRIAL", "auth_sub_expired": "ИСТЕКЛА",
+        "auth_sub_owner": "PRO · ВЛАДЕЛЕЦ",
         "auth_trial_days": "осталось {d} дн.",
         "auth_paywall": "Срок действия вашей подписки истёк. Обратитесь к администратору для продления доступа.",
         "auth_no_config": "Supabase Auth не настроен (нет SUPABASE_URL / SUPABASE_KEY).",
     },
 }
+
+
 def asset_label(name):
     return ASSET_LABELS_EN.get(name, name) if LANG == "en" else name
 
@@ -849,7 +831,7 @@ def enforce_visible_extremes(df_plot):
     return mh, ml
 
 
-# ===== SPEC v3.01 (SUPABASE AUTH & ACCESS GATING) =====
+# ===== SPEC v3.02 (SUPABASE AUTH, HARDENED) =====
 def supabase_auth_config():
     try:
         url = str(st.secrets.get("SUPABASE_URL", "")).rstrip("/")
@@ -857,6 +839,10 @@ def supabase_auth_config():
     except Exception:
         return "", ""
     return url, key
+
+
+def _is_owner(email):
+    return str(email or "").strip().lower() in OWNER_EMAILS
 
 
 def auth_sign_in(email, password):
@@ -875,8 +861,11 @@ def auth_sign_in(email, password):
         except Exception:
             return False, f"HTTP {r.status_code}"
         if r.status_code != 200 or "access_token" not in res:
-            msg = str(res.get("error_description") or res.get("msg") or "")
-            if "invalid" in msg.lower() or "credentials" in msg.lower():
+            msg = str(res.get("error_description") or res.get("msg") or res.get("error") or "")
+            low = msg.lower()
+            if "confirm" in low:
+                return False, "not_confirmed"
+            if "invalid" in low or "credentials" in low:
                 return False, "creds"
             return False, msg or f"HTTP {r.status_code}"
         return True, res
@@ -900,8 +889,9 @@ def auth_sign_up(email, password):
         except Exception:
             return False, f"HTTP {r.status_code}"
         if r.status_code not in (200, 201):
-            msg = str(res.get("error_description") or res.get("msg") or "")
-            if "already" in msg.lower() or "registered" in msg.lower():
+            msg = str(res.get("error_description") or res.get("msg") or res.get("error") or "")
+            low = msg.lower()
+            if "already" in low or "registered" in low or "exists" in low:
                 return False, "exists"
             return False, msg or f"HTTP {r.status_code}"
         return True, res
@@ -912,22 +902,29 @@ def auth_sign_up(email, password):
 def auth_fetch_profile(user_id, token):
     url, key = supabase_auth_config()
     if not url or not key or not user_id:
+        st.session_state["auth_diag"] = "profile: NO_URL / NO_KEY / NO_UID"
         return None
-    try:
-        r = requests.get(
-            f"{url}/rest/v1/profiles?id=eq.{user_id}&select=*",
-            headers={"apikey": key, "Authorization": f"Bearer {token}",
-                     "Accept": "application/json"},
-            timeout=10,
-        )
-        if r.status_code != 200:
-            return None
-        rows = r.json()
-        if not isinstance(rows, list) or not rows:
-            return None
-        return rows[0]
-    except Exception:
-        return None
+    endpoint = f"{url}/rest/v1/profiles?id=eq.{user_id}&select=*"
+    attempts = (
+        ("user", {"apikey": key, "Authorization": f"Bearer {token}", "Accept": "application/json"}),
+        ("key", {"apikey": key, "Authorization": f"Bearer {key}", "Accept": "application/json"}),
+    )
+    notes = []
+    for label, headers in attempts:
+        try:
+            r = requests.get(endpoint, headers=headers, timeout=10)
+            if r.status_code != 200:
+                notes.append(f"{label}=HTTP {r.status_code}")
+                continue
+            rows = r.json()
+            if isinstance(rows, list) and rows:
+                st.session_state["auth_diag"] = f"profile OK ({label})"
+                return rows[0]
+            notes.append(f"{label}=empty")
+        except Exception as e:
+            notes.append(f"{label}={safe_err(e)[:70]}")
+    st.session_state["auth_diag"] = "profile: " + " | ".join(notes)
+    return None
 
 
 def auth_extract_user(data):
@@ -945,7 +942,9 @@ def _parse_valid_until(v):
         return None
 
 
-def subscription_state(profile):
+def subscription_state(profile, email=None):
+    if _is_owner(email):
+        return "owner", None
     if not profile:
         return "trial", None
     status = str(profile.get("subscription_status", "trial")).lower()
@@ -953,14 +952,15 @@ def subscription_state(profile):
     now = pd.Timestamp.now(tz="UTC")
     if status == "expired" or (vu is not None and vu <= now):
         return "expired", 0
-    days = int((vu - now).total_seconds() // 86400) if vu is not None else None
+    days = int(math.ceil((vu - now).total_seconds() / 86400)) if vu is not None else None
     if status == "active":
         return "pro", days
     return "trial", days
 
 
 def subscription_locked():
-    state, _d = subscription_state(st.session_state.get("auth_profile"))
+    user = st.session_state.get("auth_user") or {}
+    state, _d = subscription_state(st.session_state.get("auth_profile"), user.get("email"))
     return state == "expired"
 
 
@@ -989,6 +989,8 @@ def render_auth_gate():
                         st.error(t("auth_no_config"))
                     elif data == "creds":
                         st.error(t("auth_err_creds"))
+                    elif data == "not_confirmed":
+                        st.warning(t("auth_err_not_confirmed"))
                     else:
                         st.error(str(data))
             with tab_up:
@@ -1016,10 +1018,11 @@ def render_auth_gate():
 
 def render_user_hud():
     user = st.session_state.get("auth_user") or {}
-    profile = st.session_state.get("auth_profile") or {}
-    state, days = subscription_state(profile)
     email = str(user.get("email") or "—")
-    if state == "pro":
+    state, days = subscription_state(st.session_state.get("auth_profile"), email)
+    if state == "owner":
+        badge, badge_color = f"🟢 {t('auth_sub_owner')}", "#3f7d5c"
+    elif state == "pro":
         badge, badge_color = f"🟢 {t('auth_sub_pro')}", "#3f7d5c"
     elif state == "trial":
         badge = f"🟡 {t('auth_sub_trial')}"
@@ -1035,12 +1038,16 @@ def render_user_hud():
         f"</div>",
         unsafe_allow_html=True,
     )
+    diag = str(st.session_state.get("auth_diag", ""))
+    if diag and not diag.startswith("profile OK"):
+        st.caption(diag)
     if st.button(t("auth_logout"), key="auth_logout_btn", **WIDE):
         st.session_state["auth_user"] = None
         st.session_state["auth_token"] = None
         st.session_state["auth_profile"] = None
+        st.session_state["auth_diag"] = ""
         st.rerun()
-# ===== /SPEC v3.01 =====
+# ===== /SPEC v3.02 =====
 
 
 def inject_css(mobile):
@@ -1760,8 +1767,6 @@ def send_bybit_order(sym, side, order_type, qty, price, sl, tp, order_id):
         except Exception:
             continue
     return False, "NETWORK_ERR", "No response from Bybit endpoints"
-
-
 class TDError(Exception):
     pass
 
@@ -2342,8 +2347,8 @@ def alice_build_samples(df, htf, targets, ab_cls, c_cls, strict=True, strict_ab=
                     geom = _alice_geom(entry, atr, H, Ap, Bp, Cp, T)
                     if name == targets[0]:
                         row["retr"], row["risk_z"] = geom[0], geom[1]
-                        row["reward_z_" + name] = geom[2]
-                        row["y_" + name] = _alice_label(hi_m, lo_m, e, T, Cp, H)
+                    row["reward_z_" + name] = geom[2]
+                    row["y_" + name] = _alice_label(hi_m, lo_m, e, T, Cp, H)
                 rows.append(row)
     return pd.DataFrame(rows)
 
@@ -2741,7 +2746,7 @@ def refresh_button(key):
 PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active",
                 "risk_pct", "account_deposit", "entry_mode", "custom_entry",
                 "data_feed_source", "bybit_diag_err", "bybit_active_gw",
-                "auth_user", "auth_token", "auth_profile"]
+                "auth_user", "auth_token", "auth_profile", "auth_diag"]
 
 
 def _on_lang_change():
@@ -2775,12 +2780,12 @@ MOBILE = detect_mobile_ua()
 inject_css(MOBILE)
 LANG = LANGS[st.session_state.get("lang", DEFAULT_LANG)]
 
-# ===== SPEC v3.01: SUPABASE AUTH GATE =====
+# ===== SPEC v3.02: ВРАТА ДОСТУПА =====
 if st.session_state.get("auth_user") is None:
     render_auth_gate()
     st.stop()
 PAYWALL_LOCKED = subscription_locked()
-# ===== /SPEC v3.01 =====
+# ===== /SPEC v3.02 =====
 
 _teleport = st.session_state.pop("_teleport", None)
 if _teleport:
@@ -2813,6 +2818,7 @@ with st.sidebar:
             wallet_live_flag, wallet_equity = render_bybit_hud()
         else:
             telemetry_live_flag, telemetry_live_equity = render_telemetry_hud()
+
 if app_mode == "radar":
     st.markdown(f"<h2 class='app-title'>{t('scanner_title')}</h2>", unsafe_allow_html=True)
     if st.session_state.get("w_radar_tf") not in radar_tfs:
@@ -3480,8 +3486,8 @@ elif app_mode == "terminal":
             bybit_arm = False
             sym_clean_btn = mt5_symbol(asset_name)
             active_step_btn = bybit_qty_step(sym_clean_btn) if bybit_mode else LOT_STEP
-            
-            # SPEC v3.01: Paywall banner
+
+            # ===== SPEC v3.02: ПЕЙВОЛЛ =====
             if PAYWALL_LOCKED:
                 st.warning(t("auth_paywall"))
 
