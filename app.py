@@ -2813,7 +2813,7 @@ with st.sidebar:
             wallet_live_flag, wallet_equity = render_bybit_hud()
         else:
             telemetry_live_flag, telemetry_live_equity = render_telemetry_hud()
-          if app_mode == "radar":
+if app_mode == "radar":
     st.markdown(f"<h2 class='app-title'>{t('scanner_title')}</h2>", unsafe_allow_html=True)
     if st.session_state.get("w_radar_tf") not in radar_tfs:
         st.session_state["w_radar_tf"] = "D1"
