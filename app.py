@@ -1881,7 +1881,9 @@ def fetch_account_telemetry():
         return rows[0]
     except Exception:
         return None
-      def render_telemetry_hud():
+
+
+def render_telemetry_hud():
     row = fetch_account_telemetry()
     if row is None:
         html = (
