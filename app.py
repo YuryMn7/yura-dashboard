@@ -1,75 +1,66 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v2.06 (TIME-TAG LINE GAP). Стиль: strict institutional minimalist, zero-clutter.
+SPEC v3.01 (SUPABASE AUTH & ACCESS GATING). Стиль: strict institutional minimalist, zero-clutter.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
-
+v3.01 (SUPABASE AUTH & ACCESS GATING):
+Врата доступа: неавторизованный пользователь видит только экран Вход/Регистрация,
+далее ст.стоп() — аналитика и график не исполняются. Supabase GoTrue REST API
+через нативный requests, ноль новых зависимостей. Таблица profiles с RLS и
+триггером автопрофиля. В сайдбаре HUD пользователя: email, бейдж подписки
+(PRO / TRIAL с остатком дней / ИСТЕКЛА) и кнопка Выйти. Пейволл: при истёкшей
+подписке исполнительные кнопки MT5 и Bybit блокируются информационным баннером.
+Торговый стек сохранён нетронутым: Plotly native theme, MT5 2FA, Bybit v5, Alice RF.
 v2.06 (TIME-TAG LINE GAP):
-  Вертикальные линии временных целей (AB / AC и числа Kihon suu) рисуются двумя
-  сегментами с разрывом ровно под подписью: линия не проходит сквозь буквы.
-  Сами подписи возвращены к прежнему виду — цвет текста = цвет линии,
-  полупрозрачная подложка CLR_LABEL_BG, borderpad=1. Сплошные бирки v2.05 отменены,
-  helper _readable_tag_bg() удалён. Размер разрыва считается от длины подписи,
-  кегля и высоты области построения, поэтому подходит и к мобильной раскладке.
-
+Вертикальные линии временных целей (AB / AC и числа Kihon suu) рисуются двумя
+сегментами с разрывом ровно под подписью: линия не проходит сквозь буквы.
+Сами подписи возвращены к прежнему виду — цвет текста = цвет линии,
+полупрозрачная подложка CLR_LABEL_BG, borderpad=1. Сплошные бирки v2.05 отменены,
+helper _readable_tag_bg() удалён. Размер разрыва считается от длины подписи,
+кегля и высоты области построения, поэтому подходит и к мобильной раскладке.
 v2.05 (TIME-TAG CONTRAST): сплошные цветные бирки — отменены в v2.06.
-
 v2.04 (DEFINITIVE NATIVE THEME FIX):
-  1. st.plotly_chart(..., theme="streamlit") — нативный движок Streamlit красит оси,
-     подписи времени и легенду: светлые на Dark, графитовые на Light, мгновенно
-     при переключении темы в верхнем меню (Settings -> Theme) и при OS auto-theme.
-  2. template="plotly_white" удалён из fig.update_layout() — он принудительно запекал
-     тёмно-синий #2A3F5F в шрифты осей и перебивал нативную тему на Dark.
-  3. CSS-оверлей xtick/ytick/legendtext удалён из inject_css() — при theme="streamlit"
-     он не нужен: Streamlit нативно перекрашивает SVG без !important-костылей.
-  4. Сохранены без изменений: opacity-lock scatter-трейсов (selected/unselected = 1.0),
-     динамический шаг лота Bybit (BTC 0.001 / ETH 0.01 / SOL 0.1) и динамическая
-     точность lot_line, двойная маршрутизация MT5 (Telegram 2FA) / Bybit v5.
-
+1. st.plotly_chart(..., theme="streamlit") — нативный движок Streamlit красит оси,
+подписи времени и легенду: светлые на Dark, графитовые на Light, мгновенно
+при переключении темы в верхнем меню (Settings -> Theme) и при OS auto-theme.
+2. template="plotly_white" удалён из fig.update_layout() — он принудительно запекал
+тёмно-синий #2A3F5F в шрифты осей и перебивал нативную тему на Dark.
+3. CSS-оверлей xtick/ytick/legendtext удалён из inject_css() — при theme="streamlit"
+он не нужен: Streamlit нативно перекрашивает SVG без !important-костылей.
+4. Сохранены без изменений: opacity-lock scatter-трейсов (selected/unselected = 1.0),
+динамический шаг лота Bybit (BTC 0.001 / ETH 0.01 / SOL 0.1) и динамическая
+точность lot_line, двойная маршрутизация MT5 (Telegram 2FA) / Bybit v5.
 v2.03 (SINGLE SOURCE OF TRUTH THEME FIX):
-  Удалены plotly_text_color() и Python-цвета шрифтов; CSS-оверлей заменён нативной
-  темой в v2.04. Opacity-lock и динамическая точность лота сохранены.
-
+Удалены plotly_text_color() и Python-цвета шрифтов; CSS-оверлей заменён нативной
+темой в v2.04. Opacity-lock и динамическая точность лота сохранены.
 v2.02 (VISUAL ERGONOMICS & CONTRAST POLISH):
-  1. Адаптивный контраст осей и легенды (Python-слой заменён нативной темой в v2.04).
-  2. Lock opacity выбранных/невыбранных маркеров = 1.0 на всех scatter-трейсах.
-     Candlestick не имеет selected/unselected в plotly.py и в затухании не участвует.
-  3. Динамическая точность лота в lot_line: BTC 0.001 отображается как «0.001».
-
+1. Адаптивный контраст осей и легенды (Python-слой заменён нативной темой в v2.04).
+2. Lock opacity выбранных/невыбранных маркеров = 1.0 на всех scatter-трейсах.
+Candlestick не имеет selected/unselected в plotly.py и в затухании не участвует.
+3. Динамическая точность лота в lot_line: BTC 0.001 отображается как «0.001».
 HOTFIX v2.01:
-  1. MT5 'watch' больше не блокирует кнопку ордера — EA корректно получает карточку.
-  2. Динамический шаг лота (0.001 для BTC, 0.01 для ETH, 0.1 для SOL) вместо хардкода 0.01.
-  3. Спиннер Bybit показывает «Передача ордера в Bybit API v5…» вместо Telegram-текста.
-
+1. MT5 'watch' больше не блокирует кнопку ордера — EA корректно получает карточку.
+2. Динамический шаг лота (0.001 для BTC, 0.01 для ETH, 0.1 для SOL) вместо хардкода 0.01.
+3. Спиннер Bybit показывает «Передача ордера в Bybit API v5…» вместо Telegram-текста.
 BYBIT v5 DUAL-ROUTED EXECUTION GATEWAY (v2.00):
-  Традиционные активы (Forex, Gold, Indices) -> MT5 через Telegram 2FA.
-  Крипто-перпетуумы (BTCUSDT, ETHUSDT, SOLUSDT) -> Bybit API v5 POST /v5/order/create.
-  Нативная поддержка Hosoda TP и ATR-буферизованного SL.
-  Graceful Dry-Run: при отсутствии ключей, блокировке CDN или нулевом балансе
-  выполняется симуляция ордера без риска для капитала.
-
+Традиционные активы (Forex, Gold, Indices) -> MT5 через Telegram 2FA.
+Крипто-перпетуумы (BTCUSDT, ETHUSDT, SOLUSDT) -> Bybit API v5 POST /v5/order/create.
+Нативная поддержка Hosoda TP и ATR-буферизованного SL.
+Graceful Dry-Run: при отсутствии ключей, блокировке CDN или нулевом балансе
+выполняется симуляция ордера без риска для капитала.
 AXIS & LEGEND TYPOGRAPHY ALIGNMENT (v1.98): историческая запись, отменена v2.03/v2.04.
-
 BYBIT WALLET GRACEFUL DEGRADATION (v1.98):
-  При блокировке CloudFront CDN HUD переходит в «Тестовый режим».
-
+При блокировке CloudFront CDN HUD переходит в «Тестовый режим».
 CANDLESTICK CONTRAST HARDENING & CANVAS BOUNDARY CLEANSING (v1.97):
-  Палитра свечей: матовый teal (#26A69A) и coral (#E55353).
-
+Палитра свечей: матовый teal (#26A69A) и coral (#E55353).
 THEME-ADAPTIVE UI (v1.95): терминал НЕ форсирует тёмную тему. Холст Plotly прозрачный.
-
 BYBIT PROXY DIAGNOSTIC LOCK (v1.95): ошибка прокси сохраняется как приоритетный диагноз.
-
 CRITICAL BUGFIX (v1.85): контракт всех фидеров унифицирован до 2-кортежа (DataFrame, err).
-
 CLOUDFLARE EDGE REVERSE PROXY (v1.84): опциональный секрет BYBIT_PROXY_URL.
-
 АЛИСА — ZERO-LAG: ALICE_LAG = 0, вход на баре C.
-
 РИСК ПОД BLUE GUARDIAN: дефолт 0.5 % на сделку, шаг ввода 0.1 %.
-
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn (kaleido/matplotlib — опц.).
 Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.),
-         SUPABASE_URL, SUPABASE_KEY (опц.), BYBIT_API_KEY, BYBIT_API_SECRET (опц.),
-         BYBIT_PROXY_URL (опц., Cloudflare Worker reverse proxy).
+SUPABASE_URL, SUPABASE_KEY (опц.), BYBIT_API_KEY, BYBIT_API_SECRET (опц.),
+BYBIT_PROXY_URL (опц., Cloudflare Worker reverse proxy).
 """
 import gc
 import hashlib
@@ -95,7 +86,6 @@ except ImportError:
     SKLEARN_OK = False
 
 st.set_page_config(page_title="Quantitative Analysis Terminal", layout="wide")
-
 API_KEY = st.secrets["TWELVEDATA_KEY"]
 _ST_VER = tuple(int(x) for x in re.findall(r"\d+", st.__version__)[:2])
 WIDE = {"width": "stretch"} if _ST_VER >= (1, 50) else {"use_container_width": True}
@@ -105,6 +95,11 @@ st.session_state.setdefault("chart_ver", 0)
 st.session_state.setdefault("data_feed_source", "—")
 st.session_state.setdefault("bybit_diag_err", "—")
 st.session_state.setdefault("bybit_active_gw", "—")
+# ===== SPEC v3.01 (SUPABASE AUTH) — session keys =====
+st.session_state.setdefault("auth_user", None)
+st.session_state.setdefault("auth_token", None)
+st.session_state.setdefault("auth_profile", None)
+# ===== /SPEC v3.01 =====
 
 
 def reset_points():
@@ -174,7 +169,6 @@ BYBIT_PROXY_LABEL = "proxy"
 BYBIT_PROXY_GATEWAY = "Cloudflare Proxy"
 BYBIT_GW_PROXY = "proxy"
 BYBIT_GW_DIRECT = "direct"
-
 FEED_BYBIT = "Bybit v5 (Linear)"
 FEED_BYBIT_PROXY = "Bybit v5 (Proxy)"
 FEED_YAHOO = "Yahoo Finance"
@@ -186,14 +180,11 @@ CLR_GRID = "rgba(128, 128, 128, 0.15)"
 CLR_TEXT_NEUTRAL = "rgba(128, 128, 128, 0.85)"
 CLR_TEXT_STRONG = "rgba(100, 100, 100, 1.0)"
 CLR_LABEL_BG = "rgba(128, 128, 128, 0.18)"
-
 CLR_TEXT_MUTED = "#787B86"
-
 CLR_CANDLE_UP_BODY = "#26A69A"
 CLR_CANDLE_UP_EDGE = "#26A69A"
 CLR_CANDLE_DN_BODY = "#E55353"
 CLR_CANDLE_DN_EDGE = "#E55353"
-
 CLR_TENKAN = "rgba(41, 128, 185, 0.95)"
 CLR_KIJUN = "rgba(231, 76, 60, 0.95)"
 CLR_CHIKOU = "rgba(30, 132, 73, 0.95)"
@@ -234,6 +225,7 @@ MT5_EXEC_MARK = "IG_EXEC"
 TRIG_WATCH_BARS = {"hosoda": 3, "break_b": 17}
 ATR_CHASE_LIMIT = 1.0
 CAND_C_BARS = 3
+
 ACCENT_MUTED = "#a88a45"
 MINOR_COLOR = "#95a5a6"
 MAJOR_COLOR = "#2c3e50"
@@ -415,6 +407,18 @@ I18N = {
         "ai_err_nan": "Indicators are not ready at point C (not enough history).",
         "ai_err_samples": "Not enough comparable historical waves ({n} found, at least {min} required).",
         "history_partial": "Part of the history could not be loaded ({detail}); the chart may be shorter than usual.",
+        "auth_title": "Ichimoku Wave Terminal — Institutional SaaS",
+        "auth_tab_in": "Sign In", "auth_tab_up": "Sign Up",
+        "auth_email": "Email", "auth_password": "Password",
+        "auth_btn_in": "Sign In", "auth_btn_up": "Create Account",
+        "auth_err_creds": "Invalid email or password.",
+        "auth_err_exists": "User already registered. Please sign in.",
+        "auth_signup_confirm": "Account created. Check your email to confirm, then sign in.",
+        "auth_logout": "Log Out",
+        "auth_sub_pro": "PRO", "auth_sub_trial": "TRIAL", "auth_sub_expired": "EXPIRED",
+        "auth_trial_days": "{d} days left",
+        "auth_paywall": "Your subscription has expired. Please contact the administrator to renew access.",
+        "auth_no_config": "Supabase Auth is not configured (SUPABASE_URL / SUPABASE_KEY missing).",
     },
     "ru": {
         "nav": "Навигация", "module": "Выберите модуль:",
@@ -578,10 +582,20 @@ I18N = {
         "ai_err_nan": "На точке C индикаторы ещё не готовы (мало истории).",
         "ai_err_samples": "Недостаточно похожих исторических волн (найдено {n}, нужно минимум {min}).",
         "history_partial": "Часть истории не загрузилась ({detail}); график может быть короче обычного.",
+        "auth_title": "Ichimoku Wave Terminal — Institutional SaaS",
+        "auth_tab_in": "Вход", "auth_tab_up": "Регистрация",
+        "auth_email": "Email", "auth_password": "Пароль",
+        "auth_btn_in": "Войти", "auth_btn_up": "Создать аккаунт",
+        "auth_err_creds": "Неверный email или пароль.",
+        "auth_err_exists": "Пользователь уже зарегистрирован. Пожалуйста, войдите.",
+        "auth_signup_confirm": "Аккаунт создан. Проверьте почту для подтверждения, затем войдите.",
+        "auth_logout": "Выйти",
+        "auth_sub_pro": "PRO", "auth_sub_trial": "TRIAL", "auth_sub_expired": "ИСТЕКЛА",
+        "auth_trial_days": "осталось {d} дн.",
+        "auth_paywall": "Срок действия вашей подписки истёк. Обратитесь к администратору для продления доступа.",
+        "auth_no_config": "Supabase Auth не настроен (нет SUPABASE_URL / SUPABASE_KEY).",
     },
 }
-
-
 def asset_label(name):
     return ASSET_LABELS_EN.get(name, name) if LANG == "en" else name
 
@@ -799,7 +813,6 @@ def candidate_c_extreme(df_plot, bars=CAND_C_BARS):
         down = float(ref["Close"]) < kj
     else:
         down = True
-
     if down:
         pos = int(np.argmax(win["High"].to_numpy(dtype=float)))
         px = float(win["High"].iloc[pos])
@@ -808,7 +821,6 @@ def candidate_c_extreme(df_plot, bars=CAND_C_BARS):
         pos = int(np.argmin(win["Low"].to_numpy(dtype=float)))
         px = float(win["Low"].iloc[pos])
         kind = "low"
-
     row = win.iloc[pos]
     atr = float(row["ATR"])
     if not np.isfinite(atr) or atr <= 0.0:
@@ -837,219 +849,465 @@ def enforce_visible_extremes(df_plot):
     return mh, ml
 
 
+# ===== SPEC v3.01 (SUPABASE AUTH & ACCESS GATING) =====
+def supabase_auth_config():
+    try:
+        url = str(st.secrets.get("SUPABASE_URL", "")).rstrip("/")
+        key = str(st.secrets.get("SUPABASE_KEY", ""))
+    except Exception:
+        return "", ""
+    return url, key
+
+
+def auth_sign_in(email, password):
+    url, key = supabase_auth_config()
+    if not url or not key:
+        return False, "no_config"
+    try:
+        r = requests.post(
+            f"{url}/auth/v1/token?grant_type=password",
+            json={"email": email, "password": password},
+            headers={"apikey": key, "Content-Type": "application/json"},
+            timeout=10,
+        )
+        try:
+            res = r.json()
+        except Exception:
+            return False, f"HTTP {r.status_code}"
+        if r.status_code != 200 or "access_token" not in res:
+            msg = str(res.get("error_description") or res.get("msg") or "")
+            if "invalid" in msg.lower() or "credentials" in msg.lower():
+                return False, "creds"
+            return False, msg or f"HTTP {r.status_code}"
+        return True, res
+    except Exception as e:
+        return False, safe_err(e)
+
+
+def auth_sign_up(email, password):
+    url, key = supabase_auth_config()
+    if not url or not key:
+        return False, "no_config"
+    try:
+        r = requests.post(
+            f"{url}/auth/v1/signup",
+            json={"email": email, "password": password},
+            headers={"apikey": key, "Content-Type": "application/json"},
+            timeout=10,
+        )
+        try:
+            res = r.json()
+        except Exception:
+            return False, f"HTTP {r.status_code}"
+        if r.status_code not in (200, 201):
+            msg = str(res.get("error_description") or res.get("msg") or "")
+            if "already" in msg.lower() or "registered" in msg.lower():
+                return False, "exists"
+            return False, msg or f"HTTP {r.status_code}"
+        return True, res
+    except Exception as e:
+        return False, safe_err(e)
+
+
+def auth_fetch_profile(user_id, token):
+    url, key = supabase_auth_config()
+    if not url or not key or not user_id:
+        return None
+    try:
+        r = requests.get(
+            f"{url}/rest/v1/profiles?id=eq.{user_id}&select=*",
+            headers={"apikey": key, "Authorization": f"Bearer {token}",
+                     "Accept": "application/json"},
+            timeout=10,
+        )
+        if r.status_code != 200:
+            return None
+        rows = r.json()
+        if not isinstance(rows, list) or not rows:
+            return None
+        return rows[0]
+    except Exception:
+        return None
+
+
+def auth_extract_user(data):
+    user = data.get("user") or {}
+    uid = user.get("id") or data.get("id")
+    email = user.get("email") or data.get("email")
+    return uid, email
+
+
+def _parse_valid_until(v):
+    try:
+        ts = pd.to_datetime(v, utc=True, errors="coerce")
+        return ts if pd.notna(ts) else None
+    except Exception:
+        return None
+
+
+def subscription_state(profile):
+    if not profile:
+        return "trial", None
+    status = str(profile.get("subscription_status", "trial")).lower()
+    vu = _parse_valid_until(profile.get("valid_until"))
+    now = pd.Timestamp.now(tz="UTC")
+    if status == "expired" or (vu is not None and vu <= now):
+        return "expired", 0
+    days = int((vu - now).total_seconds() // 86400) if vu is not None else None
+    if status == "active":
+        return "pro", days
+    return "trial", days
+
+
+def subscription_locked():
+    state, _d = subscription_state(st.session_state.get("auth_profile"))
+    return state == "expired"
+
+
+def render_auth_gate():
+    st.markdown(f"<div class='auth-title'>{t('auth_title')}</div>", unsafe_allow_html=True)
+    _url_chk, _key_chk = supabase_auth_config()
+    _, col_mid, _ = st.columns([1, 2, 1] if not MOBILE else [0.15, 3, 0.15])
+    with col_mid:
+        if not _url_chk or not _key_chk:
+            st.warning(t("auth_no_config"))
+        with st.container(key="auth_gate_box"):
+            tab_in, tab_up = st.tabs([t("auth_tab_in"), t("auth_tab_up")])
+            with tab_in:
+                email_in = st.text_input(t("auth_email"), key="auth_email_in")
+                pass_in = st.text_input(t("auth_password"), type="password", key="auth_pass_in")
+                if st.button(t("auth_btn_in"), key="auth_signin", **WIDE):
+                    with st.spinner("Supabase Auth…"):
+                        ok, data = auth_sign_in(email_in.strip(), pass_in)
+                    if ok:
+                        uid, email = auth_extract_user(data)
+                        st.session_state["auth_user"] = {"id": uid, "email": email or email_in.strip()}
+                        st.session_state["auth_token"] = data.get("access_token")
+                        st.session_state["auth_profile"] = auth_fetch_profile(uid, data.get("access_token"))
+                        st.rerun()
+                    elif data == "no_config":
+                        st.error(t("auth_no_config"))
+                    elif data == "creds":
+                        st.error(t("auth_err_creds"))
+                    else:
+                        st.error(str(data))
+            with tab_up:
+                email_up = st.text_input(t("auth_email"), key="auth_email_up")
+                pass_up = st.text_input(t("auth_password"), type="password", key="auth_pass_up")
+                if st.button(t("auth_btn_up"), key="auth_signup", **WIDE):
+                    with st.spinner("Supabase Auth…"):
+                        ok, data = auth_sign_up(email_up.strip(), pass_up)
+                    if ok:
+                        if data.get("access_token"):
+                            uid, email = auth_extract_user(data)
+                            st.session_state["auth_user"] = {"id": uid, "email": email or email_up.strip()}
+                            st.session_state["auth_token"] = data.get("access_token")
+                            st.session_state["auth_profile"] = auth_fetch_profile(uid, data.get("access_token"))
+                            st.rerun()
+                        else:
+                            st.success(t("auth_signup_confirm"))
+                    elif data == "no_config":
+                        st.error(t("auth_no_config"))
+                    elif data == "exists":
+                        st.error(t("auth_err_exists"))
+                    else:
+                        st.error(str(data))
+
+
+def render_user_hud():
+    user = st.session_state.get("auth_user") or {}
+    profile = st.session_state.get("auth_profile") or {}
+    state, days = subscription_state(profile)
+    email = str(user.get("email") or "—")
+    if state == "pro":
+        badge, badge_color = f"🟢 {t('auth_sub_pro')}", "#3f7d5c"
+    elif state == "trial":
+        badge = f"🟡 {t('auth_sub_trial')}"
+        if days is not None:
+            badge += f" · {t('auth_trial_days', d=max(days, 0))}"
+        badge_color = "#a88a45"
+    else:
+        badge, badge_color = f"🔴 {t('auth_sub_expired')}", "#9a5252"
+    st.markdown(
+        f"<div class='user-hud'>"
+        f"<div class='uh-email'>{email}</div>"
+        f"<div class='uh-badge' style='color:{badge_color};'>{badge}</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    if st.button(t("auth_logout"), key="auth_logout_btn", **WIDE):
+        st.session_state["auth_user"] = None
+        st.session_state["auth_token"] = None
+        st.session_state["auth_profile"] = None
+        st.rerun()
+# ===== /SPEC v3.01 =====
+
+
 def inject_css(mobile):
     base_css = """
-    .block-container { padding-top: 4rem; padding-bottom: 2rem; max-width: 100%; }
-    .app-title {
-        color: var(--text-color);
-        font-size: clamp(1.05rem, 4.5vw, 1.75rem);
-        line-height: 1.25;
-        margin-top: 0.2rem;
-        overflow-wrap: anywhere;
-        white-space: normal;
-    }
-    .stPlotlyChart .modebar { opacity: 1; }
-
-    .feed-badge {
-        font-size: 0.75rem;
-        color: var(--text-color);
-        opacity: 0.7;
-        letter-spacing: 0.04em;
-        line-height: 1.2;
-        margin: 0 0 2px 0;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .feed-badge b { font-weight: 600; color: var(--text-color); opacity: 1; }
-
-    .st-key-chart_shell { position: relative; }
-    .st-key-refresh_term { display: flex; justify-content: flex-end; margin: 0 0 0.25rem 0; }
-    .st-key-refresh_term button {
-        height: 28px; width: 30px; min-height: 0 !important;
-        display: inline-flex; align-items: center; justify-content: center;
-        padding: 0 !important; margin: 0;
-        border: 1px solid rgba(128, 128, 128, 0.25);
-        border-radius: 2px;
-        background: var(--secondary-background-color);
-        color: var(--text-color);
-        box-shadow: none;
-        transition: background-color .15s ease, border-color .15s ease;
-    }
-    .st-key-refresh_term button p, .st-key-refresh_term button span {
-        font-size: 15px !important; line-height: 1 !important; margin: 0 !important;
-        color: var(--text-color);
-        font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif;
-    }
-    .st-key-refresh_term button:hover {
-        background: var(--background-color);
-        border-color: var(--text-color);
-    }
-    .st-key-refresh_term button:active { background: var(--secondary-background-color); }
-    .st-key-chart_shell .st-key-refresh_term {
-        position: absolute; top: 6px; left: 4px; z-index: 7;
-        display: block; width: 30px; height: 28px;
-        margin: 0 !important; padding: 0 !important; pointer-events: none;
-    }
-    .st-key-chart_shell .st-key-refresh_term button { pointer-events: auto; }
-
-    .st-key-pts_bar_btn { margin: 2px 0 4px 0; }
-    .st-key-pts_bar_btn button {
-        width: 100%; height: 28px; min-height: 28px !important;
-        padding: 0 10px !important;
-        background: var(--secondary-background-color);
-        color: var(--text-color);
-        border: 1px solid rgba(128, 128, 128, 0.25);
-        border-radius: 2px;
-        box-shadow: none;
-        display: inline-flex; align-items: center; justify-content: center;
-        font-weight: 500; letter-spacing: 0.01em;
-        transition: background-color .15s ease, border-color .15s ease;
-    }
-    .st-key-pts_bar_btn button p, .st-key-pts_bar_btn button span {
-        font-size: 0.8rem !important; color: var(--text-color) !important;
-        margin: 0 !important; line-height: 1 !important;
-        font-variant-numeric: tabular-nums;
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .st-key-pts_bar_btn button:hover {
-        background: var(--background-color);
-        border-color: var(--text-color);
-    }
-    .st-key-pts_bar_btn button:active { background: var(--secondary-background-color); }
-
-    .st-key-teleport_btn { margin: 0.4rem 0 0.2rem 0; }
-    .st-key-teleport_btn button {
-        width: 100%; min-height: 44px; padding: 0.5rem 1rem !important;
-        background: var(--primary-color);
-        color: var(--background-color);
-        border: 1px solid var(--primary-color);
-        border-radius: 2px;
-        font-weight: 600; letter-spacing: 0.01em; box-shadow: none;
-        transition: opacity .15s ease;
-    }
-    .st-key-teleport_btn button p, .st-key-teleport_btn button span {
-        color: var(--background-color) !important;
-        font-size: 0.95rem !important; line-height: 1.3 !important;
-    }
-    .st-key-teleport_btn button:hover { opacity: 0.92; }
-
-    .st-key-mt5_send_order { margin: 0.4rem 0 0.2rem 0; }
-    .st-key-exec_order_btn { margin: 0.4rem 0 0.2rem 0; }
-    .st-key-mt5_send_order button, .st-key-exec_order_btn button {
-        width: 100%; min-height: 44px; padding: 0.5rem 1rem !important;
-        background: var(--primary-color);
-        color: var(--background-color);
-        border: 1px solid var(--primary-color);
-        border-radius: 2px;
-        font-weight: 600; letter-spacing: 0.01em; box-shadow: none;
-        transition: opacity .15s ease;
-    }
-    .st-key-mt5_send_order button p, .st-key-mt5_send_order button span,
-    .st-key-exec_order_btn button p, .st-key-exec_order_btn button span {
-        color: var(--background-color) !important;
-        font-size: 0.95rem !important; line-height: 1.3 !important;
-    }
-    .st-key-mt5_send_order button:hover, .st-key-exec_order_btn button:hover { opacity: 0.92; }
-    .st-key-mt5_send_order button:disabled, .st-key-exec_order_btn button:disabled {
-        background: var(--secondary-background-color);
-        border-color: rgba(128, 128, 128, 0.25);
-        color: var(--text-color);
-        opacity: 0.45;
-        cursor: not-allowed;
-    }
-    .st-key-mt5_send_order button:disabled p, .st-key-mt5_send_order button:disabled span,
-    .st-key-exec_order_btn button:disabled p, .st-key-exec_order_btn button:disabled span {
-        color: var(--text-color) !important;
-        opacity: 0.6;
-    }
-
-    .risk-card {
-        border: 1px solid rgba(128, 128, 128, 0.25);
-        border-left: 3px solid var(--text-color);
-        background: var(--secondary-background-color);
-        padding: 8px 12px;
-        margin: 0.2rem 0 0.5rem 0;
-        border-radius: 2px;
-    }
-    .risk-hd {
-        font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;
-        color: var(--text-color); opacity: 0.6;
-        margin-bottom: 4px;
-    }
-    .risk-tb { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-    .risk-tb td {
-        padding: 2px 0; font-size: 0.86rem;
-        border-bottom: 1px solid rgba(128, 128, 128, 0.15);
-    }
-    .risk-tb tr:last-child td { border-bottom: none; }
-    .risk-tb td.rl {
-        color: var(--text-color); opacity: 0.65;
-        white-space: nowrap; padding-right: 10px;
-    }
-    .risk-tb td.rv { color: var(--text-color); text-align: right; font-weight: 600; }
-    .lot-line {
-        border-top: 1px solid rgba(128, 128, 128, 0.25);
-        margin: 2px 0 4px 0; padding-top: 6px;
-        font-size: 0.95rem; color: var(--text-color);
-        font-variant-numeric: tabular-nums;
-    }
-    .lot-line b { font-size: 1.08rem; letter-spacing: 0.01em; }
-
-    .telemetry-hud {
-        background: var(--secondary-background-color);
-        border: 1px solid rgba(128, 128, 128, 0.25);
-        border-radius: 2px;
-        padding: 8px 12px;
-        margin: 0 0 0.5rem 0;
-        font-size: 0.82rem;
-        font-variant-numeric: tabular-nums;
-    }
-    .telemetry-hud .th-title {
-        font-size: 0.70rem; letter-spacing: 0.08em; text-transform: uppercase;
-        color: var(--text-color); opacity: 0.7;
-        margin-bottom: 6px;
-        display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere;
-    }
-    .telemetry-hud .th-dot {
-        width: 8px; height: 8px; border-radius: 50%;
-        display: inline-block; flex-shrink: 0;
-    }
-    .telemetry-live .th-dot { background: #3f7d5c; animation: th-pulse 1.4s infinite ease-in-out; }
-    .telemetry-offline .th-dot { background: #95a5a6; }
-    @keyframes th-pulse {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50% { opacity: 0.55; transform: scale(1.25); }
-    }
-    .telemetry-hud .th-row {
-        display: grid; grid-template-columns: auto 1fr;
-        gap: 2px 10px; line-height: 1.55;
-    }
-    .telemetry-hud .th-k { color: var(--text-color); opacity: 0.65; white-space: nowrap; }
-    .telemetry-hud .th-v { color: var(--text-color); text-align: right; font-weight: 600; }
-    .telemetry-hud .th-foot {
-        margin-top: 4px; font-size: 0.70rem;
-        color: var(--text-color); opacity: 0.55; overflow-wrap: anywhere;
-    }
-    """
+.block-container { padding-top: 4rem; padding-bottom: 2rem; max-width: 100%; }
+.app-title {
+color: var(--text-color);
+font-size: clamp(1.05rem, 4.5vw, 1.75rem);
+line-height: 1.25;
+margin-top: 0.2rem;
+overflow-wrap: anywhere;
+white-space: normal;
+}
+.stPlotlyChart .modebar { opacity: 1; }
+.feed-badge {
+font-size: 0.75rem;
+color: var(--text-color);
+opacity: 0.7;
+letter-spacing: 0.04em;
+line-height: 1.2;
+margin: 0 0 2px 0;
+white-space: nowrap;
+overflow: hidden;
+text-overflow: ellipsis;
+}
+.feed-badge b { font-weight: 600; color: var(--text-color); opacity: 1; }
+.st-key-chart_shell { position: relative; }
+.st-key-refresh_term { display: flex; justify-content: flex-end; margin: 0 0 0.25rem 0; }
+.st-key-refresh_term button {
+height: 28px; width: 30px; min-height: 0 !important;
+display: inline-flex; align-items: center; justify-content: center;
+padding: 0 !important; margin: 0;
+border: 1px solid rgba(128, 128, 128, 0.25);
+border-radius: 2px;
+background: var(--secondary-background-color);
+color: var(--text-color);
+box-shadow: none;
+transition: background-color .15s ease, border-color .15s ease;
+}
+.st-key-refresh_term button p, .st-key-refresh_term button span {
+font-size: 15px !important; line-height: 1 !important; margin: 0 !important;
+color: var(--text-color);
+font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif;
+}
+.st-key-refresh_term button:hover {
+background: var(--background-color);
+border-color: var(--text-color);
+}
+.st-key-refresh_term button:active { background: var(--secondary-background-color); }
+.st-key-chart_shell .st-key-refresh_term {
+position: absolute; top: 6px; left: 4px; z-index: 7;
+display: block; width: 30px; height: 28px;
+margin: 0 !important; padding: 0 !important; pointer-events: none;
+}
+.st-key-chart_shell .st-key-refresh_term button { pointer-events: auto; }
+.st-key-pts_bar_btn { margin: 2px 0 4px 0; }
+.st-key-pts_bar_btn button {
+width: 100%; height: 28px; min-height: 28px !important;
+padding: 0 10px !important;
+background: var(--secondary-background-color);
+color: var(--text-color);
+border: 1px solid rgba(128, 128, 128, 0.25);
+border-radius: 2px;
+box-shadow: none;
+display: inline-flex; align-items: center; justify-content: center;
+font-weight: 500; letter-spacing: 0.01em;
+transition: background-color .15s ease, border-color .15s ease;
+}
+.st-key-pts_bar_btn button p, .st-key-pts_bar_btn button span {
+font-size: 0.8rem !important; color: var(--text-color) !important;
+margin: 0 !important; line-height: 1 !important;
+font-variant-numeric: tabular-nums;
+white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.st-key-pts_bar_btn button:hover {
+background: var(--background-color);
+border-color: var(--text-color);
+}
+.st-key-pts_bar_btn button:active { background: var(--secondary-background-color); }
+.st-key-teleport_btn { margin: 0.4rem 0 0.2rem 0; }
+.st-key-teleport_btn button {
+width: 100%; min-height: 44px; padding: 0.5rem 1rem !important;
+background: var(--primary-color);
+color: var(--background-color);
+border: 1px solid var(--primary-color);
+border-radius: 2px;
+font-weight: 600; letter-spacing: 0.01em; box-shadow: none;
+transition: opacity .15s ease;
+}
+.st-key-teleport_btn button p, .st-key-teleport_btn button span {
+color: var(--background-color) !important;
+font-size: 0.95rem !important; line-height: 1.3 !important;
+}
+.st-key-teleport_btn button:hover { opacity: 0.92; }
+.st-key-mt5_send_order { margin: 0.4rem 0 0.2rem 0; }
+.st-key-exec_order_btn { margin: 0.4rem 0 0.2rem 0; }
+.st-key-mt5_send_order button, .st-key-exec_order_btn button {
+width: 100%; min-height: 44px; padding: 0.5rem 1rem !important;
+background: var(--primary-color);
+color: var(--background-color);
+border: 1px solid var(--primary-color);
+border-radius: 2px;
+font-weight: 600; letter-spacing: 0.01em; box-shadow: none;
+transition: opacity .15s ease;
+}
+.st-key-mt5_send_order button p, .st-key-mt5_send_order button span,
+.st-key-exec_order_btn button p, .st-key-exec_order_btn button span {
+color: var(--background-color) !important;
+font-size: 0.95rem !important; line-height: 1.3 !important;
+}
+.st-key-mt5_send_order button:hover, .st-key-exec_order_btn button:hover { opacity: 0.92; }
+.st-key-mt5_send_order button:disabled, .st-key-exec_order_btn button:disabled {
+background: var(--secondary-background-color);
+border-color: rgba(128, 128, 128, 0.25);
+color: var(--text-color);
+opacity: 0.45;
+cursor: not-allowed;
+}
+.st-key-mt5_send_order button:disabled p, .st-key-mt5_send_order button:disabled span,
+.st-key-exec_order_btn button:disabled p, .st-key-exec_order_btn button:disabled span {
+color: var(--text-color) !important;
+opacity: 0.6;
+}
+.risk-card {
+border: 1px solid rgba(128, 128, 128, 0.25);
+border-left: 3px solid var(--text-color);
+background: var(--secondary-background-color);
+padding: 8px 12px;
+margin: 0.2rem 0 0.5rem 0;
+border-radius: 2px;
+}
+.risk-hd {
+font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;
+color: var(--text-color); opacity: 0.6;
+margin-bottom: 4px;
+}
+.risk-tb { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.risk-tb td {
+padding: 2px 0; font-size: 0.86rem;
+border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+}
+.risk-tb tr:last-child td { border-bottom: none; }
+.risk-tb td.rl {
+color: var(--text-color); opacity: 0.65;
+white-space: nowrap; padding-right: 10px;
+}
+.risk-tb td.rv { color: var(--text-color); text-align: right; font-weight: 600; }
+.lot-line {
+border-top: 1px solid rgba(128, 128, 128, 0.25);
+margin: 2px 0 4px 0; padding-top: 6px;
+font-size: 0.95rem; color: var(--text-color);
+font-variant-numeric: tabular-nums;
+}
+.lot-line b { font-size: 1.08rem; letter-spacing: 0.01em; }
+.telemetry-hud {
+background: var(--secondary-background-color);
+border: 1px solid rgba(128, 128, 128, 0.25);
+border-radius: 2px;
+padding: 8px 12px;
+margin: 0 0 0.5rem 0;
+font-size: 0.82rem;
+font-variant-numeric: tabular-nums;
+}
+.telemetry-hud .th-title {
+font-size: 0.70rem; letter-spacing: 0.08em; text-transform: uppercase;
+color: var(--text-color); opacity: 0.7;
+margin-bottom: 6px;
+display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere;
+}
+.telemetry-hud .th-dot {
+width: 8px; height: 8px; border-radius: 50%;
+display: inline-block; flex-shrink: 0;
+}
+.telemetry-live .th-dot { background: #3f7d5c; animation: th-pulse 1.4s infinite ease-in-out; }
+.telemetry-offline .th-dot { background: #95a5a6; }
+@keyframes th-pulse {
+0%, 100% { opacity: 1; transform: scale(1); }
+50% { opacity: 0.55; transform: scale(1.25); }
+}
+.telemetry-hud .th-row {
+display: grid; grid-template-columns: auto 1fr;
+gap: 2px 10px; line-height: 1.55;
+}
+.telemetry-hud .th-k { color: var(--text-color); opacity: 0.65; white-space: nowrap; }
+.telemetry-hud .th-v { color: var(--text-color); text-align: right; font-weight: 600; }
+.telemetry-hud .th-foot {
+margin-top: 4px; font-size: 0.70rem;
+color: var(--text-color); opacity: 0.55; overflow-wrap: anywhere;
+}
+.auth-title {
+text-align: center;
+color: var(--text-color);
+font-size: clamp(1.0rem, 3.5vw, 1.4rem);
+font-weight: 600;
+letter-spacing: 0.02em;
+margin: 4vh 0 1.5rem 0;
+overflow-wrap: anywhere;
+}
+.st-key-auth_gate_box {
+border: 1px solid rgba(128, 128, 128, 0.25);
+background: var(--secondary-background-color);
+border-radius: 2px;
+padding: 1.25rem 1.5rem 1.5rem 1.5rem;
+max-width: 440px;
+margin: 0 auto;
+}
+.st-key-auth_signin button, .st-key-auth_signup button {
+width: 100%; min-height: 44px; padding: 0.5rem 1rem !important;
+background: var(--primary-color);
+color: var(--background-color);
+border: 1px solid var(--primary-color);
+border-radius: 2px;
+font-weight: 600; letter-spacing: 0.01em; box-shadow: none;
+transition: opacity .15s ease;
+}
+.st-key-auth_signin button:hover, .st-key-auth_signup button:hover { opacity: 0.92; }
+.user-hud {
+border: 1px solid rgba(128, 128, 128, 0.25);
+background: var(--secondary-background-color);
+border-radius: 2px;
+padding: 8px 12px;
+margin: 0 0 0.5rem 0;
+font-size: 0.82rem;
+font-variant-numeric: tabular-nums;
+}
+.user-hud .uh-email {
+color: var(--text-color); font-weight: 600;
+overflow-wrap: anywhere; margin-bottom: 4px;
+}
+.user-hud .uh-badge {
+font-size: 0.72rem; letter-spacing: 0.06em; font-weight: 600;
+}
+.st-key-auth_logout_btn { margin: 0 0 0.5rem 0; }
+.st-key-auth_logout_btn button {
+width: 100%; height: 32px; min-height: 32px !important;
+padding: 0 10px !important;
+background: var(--secondary-background-color);
+color: var(--text-color);
+border: 1px solid rgba(128, 128, 128, 0.25);
+border-radius: 2px;
+box-shadow: none;
+font-weight: 500; letter-spacing: 0.01em;
+transition: background-color .15s ease, border-color .15s ease;
+}
+.st-key-auth_logout_btn button:hover {
+background: var(--background-color);
+border-color: var(--text-color);
+}
+"""
     mobile_rules = """
-    .block-container { padding-top: 3.2rem !important; padding-left: 0.6rem !important;
-        padding-right: 0.6rem !important; padding-bottom: 3.4rem !important; }
-    h1, h2, h3 { margin-top: 0.2rem !important; line-height: 1.25 !important; overflow-wrap: anywhere; }
-    h2 { font-size: clamp(1.05rem, 4.5vw, 1.75rem) !important; }
-    .modebar-btn { padding: 3px 5px !important; }
-    .risk-tb td { font-size: 0.8rem; }
-    .lot-line { font-size: 0.88rem; }
-    .st-key-pts_bar_btn { position: fixed; left: 0.6rem; right: 0.6rem; bottom: 0.4rem;
-        z-index: 60; margin: 0 !important; pointer-events: auto !important; }
-    .st-key-pts_bar_btn button {
-        background: var(--secondary-background-color);
-        box-shadow: 0 -1px 6px rgba(0,0,0,0.10);
-        pointer-events: auto !important;
-    }
-    .st-key-chart_shell .st-key-refresh_term { top: 5px; left: 2px; }
-    [data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }
-    """
+.block-container { padding-top: 3.2rem !important; padding-left: 0.6rem !important;
+padding-right: 0.6rem !important; padding-bottom: 3.4rem !important; }
+h1, h2, h3 { margin-top: 0.2rem !important; line-height: 1.25 !important; overflow-wrap: anywhere; }
+h2 { font-size: clamp(1.05rem, 4.5vw, 1.75rem) !important; }
+.modebar-btn { padding: 3px 5px !important; }
+.risk-tb td { font-size: 0.8rem; }
+.lot-line { font-size: 0.88rem; }
+.st-key-pts_bar_btn { position: fixed; left: 0.6rem; right: 0.6rem; bottom: 0.4rem;
+z-index: 60; margin: 0 !important; pointer-events: auto !important; }
+.st-key-pts_bar_btn button {
+background: var(--secondary-background-color);
+box-shadow: 0 -1px 6px rgba(0,0,0,0.10);
+pointer-events: auto !important;
+}
+.st-key-chart_shell .st-key-refresh_term { top: 5px; left: 2px; }
+[data-testid="stElementToolbar"] { opacity: 1 !important; visibility: visible !important; }
+"""
     css = f"""<style>
 {base_css}
 @media (max-width: 768px) {{
@@ -1164,19 +1422,19 @@ def prepare_ohlc(df_utc, tf, is_fx, raw, drop_clearing, server_choice):
     df = df_utc.copy()
     if tf in ("W1", "MN1", "MN3", "MN6", "MN24"):
         df.index = df.index.tz_localize(None)
-    if tf in RESAMPLE_RULE:
-        df = resample_ohlc(df, RESAMPLE_RULE[tf])
+        if tf in RESAMPLE_RULE:
+            df = resample_ohlc(df, RESAMPLE_RULE[tf])
     else:
         if filter_on:
             df = drop_weekend_ny(df)
         if not df.empty:
             df = to_server_time(df, server_choice)
-        if filter_on and drop_clearing:
-            df = drop_clearing_hour(df, server_choice)
-    if tf in RESAMPLE_RULE:
-        df = resample_ohlc(df, RESAMPLE_RULE[tf])
-    if tf == "D1" and filter_on:
-        df = glue_sunday(df)
+            if filter_on and drop_clearing:
+                df = drop_clearing_hour(df, server_choice)
+        if tf in RESAMPLE_RULE:
+            df = resample_ohlc(df, RESAMPLE_RULE[tf])
+        if tf == "D1" and filter_on:
+            df = glue_sunday(df)
     if not df.empty:
         df = df[~df.index.duplicated(keep="last")].sort_index()
     return df
@@ -1623,9 +1881,7 @@ def fetch_account_telemetry():
         return rows[0]
     except Exception:
         return None
-
-
-def render_telemetry_hud():
+      def render_telemetry_hud():
     row = fetch_account_telemetry()
     if row is None:
         html = (
@@ -2084,8 +2340,8 @@ def alice_build_samples(df, htf, targets, ab_cls, c_cls, strict=True, strict_ab=
                     geom = _alice_geom(entry, atr, H, Ap, Bp, Cp, T)
                     if name == targets[0]:
                         row["retr"], row["risk_z"] = geom[0], geom[1]
-                    row["reward_z_" + name] = geom[2]
-                    row["y_" + name] = _alice_label(hi_m, lo_m, e, T, Cp, H)
+                        row["reward_z_" + name] = geom[2]
+                        row["y_" + name] = _alice_label(hi_m, lo_m, e, T, Cp, H)
                 rows.append(row)
     return pd.DataFrame(rows)
 
@@ -2482,7 +2738,8 @@ def refresh_button(key):
 
 PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active",
                 "risk_pct", "account_deposit", "entry_mode", "custom_entry",
-                "data_feed_source", "bybit_diag_err", "bybit_active_gw"]
+                "data_feed_source", "bybit_diag_err", "bybit_active_gw",
+                "auth_user", "auth_token", "auth_profile"]
 
 
 def _on_lang_change():
@@ -2512,6 +2769,17 @@ bybit_mode = False
 wallet_live_flag = False
 wallet_equity = None
 
+MOBILE = detect_mobile_ua()
+inject_css(MOBILE)
+LANG = LANGS[st.session_state.get("lang", DEFAULT_LANG)]
+
+# ===== SPEC v3.01: SUPABASE AUTH GATE =====
+if st.session_state.get("auth_user") is None:
+    render_auth_gate()
+    st.stop()
+PAYWALL_LOCKED = subscription_locked()
+# ===== /SPEC v3.01 =====
+
 _teleport = st.session_state.pop("_teleport", None)
 if _teleport:
     if _teleport.get("asset") in ASSET_ROUTER:
@@ -2522,6 +2790,8 @@ if _teleport:
     reset_points()
 
 with st.sidebar:
+    render_user_hud()
+    st.markdown("---")
     lang_label = st.radio("Language / Язык", list(LANGS.keys()), horizontal=True, key="lang", on_change=_on_lang_change)
     LANG = LANGS[lang_label]
     st.markdown("---")
@@ -2541,11 +2811,7 @@ with st.sidebar:
             wallet_live_flag, wallet_equity = render_bybit_hud()
         else:
             telemetry_live_flag, telemetry_live_equity = render_telemetry_hud()
-
-MOBILE = detect_mobile_ua()
-inject_css(MOBILE)
-
-if app_mode == "radar":
+          if app_mode == "radar":
     st.markdown(f"<h2 class='app-title'>{t('scanner_title')}</h2>", unsafe_allow_html=True)
     if st.session_state.get("w_radar_tf") not in radar_tfs:
         st.session_state["w_radar_tf"] = "D1"
@@ -2669,6 +2935,7 @@ if app_mode == "radar":
             "ctx": ("ALL", offset_choice, count_weekend, drop_clearing),
             "all": True, "results": res, "skipped": sk,
         }
+
     only_active = st.checkbox(t("filter_active"), key="w_radar_active")
     out = st.session_state.get("radar_out2")
     if out:
@@ -2774,7 +3041,6 @@ elif app_mode == "terminal":
         major_high_mask, major_low_mask = enforce_visible_extremes(df_plot)
         df_plot["Major_High"] = major_high_mask
         df_plot["Major_Low"] = major_low_mask
-
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
             x=df_plot["x_idx"], open=df_plot["Open"], high=df_plot["High"], low=df_plot["Low"], close=df_plot["Close"],
@@ -2854,7 +3120,6 @@ elif app_mode == "terminal":
         cand = candidate_c_extreme(df_plot)
         tt_x, tt_text = [], []
         x_view_right = float(len(df_plot) - 1)
-
         if len(pts) >= 3:
             A, B, C = pts[:3]
             tg = hosoda_targets(A["y"], B["y"], C["y"])
@@ -2903,6 +3168,7 @@ elif app_mode == "terminal":
                 if xk > x_view_right:
                     continue
                 time_line(xk, str(k), "#7f8c8d", "dash", 0.78, t("hover_kihon", k=k), opacity=0.35)
+
             fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]],
                                      mode="lines+markers", line=dict(color=CLR_WAVE, width=2),
                                      marker=dict(size=UIP["wave_mark"]),
@@ -2927,13 +3193,13 @@ elif app_mode == "terminal":
                         hovertemplate=t("origin_hover"),
                         showlegend=False,
                     ))
-                ya, ys, yanch, _off, _va = polar_anchor(df_plot, O_["x"], O_["y"])
-                fig.add_annotation(
-                    x=O_["x"], y=ya, text="O", showarrow=False,
-                    yshift=ys, yanchor=yanch,
-                    font=dict(size=11, color=CLR_ORIGIN),
-                    bgcolor=CLR_LABEL_BG, borderpad=1,
-                )
+                    ya, ys, yanch, _off, _va = polar_anchor(df_plot, O_["x"], O_["y"])
+                    fig.add_annotation(
+                        x=O_["x"], y=ya, text="O", showarrow=False,
+                        yshift=ys, yanchor=yanch,
+                        font=dict(size=11, color=CLR_ORIGIN),
+                        bgcolor=CLR_LABEL_BG, borderpad=1,
+                    )
         if tt_x:
             y_top = float(df_plot["High"].max())
             fig.add_trace(go.Scatter(
@@ -2962,15 +3228,11 @@ elif app_mode == "terminal":
                      zeroline=False, showline=False, tickfont=axis_tick_font)
         if len(pts) >= 3:
             xaxis["range"] = [-0.5, x_view_right + 1.5]
-
-        # v2.02 (kept): lock selection opacity — a click must not dim markers.
-        # Candlestick has no selected/unselected in plotly.py and does not dim.
         fig.update_traces(
             selected=dict(marker=dict(opacity=1.0)),
             unselected=dict(marker=dict(opacity=1.0)),
             selector=dict(type="scatter"),
         )
-
         fig.update_layout(
             xaxis_rangeslider_visible=False, height=UIP["height"],
             plot_bgcolor="rgba(0,0,0,0)",
@@ -3015,9 +3277,9 @@ elif app_mode == "terminal":
                     else:
                         df_h_raw, _htf_err = fetch_smart_data(asset_name, htf_tf, track=False)
                         df_h = prepare_ohlc(df_h_raw, htf_tf, is_fx, count_weekend, drop_clearing, offset_choice)
-                    missing = df_h.empty or len(df_h) < MIN_HTF_BARS_CRYPTO
-                    _htf_memo["v"] = (np.zeros(len(df)) if missing else htf_trend_series(df_h, df.index),
-                                      htf_tf, missing)
+                        missing = df_h.empty or len(df_h) < MIN_HTF_BARS_CRYPTO
+                        _htf_memo["v"] = (np.zeros(len(df)) if missing else htf_trend_series(df_h, df.index),
+                                          htf_tf, missing)
                 except Exception:
                     _htf_memo["v"] = (np.zeros(len(df)), htf_tf, True)
             return _htf_memo["v"]
@@ -3061,29 +3323,29 @@ elif app_mode == "terminal":
                                 st.caption(t("ai_det_" + r["det"], target=name))
                             else:
                                 st.caption(t("ai_d_probs", pt=pc(r["p_target"]), ps=pc(r["p_stop"]), p0=pc(r["p_timeout"])))
-                            rr_txt = f"{r['rr']:.2f}" if r["rr"] is not None else t("ai_na")
-                            st.caption(t("ai_d_fair", pf=pc(r["p_fair"]), be=pc(r["be"]), rr=rr_txt))
-                            edge_pct = r["edge"] * 100
-                            st.caption(t("ai_d_edge", edge="0.0" if abs(edge_pct) < 0.05 else f"{edge_pct:+.1f}",
-                                         se=pc(r["se"]), neff=r["n_eff"]))
+                                rr_txt = f"{r['rr']:.2f}" if r["rr"] is not None else t("ai_na")
+                                st.caption(t("ai_d_fair", pf=pc(r["p_fair"]), be=pc(r["be"]), rr=rr_txt))
+                                edge_pct = r["edge"] * 100
+                                st.caption(t("ai_d_edge", edge="0.0" if abs(edge_pct) < 0.05 else f"{edge_pct:+.1f}",
+                                               se=pc(r["se"]), neff=r["n_eff"]))
                             if not r["det"]:
                                 auc_txt = f"{r['auc']:.2f}" if r["auc"] is not None else t("ai_na")
                                 st.caption(t("ai_stats", n=r["n"], neff=r["n_eff"], ft=pc(r["freq"]["target"]),
-                                             fs=pc(r["freq"]["stop"]), f0=pc(r["freq"]["timeout"]), auc=auc_txt))
-                                st.caption(t("ai_fractals", a=t("ai_fr_" + r["a_st"]), b=t("ai_fr_" + r["b_st"]),
-                                             c=t("ai_fr_" + r["c_st"])))
-                                st.caption(t("ai_setup", lag=r["lag"], h=r["h"], hmin=ALICE_HORIZON,
-                                             ab=t("ai_cls_" + r["ab"]), cls=t("ai_cls_" + r["cls"])))
-                                if r["freq_only"]:
-                                    st.caption(t("ai_freq_only", k=int(round(r["freq"]["target"] * r["n"])), n=r["n"]))
-                                if r["pooled"]:
-                                    st.caption(t("ai_pooled"))
-                                if not r["strict"] and r["cls"] == "minor":
-                                    st.caption(t("ai_live"))
-                                if r["uplift"] is not None:
-                                    st.caption(t("ai_uplift", v=f"{r['uplift']:+.2f}"))
-                                st.caption(t("ai_rel_" + r["reliability"]))
-                            st.caption(t("ai_disclaimer"))
+                                               fs=pc(r["freq"]["stop"]), f0=pc(r["freq"]["timeout"]), auc=auc_txt))
+                            st.caption(t("ai_fractals", a=t("ai_fr_" + r["a_st"]), b=t("ai_fr_" + r["b_st"]),
+                                           c=t("ai_fr_" + r["c_st"])))
+                            st.caption(t("ai_setup", lag=r["lag"], h=r["h"], hmin=ALICE_HORIZON,
+                                           ab=t("ai_cls_" + r["ab"]), cls=t("ai_cls_" + r["cls"])))
+                            if r["freq_only"]:
+                                st.caption(t("ai_freq_only", k=int(round(r["freq"]["target"] * r["n"])), n=r["n"]))
+                            if r["pooled"]:
+                                st.caption(t("ai_pooled"))
+                            if not r["strict"] and r["cls"] == "minor":
+                                st.caption(t("ai_live"))
+                            if r["uplift"] is not None:
+                                st.caption(t("ai_uplift", v=f"{r['uplift']:+.2f}"))
+                            st.caption(t("ai_rel_" + r["reliability"]))
+                        st.caption(t("ai_disclaimer"))
 
         if len(abc) >= 3:
             rA, rB, rC = abc[:3]
@@ -3102,6 +3364,7 @@ elif app_mode == "terminal":
                     atr_c = float(cb["ATR"])
             stop_buf = STOP_BUFFER_ATR * atr_c
             stop_c = float(rC["y"]) - stop_buf if side_buy else float(rC["y"]) + stop_buf
+
             entry_mode = st.selectbox(t("entry_mode"), ["hosoda", "break_b", "market", "custom"],
                                       format_func=lambda k: t("entry_" + k), key="entry_mode")
             plan = armed if entry_mode == mode_now else trigger_plan(df, abc[:3], entry_mode, tf_name, is_fx, last_close)
@@ -3133,9 +3396,11 @@ elif app_mode == "terminal":
                 if entry_px <= 0:
                     entry_px = None
                 st.caption(t("entry_custom_hint"))
+
             risk_dist = abs(entry_px - stop_px) if (entry_px is not None and stop_px is not None) else None
             reward_dist = abs(target_px - entry_px) if entry_px is not None else None
             rr = (reward_dist / risk_dist) if (risk_dist is not None and risk_dist > 0) else None
+
             risk_rows = []
             if level_px is not None:
                 risk_rows.append((t("trig_level"), fmt_price(level_px)))
@@ -3163,12 +3428,14 @@ elif app_mode == "terminal":
                 risk_rows.append((t("risk_risk"), f"{fmt_points(risk_dist, psize)} {unit}"))
                 risk_rows.append((t("risk_reward"), f"{fmt_points(reward_dist, psize)} {unit}"))
                 risk_rows.append((t("risk_rr"), f"1 : {rr:.2f}" if rr is not None else t("ai_na")))
+
             accent = ALICE_LIGHT_COLORS["green" if side_buy else "red"]
             head = t("risk_title") + " · " + t("risk_buy" if side_buy else "risk_sell")
             st.markdown(risk_card_html(head, risk_rows, accent), unsafe_allow_html=True)
             if dec == "watch" and level_px is not None:
                 st.info(t("risk_wait", dir=t("risk_wait_above" if side_buy else "risk_wait_below"),
                           level=fmt_price(level_px)))
+
             if MOBILE:
                 st.number_input(t("risk_pct_label"), min_value=0.1, max_value=100.0,
                                 step=RISK_PCT_STEP, format="%.1f", key="risk_pct",
@@ -3182,6 +3449,7 @@ elif app_mode == "terminal":
                                     help=t("risk_pct_help"))
                 with rc2:
                     deposit_widget()
+
             risk_pct = float(st.session_state.get("risk_pct", RISK_PCT_DEFAULT))
             lot_ready = (entry_px is not None and rr is not None and pval > 0.0)
             lots, risk_usd, gain_usd = 0.0, 0.0, 0.0
@@ -3205,24 +3473,31 @@ elif app_mode == "terminal":
                     unsafe_allow_html=True)
             elif entry_px is not None:
                 st.caption(t("risk_zero") if rr is None else t("lot_no_value"))
+
             send_clicked = False
             bybit_arm = False
             sym_clean_btn = mt5_symbol(asset_name)
             active_step_btn = bybit_qty_step(sym_clean_btn) if bybit_mode else LOT_STEP
+            
+            # SPEC v3.01: Paywall banner
+            if PAYWALL_LOCKED:
+                st.warning(t("auth_paywall"))
+
             if bybit_mode:
                 bybit_arm = st.checkbox(t("bybit_confirm_trade"), key="bybit_confirm_arm")
                 btn_label = t("bybit_exec_btn")
-                # Bybit cannot wait for candle close natively: disable on watch, expired, invalid
-                btn_disabled = (not lot_ready) or (lots < active_step_btn) or (not bybit_arm) or (dec in ("expired", "invalid", "watch"))
+                btn_disabled = PAYWALL_LOCKED or (not lot_ready) or (lots < active_step_btn) or (not bybit_arm) or (dec in ("expired", "invalid", "watch"))
             else:
                 btn_label = t("mt5_exec_btn")
-                # MT5 EA DOES execute on 'watch' (arms pending trap): only block on expired/invalid
-                btn_disabled = (not lot_ready) or (lots < active_step_btn) or (dec in ("expired", "invalid"))
+                btn_disabled = PAYWALL_LOCKED or (not lot_ready) or (lots < active_step_btn) or (dec in ("expired", "invalid"))
+
             send_clicked = st.button(btn_label, key="exec_order_btn", disabled=btn_disabled, **WIDE)
+
             if not lot_ready and dec not in ("expired", "invalid"):
                 st.caption(t("mt5_need_entry"))
             if bybit_mode and lot_ready and not bybit_arm:
                 st.caption(t("bybit_arm_required"))
+
             if send_clicked:
                 sym_clean = mt5_symbol(asset_name)
                 side_txt = "BUY" if side_buy else "SELL"
@@ -3299,7 +3574,7 @@ elif app_mode == "terminal":
                     if ok:
                         st.success(t("mt5_sent"))
                         st.caption(t("mt5_sent_id", oid=order_id, sym=sym_clean, side=side_txt,
-                                     dec=t("dec_" + dec), lots=f"{lots:.2f}", risk=f"{risk_pct:.2f}"))
+                                       dec=t("dec_" + dec), lots=f"{lots:.2f}", risk=f"{risk_pct:.2f}"))
                         if otype == "watch":
                             st.caption(t("mt5_after_watch"))
                         elif otype == "limit":
@@ -3307,60 +3582,61 @@ elif app_mode == "terminal":
                         st.caption(t("mt5_confirm_note"))
                     else:
                         st.error(t("mt5_err", detail=err))
-            if st.button(t("tg_button"), key="tg_send", **WIDE):
-                token, chat_id = _tg_credentials()
-                if not token or not chat_id:
-                    st.error(t("tg_no_secrets"))
-                else:
-                    with st.spinner(t("tg_sending")):
-                        tg_pts = [{"x": p_["x"], "y": p_["y"]} for p_ in pts] if len(pts) >= 3 else []
-                        tg_abc = st.session_state.abc_points[:3]
-                        tg_targets = hosoda_targets(*(p_["y"] for p_ in tg_abc)) if len(tg_abc) == 3 else {}
-                        htf_arr_t, htf_tf_t, htf_missing_t = htf_info()
-                        trend_key = {1.0: "tg_up", -1.0: "tg_down", 0.0: "tg_flat"}[float(htf_arr_t[-1])] if not htf_missing_t else "tg_na"
-                        report = t(
-                            "tg_report", symbol=asset_label(asset_name), tf=tf_name, bar=f"{df_plot.index[-1]:%Y-%m-%d %H:%M}",
-                            price=fmt_price(last_close), htf=htf_tf_t, trend=t(trend_key),
-                            target=fmt_price(tg_targets["N"]) if tg_targets else t("tg_na"),
-                            verdict=t("ai_light_" + ai_light) if ai_light else t("tg_na"),
-                            feed=feed_source())
-                        png, _engine = render_chart_png(fig, df_plot, tg_pts, tg_targets,
-                                                        f"{asset_label(asset_name)} | {tf_name}", tf_name, is_fx, MOBILE)
-                        ok, err = send_telegram(token, chat_id, report, png)
-                    if not ok:
-                        st.error(t("tg_err", detail=err))
-                    elif png is None:
-                        st.warning(t("tg_sent_text"))
-                    else:
-                        st.success(t("tg_sent"))
 
-        if (event and event.selection and event.selection.get("points")
-                and len(event.selection["points"]) == 1 and len(st.session_state.abc_points) < 4):
-            clicked = event.selection["points"][0]
-            x_val = clicked.get("x")
-            if x_val is not None:
-                rows = df_plot.loc[df_plot["x_idx"] == x_val]
-                if not rows.empty:
-                    row = rows.iloc[0]
-                    curve = clicked.get("curve_number", clicked.get("curveNumber"))
-                    tname = None
-                    if isinstance(curve, (int, np.integer)) and 0 <= int(curve) < len(fig.data):
-                        tname = fig.data[int(curve)].name
-                    price = None
-                    if tname in (t("chart_minor_high"), t("chart_major_high")):
+        if st.button(t("tg_button"), key="tg_send", **WIDE):
+            token, chat_id = _tg_credentials()
+            if not token or not chat_id:
+                st.error(t("tg_no_secrets"))
+            else:
+                with st.spinner(t("tg_sending")):
+                    tg_pts = [{"x": p_["x"], "y": p_["y"]} for p_ in pts] if len(pts) >= 3 else []
+                    tg_abc = st.session_state.abc_points[:3]
+                    tg_targets = hosoda_targets(*(p_["y"] for p_ in tg_abc)) if len(tg_abc) == 3 else {}
+                    htf_arr_t, htf_tf_t, htf_missing_t = htf_info()
+                    trend_key = {1.0: "tg_up", -1.0: "tg_down", 0.0: "tg_flat"}[float(htf_arr_t[-1])] if not htf_missing_t else "tg_na"
+                    report = t(
+                        "tg_report", symbol=asset_label(asset_name), tf=tf_name, bar=f"{df_plot.index[-1]:%Y-%m-%d %H:%M}",
+                        price=fmt_price(last_close), htf=htf_tf_t, trend=t(trend_key),
+                        target=fmt_price(tg_targets["N"]) if tg_targets else t("tg_na"),
+                        verdict=t("ai_light_" + ai_light) if ai_light else t("tg_na"),
+                        feed=feed_source())
+                    png, _engine = render_chart_png(fig, df_plot, tg_pts, tg_targets,
+                                                    f"{asset_label(asset_name)} | {tf_name}", tf_name, is_fx, MOBILE)
+                    ok, err = send_telegram(token, chat_id, report, png)
+                if not ok:
+                    st.error(t("tg_err", detail=err))
+                elif png is None:
+                    st.warning(t("tg_sent_text"))
+                else:
+                    st.success(t("tg_sent"))
+
+    if (event and event.selection and event.selection.get("points")
+            and len(event.selection["points"]) == 1 and len(st.session_state.abc_points) < 4):
+        clicked = event.selection["points"][0]
+        x_val = clicked.get("x")
+        if x_val is not None:
+            rows = df_plot.loc[df_plot["x_idx"] == x_val]
+            if not rows.empty:
+                row = rows.iloc[0]
+                curve = clicked.get("curve_number", clicked.get("curveNumber"))
+                tname = None
+                if isinstance(curve, (int, np.integer)) and 0 <= int(curve) < len(fig.data):
+                    tname = fig.data[int(curve)].name
+                price = None
+                if tname in (t("chart_minor_high"), t("chart_major_high")):
+                    price = float(row["High"])
+                elif tname in (t("chart_minor_low"), t("chart_major_low")):
+                    price = float(row["Low"])
+                elif tname == cand_trace_name():
+                    price = float(row["High"]) if (cand and cand["kind"] == "high") else float(row["Low"])
+                elif tname == t("chart_price"):
+                    y_val = clicked.get("y")
+                    if y_val is None or abs(float(y_val) - row["High"]) <= abs(float(y_val) - row["Low"]):
                         price = float(row["High"])
-                    elif tname in (t("chart_minor_low"), t("chart_major_low")):
+                    else:
                         price = float(row["Low"])
-                    elif tname == cand_trace_name():
-                        price = float(row["High"]) if (cand and cand["kind"] == "high") else float(row["Low"])
-                    elif tname == t("chart_price"):
-                        y_val = clicked.get("y")
-                        if y_val is None or abs(float(y_val) - row["High"]) <= abs(float(y_val) - row["Low"]):
-                            price = float(row["High"])
-                        else:
-                            price = float(row["Low"])
-                    if price is not None and not any(p["t"] == row.name for p in st.session_state.abc_points):
-                        st.session_state.abc_points.append({"t": row.name, "y": price})
-                        st.rerun()
+                if price is not None and not any(p["t"] == row.name for p in st.session_state.abc_points):
+                    st.session_state.abc_points.append({"t": row.name, "y": price})
+                    st.rerun()
 
 gc.collect()
