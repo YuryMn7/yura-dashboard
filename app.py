@@ -1,21 +1,26 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v3.03 (PERSISTENT SESSION / REMEMBER ME). Стиль: strict institutional minimalist.
+SPEC v3.04 (LOGOUT FIX / GATE POLISH). Стиль: strict institutional minimalist.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
+v3.04 (LOGOUT FIX / GATE POLISH):
+1. Выход с первого нажатия: флаг auth_logout_pending блокирует автовход,
+   пока браузер доедает удаление cookie. Второй шанс на удаление — один раз,
+   через auth_logout_cleaned, без циклов.
+2. Галочка «Запомнить меня» только на вкладке Вход. Регистрация запоминает
+   сессию молча (remember=True), без визуального шума.
+3. Диагностика профиля: хозяин не видит её вовсе; клиенту показывается
+   человеческая фраза auth_sub_unknown. Сырые коды — только при AUTH_DEBUG=True.
 v3.03 (REMEMBER ME):
-1. Галочка «Запомнить меня на 30 дней» на Вратах. В браузерную cookie пишется
-   refresh_token (НЕ пароль). При следующем открытии сессия восстанавливается
-   молча через POST /auth/v1/token?grant_type=refresh_token, ключ ротуется.
-2. Врата рисуются в стираемом контейнере: после успешного входа контейнер
-   очищается и терминал рендерится в том же прогоне — cookie успевает записаться.
-3. Graceful degradation: без extra-streamlit-components терминал полностью
-   работоспособен, галочка блокируется и показывается честная подсказка.
-4. «Выйти» стирает cookie и все сессионные ключи.
+Cookie хранит refresh_token (НЕ пароль), срок 30 дней. При открытии сессия
+восстанавливается через POST /auth/v1/token?grant_type=refresh_token, ключ
+ротуется. Врата рисуются в стираемом контейнере: после входа контейнер
+очищается и терминал рендерится в том же прогоне — cookie успевает записаться.
+Graceful degradation: без extra-streamlit-components терминал работоспособен,
+галочка блокируется и показывается честная подсказка.
 v3.02 (AUTH HARDENING):
 OWNER_EMAILS — хозяин получает бессрочный PRO независимо от чтения profiles.
-auth_fetch_profile — два способа чтения (user token, затем app key) + видимая
-диагностика auth_diag под плашкой HUD. Тихих подмен на триал нет.
-Счётчик дней триала округляется вверх (math.ceil). Ответ «Email not confirmed»
-превращается в понятную подсказку на двух языках.
+auth_fetch_profile — два способа чтения (user token, затем app key) + диагностика
+auth_diag. Счётчик дней триала округляется вверх (math.ceil). Ответ
+«Email not confirmed» превращается в понятную подсказку на двух языках.
 v3.01 (SUPABASE AUTH & ACCESS GATING):
 Врата доступа: неавторизованный видит только Вход/Регистрация, далее st.stop().
 Supabase GoTrue REST API через нативный requests. Таблица profiles с RLS и
@@ -90,6 +95,8 @@ st.session_state.setdefault("auth_token", None)
 st.session_state.setdefault("auth_profile", None)
 st.session_state.setdefault("auth_diag", "")
 st.session_state.setdefault("auth_restored", False)
+st.session_state.setdefault("auth_logout_pending", False)
+st.session_state.setdefault("auth_logout_cleaned", False)
 
 REMEMBER_COOKIE = "iwt_rt"
 REMEMBER_DAYS = 30
@@ -237,6 +244,8 @@ TELEMETRY_DAILY_CAP = 3.0
 
 # ===== SPEC v3.02: хозяева терминала. Бессрочный PRO без чтения profiles. =====
 OWNER_EMAILS = {"yurymn@gmail.com"}
+# ===== SPEC v3.04: True — показывать сырые коды диагностики профиля. =====
+AUTH_DEBUG = False
 
 LANGS = {"English": "en", "Русский": "ru"}
 DEFAULT_LANG = "Русский"
@@ -422,6 +431,7 @@ I18N = {
         "auth_trial_days": "{d} days left",
         "auth_paywall": "Your subscription has expired. Please contact the administrator to renew access.",
         "auth_no_config": "Supabase Auth is not configured (SUPABASE_URL / SUPABASE_KEY missing).",
+        "auth_sub_unknown": "Subscription check is temporarily unavailable. Please contact the administrator.",
     },
     "ru": {
         "nav": "Навигация", "module": "Выберите модуль:",
@@ -602,6 +612,7 @@ I18N = {
         "auth_trial_days": "осталось {d} дн.",
         "auth_paywall": "Срок действия вашей подписки истёк. Обратитесь к администратору для продления доступа.",
         "auth_no_config": "Supabase Auth не настроен (нет SUPABASE_URL / SUPABASE_KEY).",
+        "auth_sub_unknown": "Проверка подписки временно недоступна. Свяжитесь с администратором.",
     },
 }
 
@@ -859,7 +870,7 @@ def enforce_visible_extremes(df_plot):
     return mh, ml
 
 
-# ===== SPEC v3.03 (SUPABASE AUTH + PERSISTENT SESSION) =====
+# ===== SPEC v3.04 (SUPABASE AUTH + PERSISTENT SESSION) =====
 def cookie_get(name):
     if _CM is None:
         return None
@@ -1024,6 +1035,8 @@ def auth_apply_session(data, fallback_email="", remember=False, op="ck_set"):
     st.session_state["auth_user"] = {"id": uid, "email": email}
     st.session_state["auth_token"] = token
     st.session_state["auth_profile"] = auth_fetch_profile(uid, token)
+    st.session_state["auth_logout_pending"] = False
+    st.session_state["auth_logout_cleaned"] = False
     rt = data.get("refresh_token")
     if remember and rt:
         cookie_set(REMEMBER_COOKIE, rt, op=op)
@@ -1034,6 +1047,11 @@ def auth_apply_session(data, fallback_email="", remember=False, op="ck_set"):
 
 def auth_try_restore():
     if not COOKIES_OK or st.session_state.get("auth_user") is not None:
+        return False
+    if st.session_state.get("auth_logout_pending"):
+        if not st.session_state.get("auth_logout_cleaned"):
+            st.session_state["auth_logout_cleaned"] = True
+            cookie_delete(REMEMBER_COOKIE, op="ck_del_pending")
         return False
     rt = cookie_get(REMEMBER_COOKIE)
     if not rt:
@@ -1103,6 +1121,9 @@ def render_auth_gate():
                         st.warning(t("auth_err_not_confirmed"))
                     else:
                         st.error(str(data))
+                st.checkbox(t("auth_remember"), value=True, key="auth_remember", disabled=not COOKIES_OK)
+                if not COOKIES_OK:
+                    st.caption(t("auth_remember_off"))
             with tab_up:
                 email_up = st.text_input(t("auth_email"), key="auth_email_up")
                 pass_up = st.text_input(t("auth_password"), type="password", key="auth_pass_up")
@@ -1111,8 +1132,7 @@ def render_auth_gate():
                         ok, data = auth_sign_up(email_up.strip(), pass_up)
                     if ok:
                         if data.get("access_token"):
-                            remember = bool(st.session_state.get("auth_remember", True))
-                            auth_apply_session(data, email_up.strip(), remember, op="ck_set_up")
+                            auth_apply_session(data, email_up.strip(), True, op="ck_set_up")
                         else:
                             st.success(t("auth_signup_confirm"))
                     elif data == "no_config":
@@ -1121,15 +1141,13 @@ def render_auth_gate():
                         st.error(t("auth_err_exists"))
                     else:
                         st.error(str(data))
-            st.checkbox(t("auth_remember"), value=True, key="auth_remember", disabled=not COOKIES_OK)
-            if not COOKIES_OK:
-                st.caption(t("auth_remember_off"))
 
 
 def render_user_hud():
     user = st.session_state.get("auth_user") or {}
     email = str(user.get("email") or "—")
-    state, days = subscription_state(st.session_state.get("auth_profile"), email)
+    profile = st.session_state.get("auth_profile")
+    state, days = subscription_state(profile, email)
     if state == "owner":
         badge, badge_color = f"🟢 {t('auth_sub_owner')}", "#3f7d5c"
     elif state == "pro":
@@ -1149,18 +1167,22 @@ def render_user_hud():
         unsafe_allow_html=True,
     )
     diag = str(st.session_state.get("auth_diag", ""))
-    if diag and not diag.startswith("profile OK"):
-        st.caption(diag)
+    if diag and not diag.startswith("profile OK") and not _is_owner(email):
+        st.caption(t("auth_sub_unknown"))
+        if AUTH_DEBUG:
+            st.caption(diag)
     if st.button(t("auth_logout"), key="auth_logout_btn", **WIDE):
+        st.session_state["auth_logout_pending"] = True
+        st.session_state["auth_logout_cleaned"] = False
         cookie_delete(REMEMBER_COOKIE, op="ck_del_out")
         st.session_state["auth_user"] = None
         st.session_state["auth_token"] = None
         st.session_state["auth_profile"] = None
         st.session_state["auth_diag"] = ""
         st.session_state["auth_restored"] = False
-        time.sleep(0.3)
+        time.sleep(0.6)
         st.rerun()
-# ===== /SPEC v3.03 =====
+# ===== /SPEC v3.04 =====
 
 
 def inject_css(mobile):
@@ -2864,7 +2886,8 @@ def refresh_button(key):
 PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active",
                 "risk_pct", "account_deposit", "entry_mode", "custom_entry",
                 "data_feed_source", "bybit_diag_err", "bybit_active_gw",
-                "auth_user", "auth_token", "auth_profile", "auth_diag", "auth_restored"]
+                "auth_user", "auth_token", "auth_profile", "auth_diag", "auth_restored",
+                "auth_logout_pending", "auth_logout_cleaned"]
 
 
 def _on_lang_change():
@@ -2898,7 +2921,7 @@ MOBILE = detect_mobile_ua()
 inject_css(MOBILE)
 LANG = LANGS[st.session_state.get("lang", DEFAULT_LANG)]
 
-# ===== SPEC v3.03: ВОССТАНОВЛЕНИЕ СЕССИИ + ВРАТА ДОСТУПА =====
+# ===== SPEC v3.04: ВОССТАНОВЛЕНИЕ СЕССИИ + ВРАТА ДОСТУПА =====
 auth_try_restore()
 
 _gate_slot = st.container()
@@ -2909,7 +2932,7 @@ if st.session_state.get("auth_user") is None:
         st.stop()
     _gate_slot.empty()
 PAYWALL_LOCKED = subscription_locked()
-# ===== /SPEC v3.03 =====
+# ===== /SPEC v3.04 =====
 
 _teleport = st.session_state.pop("_teleport", None)
 if _teleport:
@@ -3612,7 +3635,7 @@ elif app_mode == "terminal":
             sym_clean_btn = mt5_symbol(asset_name)
             active_step_btn = bybit_qty_step(sym_clean_btn) if bybit_mode else LOT_STEP
 
-            # ===== SPEC v3.03: ПЕЙВОЛЛ =====
+            # ===== SPEC v3.04: ПЕЙВОЛЛ =====
             if PAYWALL_LOCKED:
                 st.warning(t("auth_paywall"))
 
