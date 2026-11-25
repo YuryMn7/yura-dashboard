@@ -7,3 +7,4 @@ yfinance
 scikit-learn>=1.3
 matplotlib
 kaleido
+extra-streamlit-components
