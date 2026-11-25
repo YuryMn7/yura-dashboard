@@ -1,26 +1,34 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v3.02 (AUTH HARDENING & OWNER ACCESS). Стиль: strict institutional minimalist, zero-clutter.
+SPEC v3.03 (PERSISTENT SESSION / REMEMBER ME). Стиль: strict institutional minimalist.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
+v3.03 (REMEMBER ME):
+1. Галочка «Запомнить меня на 30 дней» на Вратах. В браузерную cookie пишется
+   refresh_token (НЕ пароль). При следующем открытии сессия восстанавливается
+   молча через POST /auth/v1/token?grant_type=refresh_token, ключ ротуется.
+2. Врата рисуются в стираемом контейнере: после успешного входа контейнер
+   очищается и терминал рендерится в том же прогоне — cookie успевает записаться.
+3. Graceful degradation: без extra-streamlit-components терминал полностью
+   работоспособен, галочка блокируется и показывается честная подсказка.
+4. «Выйти» стирает cookie и все сессионные ключи.
 v3.02 (AUTH HARDENING):
-1. OWNER_EMAILS — хозяин получает бессрочный PRO независимо от чтения profiles.
-2. auth_fetch_profile — два способа чтения (user token, затем app key) + видимая
-   диагностика auth_diag под плашкой HUD. Тихих подмен на триал больше нет.
-3. Счётчик дней триала округляется вверх (math.ceil): свежий триал показывает 7.
-4. Ответ «Email not confirmed» превращается в понятную подсказку на двух языках.
+OWNER_EMAILS — хозяин получает бессрочный PRO независимо от чтения profiles.
+auth_fetch_profile — два способа чтения (user token, затем app key) + видимая
+диагностика auth_diag под плашкой HUD. Тихих подмен на триал нет.
+Счётчик дней триала округляется вверх (math.ceil). Ответ «Email not confirmed»
+превращается в понятную подсказку на двух языках.
 v3.01 (SUPABASE AUTH & ACCESS GATING):
 Врата доступа: неавторизованный видит только Вход/Регистрация, далее st.stop().
-Supabase GoTrue REST API через нативный requests, ноль новых зависимостей.
-Таблица profiles с RLS и триггером автопрофиля. HUD в сайдбаре: email, бейдж
-подписки, кнопка Выйти. Пейволл блокирует кнопки MT5 и Bybit при истёкшей подписке.
+Supabase GoTrue REST API через нативный requests. Таблица profiles с RLS и
+триггером автопрофиля. HUD в сайдбаре. Пейволл блокирует кнопки MT5 и Bybit.
 v2.06 (TIME-TAG LINE GAP):
-Вертикальные линии временных целей рисуются двумя сегментами с разрывом под подписью.
-Подписи: цвет текста = цвет линии, подложка CLR_LABEL_BG, borderpad=1.
+Вертикальные линии временных целей рисуются двумя сегментами с разрывом под
+подписью. Подписи: цвет текста = цвет линии, подложка CLR_LABEL_BG, borderpad=1.
 v2.04 (DEFINITIVE NATIVE THEME FIX):
 st.plotly_chart(..., theme="streamlit") — нативный движок красит оси и легенду.
 template="plotly_white" удалён. CSS-оверлей осей удалён.
-Сохранены: opacity-lock scatter (selected/unselected = 1.0), динамический шаг лота
-Bybit (BTC 0.001 / ETH 0.01 / SOL 0.1), маршрутизация MT5 (Telegram 2FA) / Bybit v5.
-HOTFIX v2.01: MT5 'watch' не блокирует кнопку; динамический шаг лота; спиннер Bybit.
+Сохранены: opacity-lock scatter (selected/unselected = 1.0), динамический шаг
+лота Bybit (BTC 0.001 / ETH 0.01 / SOL 0.1), маршрутизация MT5 / Bybit v5.
+HOTFIX v2.01: MT5 'watch' не блокирует кнопку; динамический шаг лота.
 BYBIT v5 DUAL-ROUTED EXECUTION GATEWAY (v2.00):
 Традиционные активы -> MT5 через Telegram 2FA. Крипто -> Bybit API v5.
 Graceful Dry-Run при отсутствии ключей, блокировке CDN или нулевом балансе.
@@ -30,7 +38,8 @@ CRITICAL BUGFIX (v1.85): контракт фидеров — 2-кортеж (Dat
 CLOUDFLARE EDGE REVERSE PROXY (v1.84): опциональный секрет BYBIT_PROXY_URL.
 АЛИСА — ZERO-LAG: ALICE_LAG = 0, вход на баре C.
 РИСК ПОД BLUE GUARDIAN: дефолт 0.5 % на сделку, шаг ввода 0.1 %.
-Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn.
+Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn,
+extra-streamlit-components (для «Запомнить меня»; без неё — graceful fallback).
 Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.),
 SUPABASE_URL, SUPABASE_KEY (опц.), BYBIT_API_KEY, BYBIT_API_SECRET (опц.),
 BYBIT_PROXY_URL (опц.).
@@ -43,7 +52,7 @@ import json
 import math
 import re
 import time
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
@@ -59,6 +68,13 @@ try:
 except ImportError:
     SKLEARN_OK = False
 
+try:
+    import extra_streamlit_components as stx
+    COOKIES_OK = True
+except ImportError:
+    stx = None
+    COOKIES_OK = False
+
 st.set_page_config(page_title="Quantitative Analysis Terminal", layout="wide")
 API_KEY = st.secrets["TWELVEDATA_KEY"]
 _ST_VER = tuple(int(x) for x in re.findall(r"\d+", st.__version__)[:2])
@@ -73,6 +89,12 @@ st.session_state.setdefault("auth_user", None)
 st.session_state.setdefault("auth_token", None)
 st.session_state.setdefault("auth_profile", None)
 st.session_state.setdefault("auth_diag", "")
+st.session_state.setdefault("auth_restored", False)
+
+REMEMBER_COOKIE = "iwt_rt"
+REMEMBER_DAYS = 30
+
+_CM = stx.CookieManager(key="iwt_cm") if COOKIES_OK else None
 
 
 def reset_points():
@@ -387,6 +409,9 @@ I18N = {
         "auth_tab_in": "Sign In", "auth_tab_up": "Sign Up",
         "auth_email": "Email", "auth_password": "Password",
         "auth_btn_in": "Sign In", "auth_btn_up": "Create Account",
+        "auth_remember": "Keep me signed in for 30 days",
+        "auth_remember_off": "Persistent sign-in is unavailable: add extra-streamlit-components to requirements.txt.",
+        "auth_restoring": "Restoring session…",
         "auth_err_creds": "Invalid email or password.",
         "auth_err_exists": "User already registered. Please sign in.",
         "auth_err_not_confirmed": "Email is not confirmed yet. Open the confirmation link from our email, then sign in again. If the link has expired, register again to receive a fresh one.",
@@ -564,6 +589,9 @@ I18N = {
         "auth_tab_in": "Вход", "auth_tab_up": "Регистрация",
         "auth_email": "Email", "auth_password": "Пароль",
         "auth_btn_in": "Войти", "auth_btn_up": "Создать аккаунт",
+        "auth_remember": "Запомнить меня на 30 дней",
+        "auth_remember_off": "Постоянный вход недоступен: добавьте extra-streamlit-components в requirements.txt.",
+        "auth_restoring": "Восстанавливаю сессию…",
         "auth_err_creds": "Неверный email или пароль.",
         "auth_err_exists": "Пользователь уже зарегистрирован. Пожалуйста, войдите.",
         "auth_err_not_confirmed": "Почта ещё не подтверждена. Откройте ссылку из нашего письма и войдите снова. Если ссылка устарела — зарегистрируйтесь заново, придёт свежая.",
@@ -831,7 +859,40 @@ def enforce_visible_extremes(df_plot):
     return mh, ml
 
 
-# ===== SPEC v3.02 (SUPABASE AUTH, HARDENED) =====
+# ===== SPEC v3.03 (SUPABASE AUTH + PERSISTENT SESSION) =====
+def cookie_get(name):
+    if _CM is None:
+        return None
+    try:
+        v = _CM.get(name)
+        return v or None
+    except Exception:
+        return None
+
+
+def cookie_set(name, value, days=REMEMBER_DAYS, op="ck_set"):
+    if _CM is None or not value:
+        return
+    try:
+        _CM.set(name, value, expires_at=datetime.now() + timedelta(days=days), key=op)
+    except TypeError:
+        try:
+            _CM.set(name, value, key=op)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def cookie_delete(name, op="ck_del"):
+    if _CM is None:
+        return
+    try:
+        _CM.delete(name, key=op)
+    except Exception:
+        pass
+
+
 def supabase_auth_config():
     try:
         url = str(st.secrets.get("SUPABASE_URL", "")).rstrip("/")
@@ -899,6 +960,28 @@ def auth_sign_up(email, password):
         return False, safe_err(e)
 
 
+def auth_refresh(refresh_token):
+    url, key = supabase_auth_config()
+    if not url or not key or not refresh_token:
+        return False, None
+    try:
+        r = requests.post(
+            f"{url}/auth/v1/token?grant_type=refresh_token",
+            json={"refresh_token": refresh_token},
+            headers={"apikey": key, "Content-Type": "application/json"},
+            timeout=10,
+        )
+        try:
+            res = r.json()
+        except Exception:
+            return False, None
+        if r.status_code != 200 or "access_token" not in res:
+            return False, None
+        return True, res
+    except Exception:
+        return False, None
+
+
 def auth_fetch_profile(user_id, token):
     url, key = supabase_auth_config()
     if not url or not key or not user_id:
@@ -932,6 +1015,36 @@ def auth_extract_user(data):
     uid = user.get("id") or data.get("id")
     email = user.get("email") or data.get("email")
     return uid, email
+
+
+def auth_apply_session(data, fallback_email="", remember=False, op="ck_set"):
+    uid, email = auth_extract_user(data)
+    email = email or fallback_email
+    token = data.get("access_token")
+    st.session_state["auth_user"] = {"id": uid, "email": email}
+    st.session_state["auth_token"] = token
+    st.session_state["auth_profile"] = auth_fetch_profile(uid, token)
+    rt = data.get("refresh_token")
+    if remember and rt:
+        cookie_set(REMEMBER_COOKIE, rt, op=op)
+    elif not remember:
+        cookie_delete(REMEMBER_COOKIE, op="ck_del_login")
+    return True
+
+
+def auth_try_restore():
+    if not COOKIES_OK or st.session_state.get("auth_user") is not None:
+        return False
+    rt = cookie_get(REMEMBER_COOKIE)
+    if not rt:
+        return False
+    ok, data = auth_refresh(rt)
+    if not ok:
+        cookie_delete(REMEMBER_COOKIE, op="ck_del_stale")
+        return False
+    auth_apply_session(data, remember=True, op="ck_rotate")
+    st.session_state["auth_restored"] = True
+    return True
 
 
 def _parse_valid_until(v):
@@ -980,11 +1093,8 @@ def render_auth_gate():
                     with st.spinner("Supabase Auth…"):
                         ok, data = auth_sign_in(email_in.strip(), pass_in)
                     if ok:
-                        uid, email = auth_extract_user(data)
-                        st.session_state["auth_user"] = {"id": uid, "email": email or email_in.strip()}
-                        st.session_state["auth_token"] = data.get("access_token")
-                        st.session_state["auth_profile"] = auth_fetch_profile(uid, data.get("access_token"))
-                        st.rerun()
+                        remember = bool(st.session_state.get("auth_remember", True))
+                        auth_apply_session(data, email_in.strip(), remember, op="ck_set_in")
                     elif data == "no_config":
                         st.error(t("auth_no_config"))
                     elif data == "creds":
@@ -1001,11 +1111,8 @@ def render_auth_gate():
                         ok, data = auth_sign_up(email_up.strip(), pass_up)
                     if ok:
                         if data.get("access_token"):
-                            uid, email = auth_extract_user(data)
-                            st.session_state["auth_user"] = {"id": uid, "email": email or email_up.strip()}
-                            st.session_state["auth_token"] = data.get("access_token")
-                            st.session_state["auth_profile"] = auth_fetch_profile(uid, data.get("access_token"))
-                            st.rerun()
+                            remember = bool(st.session_state.get("auth_remember", True))
+                            auth_apply_session(data, email_up.strip(), remember, op="ck_set_up")
                         else:
                             st.success(t("auth_signup_confirm"))
                     elif data == "no_config":
@@ -1014,6 +1121,9 @@ def render_auth_gate():
                         st.error(t("auth_err_exists"))
                     else:
                         st.error(str(data))
+            st.checkbox(t("auth_remember"), value=True, key="auth_remember", disabled=not COOKIES_OK)
+            if not COOKIES_OK:
+                st.caption(t("auth_remember_off"))
 
 
 def render_user_hud():
@@ -1042,12 +1152,15 @@ def render_user_hud():
     if diag and not diag.startswith("profile OK"):
         st.caption(diag)
     if st.button(t("auth_logout"), key="auth_logout_btn", **WIDE):
+        cookie_delete(REMEMBER_COOKIE, op="ck_del_out")
         st.session_state["auth_user"] = None
         st.session_state["auth_token"] = None
         st.session_state["auth_profile"] = None
         st.session_state["auth_diag"] = ""
+        st.session_state["auth_restored"] = False
+        time.sleep(0.3)
         st.rerun()
-# ===== /SPEC v3.02 =====
+# ===== /SPEC v3.03 =====
 
 
 def inject_css(mobile):
@@ -1062,6 +1175,11 @@ overflow-wrap: anywhere;
 white-space: normal;
 }
 .stPlotlyChart .modebar { opacity: 1; }
+.st-key-iwt_cm {
+height: 0 !important; min-height: 0 !important;
+margin: 0 !important; padding: 0 !important;
+overflow: hidden; opacity: 0; pointer-events: none;
+}
 .feed-badge {
 font-size: 0.75rem;
 color: var(--text-color);
@@ -2746,7 +2864,7 @@ def refresh_button(key):
 PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active",
                 "risk_pct", "account_deposit", "entry_mode", "custom_entry",
                 "data_feed_source", "bybit_diag_err", "bybit_active_gw",
-                "auth_user", "auth_token", "auth_profile", "auth_diag"]
+                "auth_user", "auth_token", "auth_profile", "auth_diag", "auth_restored"]
 
 
 def _on_lang_change():
@@ -2780,12 +2898,18 @@ MOBILE = detect_mobile_ua()
 inject_css(MOBILE)
 LANG = LANGS[st.session_state.get("lang", DEFAULT_LANG)]
 
-# ===== SPEC v3.02: ВРАТА ДОСТУПА =====
+# ===== SPEC v3.03: ВОССТАНОВЛЕНИЕ СЕССИИ + ВРАТА ДОСТУПА =====
+auth_try_restore()
+
+_gate_slot = st.container()
 if st.session_state.get("auth_user") is None:
-    render_auth_gate()
-    st.stop()
+    with _gate_slot:
+        render_auth_gate()
+    if st.session_state.get("auth_user") is None:
+        st.stop()
+    _gate_slot.empty()
 PAYWALL_LOCKED = subscription_locked()
-# ===== /SPEC v3.02 =====
+# ===== /SPEC v3.03 =====
 
 _teleport = st.session_state.pop("_teleport", None)
 if _teleport:
@@ -3034,6 +3158,7 @@ elif app_mode == "terminal":
     df_raw = prepare_ohlc(df_raw, tf_name, is_fx, count_weekend, drop_clearing, offset_choice)
     if is_crypto_asset(ASSET_ROUTER[asset_name]) and tf_name in ("MN3", "MN6", "MN24") and 0 < len(df_raw) < MIN_LTF_BARS:
         st.info(t("crypto_hist_note", tf=tf_name, n=len(df_raw)))
+    event = None
     if df_raw.empty:
         refresh_button("refresh_term")
         st.warning(t("no_data"))
@@ -3487,7 +3612,7 @@ elif app_mode == "terminal":
             sym_clean_btn = mt5_symbol(asset_name)
             active_step_btn = bybit_qty_step(sym_clean_btn) if bybit_mode else LOT_STEP
 
-            # ===== SPEC v3.02: ПЕЙВОЛЛ =====
+            # ===== SPEC v3.03: ПЕЙВОЛЛ =====
             if PAYWALL_LOCKED:
                 st.warning(t("auth_paywall"))
 
