@@ -1,11 +1,11 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v3.12 (RADAR ABC PRECISION & CLEAN TELEGRAM CARD). Стиль: strict institutional minimalist.
+SPEC v3.12 (RADAR POLISH: WAVE C & AI LABELS). Стиль: strict institutional minimalist.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
-v3.12 (RADAR ABC PRECISION & CLEAN TELEGRAM CARD):
-1. Уточнен авто-поиск точек A, B, C в scan_one(): окно 26 свечей до текущего бара
-   для B, экстремум до B для A и экстремум от B до текущего бара включительно для C.
-2. Из карточки Telegram в dispatch_radar_signal() убран сырой процент ai_prob,
-   оставлен аккуратный статус ИИ Алиса по ai_verdict.
+v3.12 (RADAR POLISH: WAVE C & AI LABELS):
+1. Исправлен авто-поиск точек A, B, C в scan_one() / _radar_auto_abc: точка C ищется
+   как строгий экстремум отката на отрезке от точки B до текущего бара включительно.
+2. В карточке Telegram (dispatch_radar_signal) убраны сырые проценты ИИ Алисы,
+   оставлен строгий вердикт.
 v3.11 (RADAR AI & CHART BROADCASTER):
 1. Авто-детекция волны A-B-C для подтвержденных и локальных сетапов Радара
    (strong_buy, strong_sell, local_buy, local_sell), расчет целей Хосоды и
@@ -2857,62 +2857,49 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     return buf
 
 
-# ===== SPEC v3.12 (RADAR ABC PRECISION & CLEAN TELEGRAM CARD) =====
-def _radar_auto_abc(df_ltf, sig_raw, lookback_b=26):
-    if df_ltf is None or len(df_ltf) < 6:
+# ===== SPEC v3.12 (RADAR POLISH: WAVE C & AI LABELS) =====
+def _radar_auto_abc(df_ltf, sig_raw):
+    if df_ltf is None or len(df_ltf) < 4:
         return None
-    is_buy = "buy" in str(sig_raw).lower()
+    is_buy = "buy" in sig_raw
     n = len(df_ltf)
-
-    end_b = n - 1
-    start_b = max(0, end_b - lookback_b)
-    b_slice = df_ltf.iloc[start_b:end_b]
+    # Точка B: экстремум за последние 26 свечей (до текущей)
+    b_start = max(0, (n - 1) - 26)
+    b_slice = df_ltf.iloc[b_start:n - 1]
     if b_slice.empty:
         return None
-
     if is_buy:
-        b_idx = int(start_b + int(np.argmax(b_slice["High"].to_numpy(dtype=float))))
-        b_y = float(df_ltf["High"].iloc[b_idx])
-        if b_idx <= 0:
-            return None
-        a_slice = df_ltf.iloc[:b_idx]
+        b_pos = int(b_start + int(np.argmax(b_slice["High"].to_numpy(dtype=float))))
+        b_y = float(df_ltf["High"].iloc[b_pos])
+        a_slice = df_ltf.iloc[:b_pos]
         if a_slice.empty:
             return None
-        a_idx = int(np.argmin(a_slice["Low"].to_numpy(dtype=float)))
-        a_y = float(df_ltf["Low"].iloc[a_idx])
-        c_slice = df_ltf.iloc[b_idx:]
-        if c_slice.empty:
-            return None
-        c_idx = int(b_idx + int(np.argmin(c_slice["Low"].to_numpy(dtype=float))))
-        c_y = float(df_ltf["Low"].iloc[c_idx])
-        if not (a_idx < b_idx < c_idx):
-            return None
-        if not (a_y < c_y < b_y):
+        a_pos = int(np.argmin(a_slice["Low"].to_numpy(dtype=float)))
+        a_y = float(df_ltf["Low"].iloc[a_pos])
+        # Точка C: строго минимальный Low на отрезке от точки B до текущего бара включительно
+        c_sub = df_ltf.iloc[b_pos:]
+        c_pos = b_pos + int(np.argmin(c_sub["Low"].to_numpy(dtype=float)))
+        c_y = float(df_ltf["Low"].iloc[c_pos])
+        if not (a_pos < b_pos <= c_pos) or not (a_y < c_y < b_y):
             return None
     else:
-        b_idx = int(start_b + int(np.argmin(b_slice["Low"].to_numpy(dtype=float))))
-        b_y = float(df_ltf["Low"].iloc[b_idx])
-        if b_idx <= 0:
-            return None
-        a_slice = df_ltf.iloc[:b_idx]
+        b_pos = int(b_start + int(np.argmin(b_slice["Low"].to_numpy(dtype=float))))
+        b_y = float(df_ltf["Low"].iloc[b_pos])
+        a_slice = df_ltf.iloc[:b_pos]
         if a_slice.empty:
             return None
-        a_idx = int(np.argmax(a_slice["High"].to_numpy(dtype=float)))
-        a_y = float(df_ltf["High"].iloc[a_idx])
-        c_slice = df_ltf.iloc[b_idx:]
-        if c_slice.empty:
+        a_pos = int(np.argmax(a_slice["High"].to_numpy(dtype=float)))
+        a_y = float(df_ltf["High"].iloc[a_pos])
+        # Точка C: строго максимальный High на отрезке от точки B до текущего бара включительно
+        c_sub = df_ltf.iloc[b_pos:]
+        c_pos = b_pos + int(np.argmax(c_sub["High"].to_numpy(dtype=float)))
+        c_y = float(df_ltf["High"].iloc[c_pos])
+        if not (a_pos < b_pos <= c_pos) or not (b_y < c_y < a_y):
             return None
-        c_idx = int(b_idx + int(np.argmax(c_slice["High"].to_numpy(dtype=float))))
-        c_y = float(df_ltf["High"].iloc[c_idx])
-        if not (a_idx < b_idx < c_idx):
-            return None
-        if not (b_y < c_y < a_y):
-            return None
-
     return {
-        "a_idx": a_idx, "a_t": df_ltf.index[a_idx], "a_y": a_y,
-        "b_idx": b_idx, "b_t": df_ltf.index[b_idx], "b_y": b_y,
-        "c_idx": c_idx, "c_t": df_ltf.index[c_idx], "c_y": c_y,
+        "a_idx": a_pos, "a_t": df_ltf.index[a_pos], "a_y": a_y,
+        "b_idx": b_pos, "b_t": df_ltf.index[b_pos], "b_y": b_y,
+        "c_idx": c_pos, "c_t": df_ltf.index[c_pos], "c_y": c_y,
     }
 
 
@@ -3236,7 +3223,7 @@ if app_mode == "radar":
             }
 
             if sig in ("strong_buy", "strong_sell", "local_buy", "local_sell"):
-                abc_auto = _radar_auto_abc(df_ltf, sig, lookback_b=26)
+                abc_auto = _radar_auto_abc(df_ltf, sig)
                 if abc_auto:
                     tg = hosoda_targets(abc_auto["a_y"], abc_auto["b_y"], abc_auto["c_y"])
                     rec["target_n"] = fmt_price(tg["N"])
