@@ -1,6 +1,12 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v3.04 (LOGOUT FIX / GATE POLISH). Стиль: strict institutional minimalist.
+SPEC v3.10 (RADAR TELEGRAM BROADCASTER). Стиль: strict institutional minimalist.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
+v3.10 (RADAR TELEGRAM BROADCASTER):
+1. Экспорт подтвержденных сигналов из Радара (strong_buy, strong_sell, local_buy,
+   local_sell) в Telegram-канал по секрету TELEGRAM_CHANNEL_ID.
+2. Статусы 'wait' в канал не публикуются.
+3. Дедупликация в сессии через radar_sent_dispatches по ключу
+   f"{asset}_{tf}_{price}_{sig}".
 v3.04 (LOGOUT FIX / GATE POLISH):
 1. Выход с первого нажатия: флаг auth_logout_pending блокирует автовход,
    пока браузер доедает удаление cookie. Второй шанс на удаление — один раз,
@@ -45,9 +51,9 @@ CLOUDFLARE EDGE REVERSE PROXY (v1.84): опциональный секрет BYB
 РИСК ПОД BLUE GUARDIAN: дефолт 0.5 % на сделку, шаг ввода 0.1 %.
 Зависимости: streamlit, yfinance, pandas, numpy, plotly, requests, scikit-learn,
 extra-streamlit-components (для «Запомнить меня»; без неё — graceful fallback).
-Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, MT5_SECRET_TOKEN (опц.),
-SUPABASE_URL, SUPABASE_KEY (опц.), BYBIT_API_KEY, BYBIT_API_SECRET (опц.),
-BYBIT_PROXY_URL (опц.).
+Секреты: TWELVEDATA_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_CHANNEL_ID (опц.),
+MT5_SECRET_TOKEN (опц.), SUPABASE_URL, SUPABASE_KEY (опц.), BYBIT_API_KEY,
+BYBIT_API_SECRET (опц.), BYBIT_PROXY_URL (опц.).
 """
 import gc
 import hashlib
@@ -97,6 +103,7 @@ st.session_state.setdefault("auth_diag", "")
 st.session_state.setdefault("auth_restored", False)
 st.session_state.setdefault("auth_logout_pending", False)
 st.session_state.setdefault("auth_logout_cleaned", False)
+st.session_state.setdefault("radar_sent_dispatches", set())
 
 REMEMBER_COOKIE = "iwt_rt"
 REMEMBER_DAYS = 30
@@ -284,6 +291,12 @@ I18N = {
         "no_setups": "Scan completed. No valid entry setups found near Kijun-sen.",
         "skipped": "Skipped assets ({n})",
         "stale_scan": "These results are from an earlier scan (the timeframe or data settings have changed since). Run the scan again to refresh them.",
+        "radar_broadcast_btn": "📢 Broadcast Active Signals to Telegram ({n})",
+        "radar_broadcasting": "Broadcasting verified signals to Telegram channel...",
+        "radar_broadcast_ok": "Successfully published {n} institutional signal(s) to Telegram channel!",
+        "radar_broadcast_err": "Telegram broadcast failed: {detail}",
+        "radar_broadcast_already": "All active signals are already published for this candle.",
+        "radar_no_channel_secret": "Add TELEGRAM_CHANNEL_ID to app secrets to enable channel broadcast.",
         "no_data": "Market data is currently unavailable.", "reason": "Reason: {detail}",
         "points_outside": "Some A-B-C points are outside the visible 250 candles - press Clear Points or change the timeframe.",
         "chart_price": "Price", "chart_kumo": "Kumo Cloud",
@@ -465,6 +478,12 @@ I18N = {
         "no_setups": "Сканирование завершено. Подходящих точек входа у Киджун-сен не найдено.",
         "skipped": "Пропущенные активы ({n})",
         "stale_scan": "Эти результаты получены в предыдущем сканировании (с тех пор изменились таймфрейм или настройки данных). Запустите сканирование заново, чтобы обновить их.",
+        "radar_broadcast_btn": "📢 Опубликовать активные сигналы в Telegram ({n})",
+        "radar_broadcasting": "Публикация подтвержденных сигналов в Telegram-канал...",
+        "radar_broadcast_ok": "Успешно опубликовано {n} сетап(ов) в Telegram-канал!",
+        "radar_broadcast_err": "Ошибка публикации в Telegram: {detail}",
+        "radar_broadcast_already": "Все активные сигналы уже опубликованы для текущих свечей.",
+        "radar_no_channel_secret": "Добавьте TELEGRAM_CHANNEL_ID в секреты приложения для публикации в канал.",
         "no_data": "Рыночные данные сейчас недоступны.", "reason": "Причина: {detail}",
         "points_outside": "Часть точек A-B-C вышла за пределы видимых 250 свечей — нажмите «Сбросить точки» или смените таймфрейм.",
         "chart_price": "Цена", "chart_kumo": "Облако Кумо",
@@ -661,7 +680,7 @@ def fmt_err(err):
 
 def _secret_values():
     vals = [API_KEY]
-    for k in ("TELEGRAM_TOKEN", "MT5_SECRET_TOKEN", "SUPABASE_KEY",
+    for k in ("TELEGRAM_TOKEN", "TELEGRAM_CHANNEL_ID", "MT5_SECRET_TOKEN", "SUPABASE_KEY",
               "BYBIT_API_KEY", "BYBIT_API_SECRET", "BYBIT_PROXY_URL"):
         try:
             v = st.secrets.get(k, "")
@@ -1907,6 +1926,8 @@ def send_bybit_order(sym, side, order_type, qty, price, sl, tp, order_id):
         except Exception:
             continue
     return False, "NETWORK_ERR", "No response from Bybit endpoints"
+
+
 class TDError(Exception):
     pass
 
@@ -2719,6 +2740,51 @@ def _mt5_secret():
         return MT5_DEFAULT_TOKEN
 
 
+def dispatch_radar_signal(item):
+    token = str(st.secrets.get("TELEGRAM_TOKEN", ""))
+    channel = str(st.secrets.get("TELEGRAM_CHANNEL_ID", ""))
+    if not token or not channel:
+        return False, "no_channel_secret"
+
+    asset = asset_label(item["asset"])
+    tf = item["tf"]
+    sig_raw = item["sig"]
+    price = item["price"]
+    kijun = item["kijun"]
+    trend = t("trend_" + item["trend"])
+    sig_label = t("sig_" + sig_raw)
+
+    icon = "🟢" if "buy" in sig_raw else "🔴"
+
+    msg = (
+        f"⚡ <b>ICHIMOKU RADAR DISPATCH</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔹 <b>Инструмент:</b> {asset} ({tf})\n"
+        f"🎯 <b>Сигнал:</b> {icon} <b>{sig_label}</b>\n"
+        f"📈 <b>Старший тренд:</b> {trend}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📍 <b>Текущая цена:</b> <code>{price}</code>\n"
+        f"🛡 <b>Киджун-сен (Опора):</b> <code>{kijun}</code>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏛 <i>Ichimoku Wave Terminal · Institutional SaaS</i>"
+    )
+
+    payload = {
+        "chat_id": channel,
+        "text": msg,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": "true",
+    }
+    try:
+        r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data=payload, timeout=15)
+        res = r.json()
+        if bool(res.get("ok")):
+            return True, None
+        return False, safe_err(str(res.get("description", "unknown error")))
+    except Exception as e:
+        return False, safe_err(e)
+
+
 def send_mt5_order(payload, confirm_label):
     token, chat_id = _tg_credentials()
     if not token or not chat_id:
@@ -2885,7 +2951,7 @@ def refresh_button(key):
 
 PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active",
                 "risk_pct", "account_deposit", "entry_mode", "custom_entry",
-                "data_feed_source", "bybit_diag_err", "bybit_active_gw",
+                "data_feed_source", "bybit_diag_err", "bybit_active_gw", "radar_sent_dispatches",
                 "auth_user", "auth_token", "auth_profile", "auth_diag", "auth_restored",
                 "auth_logout_pending", "auth_logout_cleaned"]
 
@@ -3133,6 +3199,36 @@ if app_mode == "radar":
                                  key="teleport_btn", **WIDE):
                         st.session_state["_teleport"] = {"asset": tp_asset, "tf": tp_tf}
                         st.rerun()
+
+            active_signals = [r for r in rows if r["sig"] != "wait"]
+            if active_signals:
+                st.markdown("---")
+                rc_col1, _rc_col2 = st.columns([1, 1])
+                with rc_col1:
+                    if st.button(t("radar_broadcast_btn", n=len(active_signals)), key="radar_broadcast_btn", **WIDE):
+                        sent_set = st.session_state.setdefault("radar_sent_dispatches", set())
+                        success_count = 0
+                        err_msg = None
+                        with st.spinner(t("radar_broadcasting")):
+                            for sig_item in active_signals:
+                                dispatch_key = f"{sig_item['asset']}_{sig_item['tf']}_{sig_item['price']}_{sig_item['sig']}"
+                                if dispatch_key in sent_set:
+                                    continue
+                                ok, detail = dispatch_radar_signal(sig_item)
+                                if ok:
+                                    sent_set.add(dispatch_key)
+                                    success_count += 1
+                                    time.sleep(0.3)
+                                else:
+                                    err_msg = detail
+                        if success_count > 0:
+                            st.success(t("radar_broadcast_ok", n=success_count))
+                        elif err_msg == "no_channel_secret":
+                            st.warning(t("radar_no_channel_secret"))
+                        elif err_msg:
+                            st.error(t("radar_broadcast_err", detail=err_msg))
+                        else:
+                            st.info(t("radar_broadcast_already"))
         elif out["results"]:
             st.info(t("no_setups"))
         else:
