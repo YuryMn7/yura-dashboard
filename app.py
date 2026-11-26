@@ -2,10 +2,14 @@
 SPEC v3.12 (RADAR POLISH: WAVE C & AI LABELS). Стиль: strict institutional minimalist.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 v3.12 (RADAR POLISH: WAVE C & AI LABELS):
-1. Исправлен авто-поиск точек A, B, C в scan_one() / _radar_auto_abc: точка C ищется
-   как строгий экстремум отката на отрезке от точки B до текущего бара включительно.
-2. В карточке Telegram (dispatch_radar_signal) убраны сырые проценты ИИ Алисы,
-   оставлен строгий вердикт.
+1. Авто-волна A-B-C: B — экстремум последних 26 закрытых свечей (текущая
+   не входит), C — истинный экстремум отката от B до текущего бара.
+   A — последний главный фрактал до B (лоя для покупки, хай для продажи).
+   Если этот фрактал внутри облака Кумо, A — последний фрактал перед флетом.
+   Флет определяется только облаком, не Тенкан-сен и не Киджун-сен.
+   Подмена C закрытием последней свечи убрана.
+2. Депеша Telegram показывает только строгий вердикт Алисы, без сырого
+   процента вероятности.
 v3.11 (RADAR AI & CHART BROADCASTER):
 1. Авто-детекция волны A-B-C для подтвержденных и локальных сетапов Радара
    (strong_buy, strong_sell, local_buy, local_sell), расчет целей Хосоды и
@@ -2858,48 +2862,102 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
 
 
 # ===== SPEC v3.12 (RADAR POLISH: WAVE C & AI LABELS) =====
+def _in_kumo(df, i, price):
+    """Цена внутри облака на баре i. Нет облака — не флет. Тенкан/Киджун не участвуют."""
+    try:
+        sa = float(df["senkou_a"].iloc[i])
+        sb = float(df["senkou_b"].iloc[i])
+        px = float(price)
+    except (TypeError, ValueError, KeyError, IndexError):
+        return False
+    if not (np.isfinite(sa) and np.isfinite(sb) and np.isfinite(px)):
+        return False
+    return min(sa, sb) <= px <= max(sa, sb)
+
+
+def _flag_before(df, col, end):
+    if col not in df.columns or end <= 0:
+        return np.array([], dtype=int)
+    flags = df[col].iloc[:end].fillna(False).astype(bool)
+    return np.flatnonzero(flags.to_numpy(dtype=bool))
+
+
+def _point_a(df, b_idx, major_col, minor_col, price_col):
+    """Последний главный фрактал до B.
+
+    Если его цена внутри Кумо — это флет: берём последний фрактал
+    (сначала главный, иначе малый) строго перед началом флета.
+    """
+    majors = _flag_before(df, major_col, b_idx)
+    if len(majors) == 0:
+        return None
+    a_idx = int(majors[-1])
+    a_y = float(df[price_col].iloc[a_idx])
+    if not _in_kumo(df, a_idx, a_y):
+        return a_idx, a_y
+    j = a_idx
+    while j > 0 and _in_kumo(df, j - 1, df["Close"].iloc[j - 1]):
+        j -= 1
+    prev = majors[majors < j]
+    if len(prev) == 0:
+        prev = _flag_before(df, minor_col, j)
+    if len(prev) == 0:
+        return None
+    i = int(prev[-1])
+    return i, float(df[price_col].iloc[i])
+
+
 def _radar_auto_abc(df_ltf, sig_raw):
-    if df_ltf is None or len(df_ltf) < 4:
+    if df_ltf is None or len(df_ltf) < 6:
+        return None
+    need = ("High", "Low", "Close", "senkou_a", "senkou_b",
+            "Major_High", "Major_Low", "Minor_High", "Minor_Low")
+    if any(c not in df_ltf.columns for c in need):
         return None
     is_buy = "buy" in sig_raw
     n = len(df_ltf)
-    # Точка B: экстремум за последние 26 свечей (до текущей)
-    b_start = max(0, (n - 1) - 26)
-    b_slice = df_ltf.iloc[b_start:n - 1]
+    # Последние 26 свечей до текущей (живая свеча в поиск B не входит).
+    b_end = n - 1
+    b_start = max(0, b_end - 26)
+    b_slice = df_ltf.iloc[b_start:b_end]
     if b_slice.empty:
         return None
     if is_buy:
-        b_pos = int(b_start + int(np.argmax(b_slice["High"].to_numpy(dtype=float))))
-        b_y = float(df_ltf["High"].iloc[b_pos])
-        a_slice = df_ltf.iloc[:b_pos]
-        if a_slice.empty:
+        b_idx = int(b_start + int(np.argmax(b_slice["High"].to_numpy(dtype=float))))
+        b_y = float(df_ltf["High"].iloc[b_idx])
+        if b_idx <= 0:
             return None
-        a_pos = int(np.argmin(a_slice["Low"].to_numpy(dtype=float)))
-        a_y = float(df_ltf["Low"].iloc[a_pos])
-        # Точка C: строго минимальный Low на отрезке от точки B до текущего бара включительно
-        c_sub = df_ltf.iloc[b_pos:]
-        c_pos = b_pos + int(np.argmin(c_sub["Low"].to_numpy(dtype=float)))
-        c_y = float(df_ltf["Low"].iloc[c_pos])
-        if not (a_pos < b_pos <= c_pos) or not (a_y < c_y < b_y):
+        picked = _point_a(df_ltf, b_idx, "Major_Low", "Minor_Low", "Low")
+        if picked is None:
+            return None
+        a_idx, a_y = picked
+        c_sub = df_ltf.iloc[b_idx:]
+        if c_sub.empty:
+            return None
+        c_idx = int(b_idx + int(np.argmin(c_sub["Low"].to_numpy(dtype=float))))
+        c_y = float(df_ltf["Low"].iloc[c_idx])
+        if not (a_idx < b_idx < c_idx and a_y < c_y < b_y):
             return None
     else:
-        b_pos = int(b_start + int(np.argmin(b_slice["Low"].to_numpy(dtype=float))))
-        b_y = float(df_ltf["Low"].iloc[b_pos])
-        a_slice = df_ltf.iloc[:b_pos]
-        if a_slice.empty:
+        b_idx = int(b_start + int(np.argmin(b_slice["Low"].to_numpy(dtype=float))))
+        b_y = float(df_ltf["Low"].iloc[b_idx])
+        if b_idx <= 0:
             return None
-        a_pos = int(np.argmax(a_slice["High"].to_numpy(dtype=float)))
-        a_y = float(df_ltf["High"].iloc[a_pos])
-        # Точка C: строго максимальный High на отрезке от точки B до текущего бара включительно
-        c_sub = df_ltf.iloc[b_pos:]
-        c_pos = b_pos + int(np.argmax(c_sub["High"].to_numpy(dtype=float)))
-        c_y = float(df_ltf["High"].iloc[c_pos])
-        if not (a_pos < b_pos <= c_pos) or not (b_y < c_y < a_y):
+        picked = _point_a(df_ltf, b_idx, "Major_High", "Minor_High", "High")
+        if picked is None:
+            return None
+        a_idx, a_y = picked
+        c_sub = df_ltf.iloc[b_idx:]
+        if c_sub.empty:
+            return None
+        c_idx = int(b_idx + int(np.argmax(c_sub["High"].to_numpy(dtype=float))))
+        c_y = float(df_ltf["High"].iloc[c_idx])
+        if not (a_idx < b_idx < c_idx and b_y < c_y < a_y):
             return None
     return {
-        "a_idx": a_pos, "a_t": df_ltf.index[a_pos], "a_y": a_y,
-        "b_idx": b_pos, "b_t": df_ltf.index[b_pos], "b_y": b_y,
-        "c_idx": c_pos, "c_t": df_ltf.index[c_pos], "c_y": c_y,
+        "a_idx": a_idx, "a_t": df_ltf.index[a_idx], "a_y": a_y,
+        "b_idx": b_idx, "b_t": df_ltf.index[b_idx], "b_y": b_y,
+        "c_idx": c_idx, "c_t": df_ltf.index[c_idx], "c_y": c_y,
     }
 
 
@@ -3227,6 +3285,7 @@ if app_mode == "radar":
                 if abc_auto:
                     tg = hosoda_targets(abc_auto["a_y"], abc_auto["b_y"], abc_auto["c_y"])
                     rec["target_n"] = fmt_price(tg["N"])
+                    ai_prob_val = None
                     ai_verdict_val = None
                     try:
                         htf_arr = htf_trend_series(df_htf, df_ltf.index)
@@ -3240,9 +3299,11 @@ if app_mode == "radar":
                         if ai_res.get("status") == "ok":
                             r_n = (ai_res.get("targets") or {}).get("N")
                             if r_n and r_n.get("status") == "ok":
+                                ai_prob_val = int(round(float(r_n["p_target"]) * 100))
                                 ai_verdict_val = alice_verdict(r_n)
                     except Exception:
                         pass
+                    rec["ai_prob"] = ai_prob_val if ai_prob_val is not None else "—"
                     rec["ai_verdict"] = ai_verdict_val
 
                     df_tail = df_ltf.tail(250).copy()
