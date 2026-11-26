@@ -1,6 +1,13 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v3.10 (RADAR TELEGRAM BROADCASTER). Стиль: strict institutional minimalist.
+SPEC v3.11 (RADAR AI & CHART BROADCASTER). Стиль: strict institutional minimalist.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
+v3.11 (RADAR AI & CHART BROADCASTER):
+1. Авто-детекция волны A-B-C для подтвержденных и локальных сетапов Радара
+   (strong_buy, strong_sell, local_buy, local_sell), расчет целей Хосоды и
+   фоновый инференс модели «Алиса» по цели N.
+2. Генерация снимка графика в io.BytesIO() через _render_chart_matplotlib.
+3. Отправка в Telegram-канал через /sendPhoto с карточкой (цель N + ИИ Алиса)
+   и fallback на /sendMessage при недоступности рендера графика.
 v3.10 (RADAR TELEGRAM BROADCASTER):
 1. Экспорт подтвержденных сигналов из Радара (strong_buy, strong_sell, local_buy,
    local_sell) в Telegram-канал по секрету TELEGRAM_CHANNEL_ID.
@@ -104,6 +111,7 @@ st.session_state.setdefault("auth_restored", False)
 st.session_state.setdefault("auth_logout_pending", False)
 st.session_state.setdefault("auth_logout_cleaned", False)
 st.session_state.setdefault("radar_sent_dispatches", set())
+st.session_state.setdefault("radar_chart_ctx", {})
 
 REMEMBER_COOKIE = "iwt_rt"
 REMEMBER_DAYS = 30
@@ -249,9 +257,7 @@ SURFACE_ACTIVE = "#e3e9ee"
 TELEMETRY_LIVE_SECONDS = 60
 TELEMETRY_DAILY_CAP = 3.0
 
-# ===== SPEC v3.02: хозяева терминала. Бессрочный PRO без чтения profiles. =====
 OWNER_EMAILS = {"yurymn@gmail.com"}
-# ===== SPEC v3.04: True — показывать сырые коды диагностики профиля. =====
 AUTH_DEBUG = False
 
 LANGS = {"English": "en", "Русский": "ru"}
@@ -292,7 +298,7 @@ I18N = {
         "skipped": "Skipped assets ({n})",
         "stale_scan": "These results are from an earlier scan (the timeframe or data settings have changed since). Run the scan again to refresh them.",
         "radar_broadcast_btn": "📢 Broadcast Active Signals to Telegram ({n})",
-        "radar_broadcasting": "Broadcasting verified signals to Telegram channel...",
+        "radar_broadcasting": "Broadcasting verified signals + charts to Telegram channel...",
         "radar_broadcast_ok": "Successfully published {n} institutional signal(s) to Telegram channel!",
         "radar_broadcast_err": "Telegram broadcast failed: {detail}",
         "radar_broadcast_already": "All active signals are already published for this candle.",
@@ -479,7 +485,7 @@ I18N = {
         "skipped": "Пропущенные активы ({n})",
         "stale_scan": "Эти результаты получены в предыдущем сканировании (с тех пор изменились таймфрейм или настройки данных). Запустите сканирование заново, чтобы обновить их.",
         "radar_broadcast_btn": "📢 Опубликовать активные сигналы в Telegram ({n})",
-        "radar_broadcasting": "Публикация подтвержденных сигналов в Telegram-канал...",
+        "radar_broadcasting": "Публикация сигналов и графиков в Telegram-канал...",
         "radar_broadcast_ok": "Успешно опубликовано {n} сетап(ов) в Telegram-канал!",
         "radar_broadcast_err": "Ошибка публикации в Telegram: {detail}",
         "radar_broadcast_already": "Все активные сигналы уже опубликованы для текущих свечей.",
@@ -2740,71 +2746,6 @@ def _mt5_secret():
         return MT5_DEFAULT_TOKEN
 
 
-def dispatch_radar_signal(item):
-    token = str(st.secrets.get("TELEGRAM_TOKEN", ""))
-    channel = str(st.secrets.get("TELEGRAM_CHANNEL_ID", ""))
-    if not token or not channel:
-        return False, "no_channel_secret"
-
-    asset = asset_label(item["asset"])
-    tf = item["tf"]
-    sig_raw = item["sig"]
-    price = item["price"]
-    kijun = item["kijun"]
-    trend = t("trend_" + item["trend"])
-    sig_label = t("sig_" + sig_raw)
-
-    icon = "🟢" if "buy" in sig_raw else "🔴"
-
-    msg = (
-        f"⚡ <b>ICHIMOKU RADAR DISPATCH</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🔹 <b>Инструмент:</b> {asset} ({tf})\n"
-        f"🎯 <b>Сигнал:</b> {icon} <b>{sig_label}</b>\n"
-        f"📈 <b>Старший тренд:</b> {trend}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"📍 <b>Текущая цена:</b> <code>{price}</code>\n"
-        f"🛡 <b>Киджун-сен (Опора):</b> <code>{kijun}</code>\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🏛 <i>Ichimoku Wave Terminal · Institutional SaaS</i>"
-    )
-
-    payload = {
-        "chat_id": channel,
-        "text": msg,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": "true",
-    }
-    try:
-        r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data=payload, timeout=15)
-        res = r.json()
-        if bool(res.get("ok")):
-            return True, None
-        return False, safe_err(str(res.get("description", "unknown error")))
-    except Exception as e:
-        return False, safe_err(e)
-
-
-def send_mt5_order(payload, confirm_label):
-    token, chat_id = _tg_credentials()
-    if not token or not chat_id:
-        return False, t("mt5_no_secrets")
-    text = "/order " + json.dumps(payload, separators=(",", ":"))
-    keyboard = {"inline_keyboard": [[{"text": confirm_label, "callback_data": MT5_EXEC_MARK}]]}
-    try:
-        r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                          data={"chat_id": chat_id, "text": text,
-                                "reply_markup": json.dumps(keyboard, separators=(",", ":")),
-                                "disable_web_page_preview": "true"},
-                          timeout=20)
-        res = r.json()
-        if not res.get("ok"):
-            return False, safe_err(str(res.get("description", "unknown error")))
-        return True, None
-    except Exception as e:
-        return False, safe_err(e)
-
-
 def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     import matplotlib
     matplotlib.use("Agg")
@@ -2911,6 +2852,168 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     return buf
 
 
+# ===== SPEC v3.11 (RADAR AI & CHART BROADCASTER) =====
+def _radar_auto_abc(df_ltf, sig_raw):
+    if df_ltf is None or len(df_ltf) < 6:
+        return None
+    is_buy = "buy" in sig_raw
+    n = len(df_ltf)
+    b_start = max(1, n - 26)
+    b_slice = df_ltf.iloc[b_start:n]
+    if b_slice.empty:
+        return None
+    if is_buy:
+        b_idx = int(b_start + int(np.argmax(b_slice["High"].to_numpy(dtype=float))))
+        b_y = float(df_ltf["High"].iloc[b_idx])
+        if b_idx <= 0:
+            return None
+        a_start = max(0, b_idx - 30)
+        a_slice = df_ltf.iloc[a_start:b_idx]
+        if a_slice.empty:
+            return None
+        a_idx = int(a_start + int(np.argmin(a_slice["Low"].to_numpy(dtype=float))))
+        a_y = float(df_ltf["Low"].iloc[a_idx])
+        c_idx = n - 1
+        if not (a_idx < b_idx < c_idx):
+            return None
+        c_y = float(df_ltf["Low"].iloc[c_idx])
+        if not (a_y < c_y < b_y):
+            c_cl = float(df_ltf["Close"].iloc[c_idx])
+            if a_y < c_cl < b_y:
+                c_y = c_cl
+            else:
+                return None
+    else:
+        b_idx = int(b_start + int(np.argmin(b_slice["Low"].to_numpy(dtype=float))))
+        b_y = float(df_ltf["Low"].iloc[b_idx])
+        if b_idx <= 0:
+            return None
+        a_start = max(0, b_idx - 30)
+        a_slice = df_ltf.iloc[a_start:b_idx]
+        if a_slice.empty:
+            return None
+        a_idx = int(a_start + int(np.argmax(a_slice["High"].to_numpy(dtype=float))))
+        a_y = float(df_ltf["High"].iloc[a_idx])
+        c_idx = n - 1
+        if not (a_idx < b_idx < c_idx):
+            return None
+        c_y = float(df_ltf["High"].iloc[c_idx])
+        if not (b_y < c_y < a_y):
+            c_cl = float(df_ltf["Close"].iloc[c_idx])
+            if b_y < c_cl < a_y:
+                c_y = c_cl
+            else:
+                return None
+    return {
+        "a_idx": a_idx, "a_t": df_ltf.index[a_idx], "a_y": a_y,
+        "b_idx": b_idx, "b_t": df_ltf.index[b_idx], "b_y": b_y,
+        "c_idx": c_idx, "c_t": df_ltf.index[c_idx], "c_y": c_y,
+    }
+
+
+def dispatch_radar_signal(item, df_plot=None, pts=None, tg=None):
+    token = str(st.secrets.get("TELEGRAM_TOKEN", ""))
+    channel = str(st.secrets.get("TELEGRAM_CHANNEL_ID", ""))
+    if not token or not channel:
+        return False, "no_channel_secret"
+
+    asset = asset_label(item["asset"])
+    tf = item["tf"]
+    sig_raw = item["sig"]
+    price = item["price"]
+    kijun = item["kijun"]
+    trend = t("trend_" + item["trend"])
+    sig_label = t("sig_" + sig_raw)
+
+    icon = "🟢" if "buy" in sig_raw else "🔴"
+    ai_badge = {"green": "🟢 Высокая", "yellow": "🟡 Умеренная", "red": "🔴 Низкая"}.get(
+        item.get("ai_verdict"), "⚪ Расчет"
+    )
+    ai_prob_raw = item.get("ai_prob", "—")
+    ai_prob = f"{ai_prob_raw}%" if ai_prob_raw not in (None, "—", "") else "—"
+    target_n = item.get("target_n", "—")
+
+    caption = (
+        f"⚡ <b>ICHIMOKU QUANT RADAR</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔹 <b>Инструмент:</b> {asset} ({tf})\n"
+        f"🎯 <b>Сигнал:</b> {icon} <b>{sig_label}</b>\n"
+        f"📈 <b>Старший тренд:</b> {trend}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📍 <b>Цена входа:</b> <code>{price}</code>\n"
+        f"🛡 <b>Киджун (Опора):</b> <code>{kijun}</code>\n"
+        f"🎯 <b>Цель N Хосоды:</b> <code>{target_n}</code>\n"
+        f"🤖 <b>ИИ Алиса:</b> {ai_badge} (вероятность {ai_prob})\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏛 <i>Ichimoku Wave Terminal · Institutional SaaS</i>"
+    )[:1024]
+
+    png_buf = None
+    if df_plot is not None and not df_plot.empty:
+        route = ASSET_ROUTER.get(item["asset"], {})
+        is_fx = is_fx_asset(route) if route else False
+        try:
+            png_buf = _render_chart_matplotlib(
+                df_plot, pts or [], tg or {}, f"{asset} | {tf}", tf, is_fx, mobile=False
+            )
+        except Exception:
+            png_buf = None
+
+    base_url = f"https://api.telegram.org/bot{token}"
+    try:
+        if png_buf is not None:
+            png_buf.seek(0)
+            r = requests.post(
+                f"{base_url}/sendPhoto",
+                data={
+                    "chat_id": channel,
+                    "caption": caption,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": "true",
+                },
+                files={"photo": ("radar_chart.png", png_buf, "image/png")},
+                timeout=30,
+            )
+        else:
+            r = requests.post(
+                f"{base_url}/sendMessage",
+                data={
+                    "chat_id": channel,
+                    "text": caption,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": "true",
+                },
+                timeout=15,
+            )
+        res = r.json()
+        if bool(res.get("ok")):
+            return True, None
+        return False, safe_err(str(res.get("description", "unknown error")))
+    except Exception as e:
+        return False, safe_err(e)
+# ===== /SPEC v3.11 =====
+
+
+def send_mt5_order(payload, confirm_label):
+    token, chat_id = _tg_credentials()
+    if not token or not chat_id:
+        return False, t("mt5_no_secrets")
+    text = "/order " + json.dumps(payload, separators=(",", ":"))
+    keyboard = {"inline_keyboard": [[{"text": confirm_label, "callback_data": MT5_EXEC_MARK}]]}
+    try:
+        r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                          data={"chat_id": chat_id, "text": text,
+                                "reply_markup": json.dumps(keyboard, separators=(",", ":")),
+                                "disable_web_page_preview": "true"},
+                          timeout=20)
+        res = r.json()
+        if not res.get("ok"):
+            return False, safe_err(str(res.get("description", "unknown error")))
+        return True, None
+    except Exception as e:
+        return False, safe_err(e)
+
+
 def render_chart_png(fig, df_plot, pts, targets, title, tf, is_fx, mobile):
     try:
         return io.BytesIO(fig.to_image(format="png", width=1400, height=800, scale=2)), "plotly"
@@ -2951,7 +3054,8 @@ def refresh_button(key):
 
 PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active",
                 "risk_pct", "account_deposit", "entry_mode", "custom_entry",
-                "data_feed_source", "bybit_diag_err", "bybit_active_gw", "radar_sent_dispatches",
+                "data_feed_source", "bybit_diag_err", "bybit_active_gw",
+                "radar_sent_dispatches", "radar_chart_ctx",
                 "auth_user", "auth_token", "auth_profile", "auth_diag", "auth_restored",
                 "auth_logout_pending", "auth_logout_cleaned"]
 
@@ -3119,10 +3223,54 @@ if app_mode == "radar":
                         fails = [f for f, ok in (("kumo", ok_kumo), ("chikou", ok_chikou)) if not ok]
                         if fails:
                             diag = ("zone", {"fails": fails})
-            return {
+
+            price_str = fmt_price(pr_live)
+            rec = {
                 "asset": asset_name, "tf": tf, "sig": sig, "trend": trend_code,
-                "price": fmt_price(pr_live), "kijun": fmt_price(kijun), "diag": diag,
-            }, None
+                "price": price_str, "kijun": fmt_price(kijun), "diag": diag,
+            }
+
+            if sig in ("strong_buy", "strong_sell", "local_buy", "local_sell"):
+                abc_auto = _radar_auto_abc(df_ltf, sig)
+                if abc_auto:
+                    tg = hosoda_targets(abc_auto["a_y"], abc_auto["b_y"], abc_auto["c_y"])
+                    rec["target_n"] = fmt_price(tg["N"])
+                    ai_prob_val = None
+                    ai_verdict_val = None
+                    try:
+                        htf_arr = htf_trend_series(df_htf, df_ltf.index)
+                        ai_res = alice_predict(
+                            df_ltf, htf_arr,
+                            abc_auto["a_t"], abc_auto["a_y"],
+                            abc_auto["b_t"], abc_auto["b_y"],
+                            abc_auto["c_t"], abc_auto["c_y"],
+                            targets=("N",),
+                        )
+                        if ai_res.get("status") == "ok":
+                            r_n = (ai_res.get("targets") or {}).get("N")
+                            if r_n and r_n.get("status") == "ok":
+                                ai_prob_val = int(round(float(r_n["p_target"]) * 100))
+                                ai_verdict_val = alice_verdict(r_n)
+                    except Exception:
+                        pass
+                    rec["ai_prob"] = ai_prob_val if ai_prob_val is not None else "—"
+                    rec["ai_verdict"] = ai_verdict_val
+
+                    df_tail = df_ltf.tail(250).copy()
+                    offset_base = max(0, len(df_ltf) - len(df_tail))
+                    pts_plot = [
+                        {"x": max(0, abc_auto["a_idx"] - offset_base), "y": abc_auto["a_y"]},
+                        {"x": max(0, abc_auto["b_idx"] - offset_base), "y": abc_auto["b_y"]},
+                        {"x": max(0, abc_auto["c_idx"] - offset_base), "y": abc_auto["c_y"]},
+                    ]
+                    dispatch_key = f"{asset_name}_{tf}_{price_str}_{sig}"
+                    st.session_state["radar_chart_ctx"][dispatch_key] = {
+                        "df_plot": df_tail,
+                        "pts": pts_plot,
+                        "targets": tg,
+                    }
+
+            return rec, None
         except Exception as e:
             return None, E("exception", detail=safe_err(e))
 
@@ -3145,12 +3293,14 @@ if app_mode == "radar":
         return results, skipped
 
     if st.button(t("run_scan"), **WIDE):
+        st.session_state["radar_chart_ctx"] = {}
         res, sk = run_scan([radar_tf])
         st.session_state["radar_out2"] = {
             "ctx": (radar_tf, offset_choice, count_weekend, drop_clearing),
             "all": False, "results": res, "skipped": sk,
         }
     if st.button(t("run_scan_all"), **WIDE):
+        st.session_state["radar_chart_ctx"] = {}
         res, sk = run_scan(radar_tfs)
         st.session_state["radar_out2"] = {
             "ctx": ("ALL", offset_choice, count_weekend, drop_clearing),
@@ -3207,6 +3357,7 @@ if app_mode == "radar":
                 with rc_col1:
                     if st.button(t("radar_broadcast_btn", n=len(active_signals)), key="radar_broadcast_btn", **WIDE):
                         sent_set = st.session_state.setdefault("radar_sent_dispatches", set())
+                        chart_ctx_map = st.session_state.setdefault("radar_chart_ctx", {})
                         success_count = 0
                         err_msg = None
                         with st.spinner(t("radar_broadcasting")):
@@ -3214,7 +3365,13 @@ if app_mode == "radar":
                                 dispatch_key = f"{sig_item['asset']}_{sig_item['tf']}_{sig_item['price']}_{sig_item['sig']}"
                                 if dispatch_key in sent_set:
                                     continue
-                                ok, detail = dispatch_radar_signal(sig_item)
+                                c_ctx = chart_ctx_map.get(dispatch_key, {})
+                                ok, detail = dispatch_radar_signal(
+                                    sig_item,
+                                    df_plot=c_ctx.get("df_plot"),
+                                    pts=c_ctx.get("pts"),
+                                    tg=c_ctx.get("targets"),
+                                )
                                 if ok:
                                     sent_set.add(dispatch_key)
                                     success_count += 1
