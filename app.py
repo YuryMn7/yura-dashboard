@@ -1,6 +1,11 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v3.11 (RADAR AI & CHART BROADCASTER). Стиль: strict institutional minimalist.
+SPEC v3.12 (RADAR ABC PRECISION & CLEAN TELEGRAM CARD). Стиль: strict institutional minimalist.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
+v3.12 (RADAR ABC PRECISION & CLEAN TELEGRAM CARD):
+1. Уточнен авто-поиск точек A, B, C в scan_one(): окно 26 свечей до текущего бара
+   для B, экстремум до B для A и экстремум от B до текущего бара включительно для C.
+2. Из карточки Telegram в dispatch_radar_signal() убран сырой процент ai_prob,
+   оставлен аккуратный статус ИИ Алиса по ai_verdict.
 v3.11 (RADAR AI & CHART BROADCASTER):
 1. Авто-детекция волны A-B-C для подтвержденных и локальных сетапов Радара
    (strong_buy, strong_sell, local_buy, local_sell), расчет целей Хосоды и
@@ -2852,58 +2857,58 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     return buf
 
 
-# ===== SPEC v3.11 (RADAR AI & CHART BROADCASTER) =====
-def _radar_auto_abc(df_ltf, sig_raw):
+# ===== SPEC v3.12 (RADAR ABC PRECISION & CLEAN TELEGRAM CARD) =====
+def _radar_auto_abc(df_ltf, sig_raw, lookback_b=26):
     if df_ltf is None or len(df_ltf) < 6:
         return None
-    is_buy = "buy" in sig_raw
+    is_buy = "buy" in str(sig_raw).lower()
     n = len(df_ltf)
-    b_start = max(1, n - 26)
-    b_slice = df_ltf.iloc[b_start:n]
+
+    end_b = n - 1
+    start_b = max(0, end_b - lookback_b)
+    b_slice = df_ltf.iloc[start_b:end_b]
     if b_slice.empty:
         return None
+
     if is_buy:
-        b_idx = int(b_start + int(np.argmax(b_slice["High"].to_numpy(dtype=float))))
+        b_idx = int(start_b + int(np.argmax(b_slice["High"].to_numpy(dtype=float))))
         b_y = float(df_ltf["High"].iloc[b_idx])
         if b_idx <= 0:
             return None
-        a_start = max(0, b_idx - 30)
-        a_slice = df_ltf.iloc[a_start:b_idx]
+        a_slice = df_ltf.iloc[:b_idx]
         if a_slice.empty:
             return None
-        a_idx = int(a_start + int(np.argmin(a_slice["Low"].to_numpy(dtype=float))))
+        a_idx = int(np.argmin(a_slice["Low"].to_numpy(dtype=float)))
         a_y = float(df_ltf["Low"].iloc[a_idx])
-        c_idx = n - 1
+        c_slice = df_ltf.iloc[b_idx:]
+        if c_slice.empty:
+            return None
+        c_idx = int(b_idx + int(np.argmin(c_slice["Low"].to_numpy(dtype=float))))
+        c_y = float(df_ltf["Low"].iloc[c_idx])
         if not (a_idx < b_idx < c_idx):
             return None
-        c_y = float(df_ltf["Low"].iloc[c_idx])
         if not (a_y < c_y < b_y):
-            c_cl = float(df_ltf["Close"].iloc[c_idx])
-            if a_y < c_cl < b_y:
-                c_y = c_cl
-            else:
-                return None
+            return None
     else:
-        b_idx = int(b_start + int(np.argmin(b_slice["Low"].to_numpy(dtype=float))))
+        b_idx = int(start_b + int(np.argmin(b_slice["Low"].to_numpy(dtype=float))))
         b_y = float(df_ltf["Low"].iloc[b_idx])
         if b_idx <= 0:
             return None
-        a_start = max(0, b_idx - 30)
-        a_slice = df_ltf.iloc[a_start:b_idx]
+        a_slice = df_ltf.iloc[:b_idx]
         if a_slice.empty:
             return None
-        a_idx = int(a_start + int(np.argmax(a_slice["High"].to_numpy(dtype=float))))
+        a_idx = int(np.argmax(a_slice["High"].to_numpy(dtype=float)))
         a_y = float(df_ltf["High"].iloc[a_idx])
-        c_idx = n - 1
+        c_slice = df_ltf.iloc[b_idx:]
+        if c_slice.empty:
+            return None
+        c_idx = int(b_idx + int(np.argmax(c_slice["High"].to_numpy(dtype=float))))
+        c_y = float(df_ltf["High"].iloc[c_idx])
         if not (a_idx < b_idx < c_idx):
             return None
-        c_y = float(df_ltf["High"].iloc[c_idx])
         if not (b_y < c_y < a_y):
-            c_cl = float(df_ltf["Close"].iloc[c_idx])
-            if b_y < c_cl < a_y:
-                c_y = c_cl
-            else:
-                return None
+            return None
+
     return {
         "a_idx": a_idx, "a_t": df_ltf.index[a_idx], "a_y": a_y,
         "b_idx": b_idx, "b_t": df_ltf.index[b_idx], "b_y": b_y,
@@ -2926,11 +2931,11 @@ def dispatch_radar_signal(item, df_plot=None, pts=None, tg=None):
     sig_label = t("sig_" + sig_raw)
 
     icon = "🟢" if "buy" in sig_raw else "🔴"
-    ai_badge = {"green": "🟢 Высокая", "yellow": "🟡 Умеренная", "red": "🔴 Низкая"}.get(
-        item.get("ai_verdict"), "⚪ Расчет"
-    )
-    ai_prob_raw = item.get("ai_prob", "—")
-    ai_prob = f"{ai_prob_raw}%" if ai_prob_raw not in (None, "—", "") else "—"
+    ai_badge = {
+        "green": "🟢 Высокая вероятность",
+        "yellow": "🟡 Умеренный потенциал",
+        "red": "🔴 Повышенный риск",
+    }.get(item.get("ai_verdict"), "⚪ Анализ")
     target_n = item.get("target_n", "—")
 
     caption = (
@@ -2943,7 +2948,7 @@ def dispatch_radar_signal(item, df_plot=None, pts=None, tg=None):
         f"📍 <b>Цена входа:</b> <code>{price}</code>\n"
         f"🛡 <b>Киджун (Опора):</b> <code>{kijun}</code>\n"
         f"🎯 <b>Цель N Хосоды:</b> <code>{target_n}</code>\n"
-        f"🤖 <b>ИИ Алиса:</b> {ai_badge} (вероятность {ai_prob})\n"
+        f"🤖 <b>ИИ Алиса:</b> {ai_badge}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"🏛 <i>Ichimoku Wave Terminal · Institutional SaaS</i>"
     )[:1024]
@@ -2991,7 +2996,7 @@ def dispatch_radar_signal(item, df_plot=None, pts=None, tg=None):
         return False, safe_err(str(res.get("description", "unknown error")))
     except Exception as e:
         return False, safe_err(e)
-# ===== /SPEC v3.11 =====
+# ===== /SPEC v3.12 =====
 
 
 def send_mt5_order(payload, confirm_label):
@@ -3231,11 +3236,10 @@ if app_mode == "radar":
             }
 
             if sig in ("strong_buy", "strong_sell", "local_buy", "local_sell"):
-                abc_auto = _radar_auto_abc(df_ltf, sig)
+                abc_auto = _radar_auto_abc(df_ltf, sig, lookback_b=26)
                 if abc_auto:
                     tg = hosoda_targets(abc_auto["a_y"], abc_auto["b_y"], abc_auto["c_y"])
                     rec["target_n"] = fmt_price(tg["N"])
-                    ai_prob_val = None
                     ai_verdict_val = None
                     try:
                         htf_arr = htf_trend_series(df_htf, df_ltf.index)
@@ -3249,11 +3253,9 @@ if app_mode == "radar":
                         if ai_res.get("status") == "ok":
                             r_n = (ai_res.get("targets") or {}).get("N")
                             if r_n and r_n.get("status") == "ok":
-                                ai_prob_val = int(round(float(r_n["p_target"]) * 100))
                                 ai_verdict_val = alice_verdict(r_n)
                     except Exception:
                         pass
-                    rec["ai_prob"] = ai_prob_val if ai_prob_val is not None else "—"
                     rec["ai_verdict"] = ai_verdict_val
 
                     df_tail = df_ltf.tail(250).copy()
