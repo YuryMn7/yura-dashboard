@@ -2,35 +2,33 @@
 SPEC v3.12 (RADAR POLISH: WAVE C & AI LABELS). Стиль: strict institutional minimalist.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 v3.12 (RADAR POLISH: WAVE C & AI LABELS):
-1. Авто-волна A-B-C: B — экстремум последних 26 закрытых свечей (текущая
-   не входит), C — истинный экстремум отката от B до текущего бара.
-   A — последний главный фрактал до B (лоя для покупки, хай для продажи).
-   Если этот фрактал внутри облака Кумо, A — последний фрактал перед флетом.
-   Флет определяется только облаком, не Тенкан-сен и не Киджун-сен.
-   Подмена C закрытием последней свечи убрана.
-2. Депеша Telegram показывает только строгий вердикт Алисы, без сырого
-   процента вероятности.
+1. Авто-точка C в _radar_auto_abc привязана к истинному экстремуму отката:
+   BUY — строгий минимум Low на отрезке от B до текущего бара включительно;
+   SELL — строгий максимум High на том же отрезке. Волна, у которой C вышел
+   за пределы отката (не между A и B), отбрасывается как невалидная.
+2. Депеша в Telegram-канал очищена от сырых процентов Алисы: остаётся строгий
+   вердикт (Высокая вероятность / Умеренный потенциал / Повышенный риск).
 v3.11 (RADAR AI & CHART BROADCASTER):
 1. Авто-детекция волны A-B-C для подтвержденных и локальных сетапов Радара
-   (strong_buy, strong_sell, local_buy, local_sell), расчет целей Хосоды и
-   фоновый инференс модели «Алиса» по цели N.
+(strong_buy, strong_sell, local_buy, local_sell), расчет целей Хосоды и
+фоновый инференс модели «Алиса» по цели N.
 2. Генерация снимка графика в io.BytesIO() через _render_chart_matplotlib.
 3. Отправка в Telegram-канал через /sendPhoto с карточкой (цель N + ИИ Алиса)
-   и fallback на /sendMessage при недоступности рендера графика.
+и fallback на /sendMessage при недоступности рендера графика.
 v3.10 (RADAR TELEGRAM BROADCASTER):
 1. Экспорт подтвержденных сигналов из Радара (strong_buy, strong_sell, local_buy,
-   local_sell) в Telegram-канал по секрету TELEGRAM_CHANNEL_ID.
+local_sell) в Telegram-канал по секрету TELEGRAM_CHANNEL_ID.
 2. Статусы 'wait' в канал не публикуются.
 3. Дедупликация в сессии через radar_sent_dispatches по ключу
-   f"{asset}_{tf}_{price}_{sig}".
+f"{asset}_{tf}_{price}_{sig}".
 v3.04 (LOGOUT FIX / GATE POLISH):
 1. Выход с первого нажатия: флаг auth_logout_pending блокирует автовход,
-   пока браузер доедает удаление cookie. Второй шанс на удаление — один раз,
-   через auth_logout_cleaned, без циклов.
+пока браузер доедает удаление cookie. Второй шанс на удаление — один раз,
+через auth_logout_cleaned, без циклов.
 2. Галочка «Запомнить меня» только на вкладке Вход. Регистрация запоминает
-   сессию молча (remember=True), без визуального шума.
+сессию молча (remember=True), без визуального шума.
 3. Диагностика профиля: хозяин не видит её вовсе; клиенту показывается
-   человеческая фраза auth_sub_unknown. Сырые коды — только при AUTH_DEBUG=True.
+человеческая фраза auth_sub_unknown. Сырые коды — только при AUTH_DEBUG=True.
 v3.03 (REMEMBER ME):
 Cookie хранит refresh_token (НЕ пароль), срок 30 дней. При открытии сессия
 восстанавливается через POST /auth/v1/token?grant_type=refresh_token, ключ
@@ -1941,8 +1939,6 @@ def send_bybit_order(sym, side, order_type, qty, price, sl, tp, order_id):
         except Exception:
             continue
     return False, "NETWORK_ERR", "No response from Bybit endpoints"
-
-
 class TDError(Exception):
     pass
 
@@ -2862,64 +2858,13 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
 
 
 # ===== SPEC v3.12 (RADAR POLISH: WAVE C & AI LABELS) =====
-def _in_kumo(df, i, price):
-    """Цена внутри облака на баре i. Нет облака — не флет. Тенкан/Киджун не участвуют."""
-    try:
-        sa = float(df["senkou_a"].iloc[i])
-        sb = float(df["senkou_b"].iloc[i])
-        px = float(price)
-    except (TypeError, ValueError, KeyError, IndexError):
-        return False
-    if not (np.isfinite(sa) and np.isfinite(sb) and np.isfinite(px)):
-        return False
-    return min(sa, sb) <= px <= max(sa, sb)
-
-
-def _flag_before(df, col, end):
-    if col not in df.columns or end <= 0:
-        return np.array([], dtype=int)
-    flags = df[col].iloc[:end].fillna(False).astype(bool)
-    return np.flatnonzero(flags.to_numpy(dtype=bool))
-
-
-def _point_a(df, b_idx, major_col, minor_col, price_col):
-    """Последний главный фрактал до B.
-
-    Если его цена внутри Кумо — это флет: берём последний фрактал
-    (сначала главный, иначе малый) строго перед началом флета.
-    """
-    majors = _flag_before(df, major_col, b_idx)
-    if len(majors) == 0:
-        return None
-    a_idx = int(majors[-1])
-    a_y = float(df[price_col].iloc[a_idx])
-    if not _in_kumo(df, a_idx, a_y):
-        return a_idx, a_y
-    j = a_idx
-    while j > 0 and _in_kumo(df, j - 1, df["Close"].iloc[j - 1]):
-        j -= 1
-    prev = majors[majors < j]
-    if len(prev) == 0:
-        prev = _flag_before(df, minor_col, j)
-    if len(prev) == 0:
-        return None
-    i = int(prev[-1])
-    return i, float(df[price_col].iloc[i])
-
-
 def _radar_auto_abc(df_ltf, sig_raw):
     if df_ltf is None or len(df_ltf) < 6:
         return None
-    need = ("High", "Low", "Close", "senkou_a", "senkou_b",
-            "Major_High", "Major_Low", "Minor_High", "Minor_Low")
-    if any(c not in df_ltf.columns for c in need):
-        return None
     is_buy = "buy" in sig_raw
     n = len(df_ltf)
-    # Последние 26 свечей до текущей (живая свеча в поиск B не входит).
-    b_end = n - 1
-    b_start = max(0, b_end - 26)
-    b_slice = df_ltf.iloc[b_start:b_end]
+    b_start = max(1, n - 26)
+    b_slice = df_ltf.iloc[b_start:n]
     if b_slice.empty:
         return None
     if is_buy:
@@ -2927,32 +2872,42 @@ def _radar_auto_abc(df_ltf, sig_raw):
         b_y = float(df_ltf["High"].iloc[b_idx])
         if b_idx <= 0:
             return None
-        picked = _point_a(df_ltf, b_idx, "Major_Low", "Minor_Low", "Low")
-        if picked is None:
+        a_start = max(0, b_idx - 30)
+        a_slice = df_ltf.iloc[a_start:b_idx]
+        if a_slice.empty:
             return None
-        a_idx, a_y = picked
+        a_idx = int(a_start + int(np.argmin(a_slice["Low"].to_numpy(dtype=float))))
+        a_y = float(df_ltf["Low"].iloc[a_idx])
+        # v3.12: C — строгий минимум Low на отрезке от B до текущего бара включительно.
         c_sub = df_ltf.iloc[b_idx:]
         if c_sub.empty:
             return None
         c_idx = int(b_idx + int(np.argmin(c_sub["Low"].to_numpy(dtype=float))))
         c_y = float(df_ltf["Low"].iloc[c_idx])
-        if not (a_idx < b_idx < c_idx and a_y < c_y < b_y):
+        if not (a_idx < b_idx < c_idx):
+            return None
+        if not (a_y < c_y < b_y):
             return None
     else:
         b_idx = int(b_start + int(np.argmin(b_slice["Low"].to_numpy(dtype=float))))
         b_y = float(df_ltf["Low"].iloc[b_idx])
         if b_idx <= 0:
             return None
-        picked = _point_a(df_ltf, b_idx, "Major_High", "Minor_High", "High")
-        if picked is None:
+        a_start = max(0, b_idx - 30)
+        a_slice = df_ltf.iloc[a_start:b_idx]
+        if a_slice.empty:
             return None
-        a_idx, a_y = picked
+        a_idx = int(a_start + int(np.argmax(a_slice["High"].to_numpy(dtype=float))))
+        a_y = float(df_ltf["High"].iloc[a_idx])
+        # v3.12: C — строгий максимум High на отрезке от B до текущего бара включительно.
         c_sub = df_ltf.iloc[b_idx:]
         if c_sub.empty:
             return None
         c_idx = int(b_idx + int(np.argmax(c_sub["High"].to_numpy(dtype=float))))
         c_y = float(df_ltf["High"].iloc[c_idx])
-        if not (a_idx < b_idx < c_idx and b_y < c_y < a_y):
+        if not (a_idx < b_idx < c_idx):
+            return None
+        if not (b_y < c_y < a_y):
             return None
     return {
         "a_idx": a_idx, "a_t": df_ltf.index[a_idx], "a_y": a_y,
@@ -2966,7 +2921,6 @@ def dispatch_radar_signal(item, df_plot=None, pts=None, tg=None):
     channel = str(st.secrets.get("TELEGRAM_CHANNEL_ID", ""))
     if not token or not channel:
         return False, "no_channel_secret"
-
     asset = asset_label(item["asset"])
     tf = item["tf"]
     sig_raw = item["sig"]
@@ -2974,7 +2928,6 @@ def dispatch_radar_signal(item, df_plot=None, pts=None, tg=None):
     kijun = item["kijun"]
     trend = t("trend_" + item["trend"])
     sig_label = t("sig_" + sig_raw)
-
     icon = "🟢" if "buy" in sig_raw else "🔴"
     ai_badge = {
         "green": "🟢 Высокая вероятность",
@@ -2982,22 +2935,20 @@ def dispatch_radar_signal(item, df_plot=None, pts=None, tg=None):
         "red": "🔴 Повышенный риск",
     }.get(item.get("ai_verdict"), "⚪ Анализ")
     target_n = item.get("target_n", "—")
-
     caption = (
-        f"⚡ <b>ICHIMOKU QUANT RADAR</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
+        "⚡ <b>ICHIMOKU QUANT RADAR</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
         f"🔹 <b>Инструмент:</b> {asset} ({tf})\n"
         f"🎯 <b>Сигнал:</b> {icon} <b>{sig_label}</b>\n"
         f"📈 <b>Старший тренд:</b> {trend}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
         f"📍 <b>Цена входа:</b> <code>{price}</code>\n"
         f"🛡 <b>Киджун (Опора):</b> <code>{kijun}</code>\n"
         f"🎯 <b>Цель N Хосоды:</b> <code>{target_n}</code>\n"
         f"🤖 <b>ИИ Алиса:</b> {ai_badge}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🏛 <i>Ichimoku Wave Terminal · Institutional SaaS</i>"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🏛 <i>Ichimoku Wave Terminal · Institutional SaaS</i>"
     )[:1024]
-
     png_buf = None
     if df_plot is not None and not df_plot.empty:
         route = ASSET_ROUTER.get(item["asset"], {})
@@ -3008,7 +2959,6 @@ def dispatch_radar_signal(item, df_plot=None, pts=None, tg=None):
             )
         except Exception:
             png_buf = None
-
     base_url = f"https://api.telegram.org/bot{token}"
     try:
         if png_buf is not None:
@@ -3273,13 +3223,11 @@ if app_mode == "radar":
                         fails = [f for f, ok in (("kumo", ok_kumo), ("chikou", ok_chikou)) if not ok]
                         if fails:
                             diag = ("zone", {"fails": fails})
-
             price_str = fmt_price(pr_live)
             rec = {
                 "asset": asset_name, "tf": tf, "sig": sig, "trend": trend_code,
                 "price": price_str, "kijun": fmt_price(kijun), "diag": diag,
             }
-
             if sig in ("strong_buy", "strong_sell", "local_buy", "local_sell"):
                 abc_auto = _radar_auto_abc(df_ltf, sig)
                 if abc_auto:
@@ -3305,7 +3253,6 @@ if app_mode == "radar":
                         pass
                     rec["ai_prob"] = ai_prob_val if ai_prob_val is not None else "—"
                     rec["ai_verdict"] = ai_verdict_val
-
                     df_tail = df_ltf.tail(250).copy()
                     offset_base = max(0, len(df_ltf) - len(df_tail))
                     pts_plot = [
@@ -3319,7 +3266,6 @@ if app_mode == "radar":
                         "pts": pts_plot,
                         "targets": tg,
                     }
-
             return rec, None
         except Exception as e:
             return None, E("exception", detail=safe_err(e))
@@ -3399,7 +3345,6 @@ if app_mode == "radar":
                                  key="teleport_btn", **WIDE):
                         st.session_state["_teleport"] = {"asset": tp_asset, "tf": tp_tf}
                         st.rerun()
-
             active_signals = [r for r in rows if r["sig"] != "wait"]
             if active_signals:
                 st.markdown("---")
