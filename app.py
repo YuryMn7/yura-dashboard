@@ -1,33 +1,36 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v3.21 (HOSODA WAVE CANON & REFINED DISPATCH). Стиль: strict institutional minimalist.
+SPEC v3.22 (HOSODA FRACTAL CANON & MOBILE STATE FREEZE). Стиль: strict institutional minimalist.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 
+v3.22 (HOSODA FRACTAL CANON & MOBILE STATE FREEZE):
+1. Точка A — строго подтверждённый фрактал (Major_Low/Minor_Low для BUY,
+   Major_High/Minor_High для SELL) в окне [b_idx-26 : b_idx-4], с обязательным
+   закреплением закрытия за Tenkan-sen и без пробоя своего экстремума до B.
+   Выбирается самый глубокий (BUY) / наивысший (SELL) валидный исток.
+   Нет валидного фрактала — волна не строится вовсе (None).
+2. Защита памяти сессии: radar_out2, abc_points, persisted_symbol, persisted_tf
+   включены в защищённый список. Сброс разметки только при реальной смене
+   инструмента или таймфрейма пользователем, а не при реконнекте WebSocket.
+   Выбор символа и ТФ восстанавливается из persisted_* при переподключении.
 v3.21 (HOSODA WAVE CANON & REFINED DISPATCH):
-1. Канонический детектор узлов Хосоды (_radar_auto_abc):
-   - B: импульсный экстремум за 26 баров (без хвоста отката в 3 бара) с уходом закрытия за Tenkan;
-   - A: старт импульса заперт в окне базового цикла [b_idx - 26 : b_idx - 5] (защита от улёта);
-   - C: строгое дно отката после B, дно подтверждено отскоком (Close > Low[C]), структура не сломана (Low[C] > Low[A]).
-2. Конечный автомат волны:
-   - CONFIRMED: тело завершенной закрытой свечи (cl[-2]) пробило уровень B;
-   - CANDIDATE: опора формируется у Кидзюнь, цели маркируются префиксом ≈.
+1. Канонический детектор узлов Хосоды: B — импульсный экстремум за 26 баров
+   (без хвоста отката в 3 бара) с уходом закрытия за Tenkan; C — строгое дно
+   отката после B, подтверждённое отскоком (Close > Low[C]), структура не сломана.
+2. Конечный автомат волны: CONFIRMED по закрытой свече (cl[-2]), иначе CANDIDATE
+   с префиксом ≈ у целей.
 3. Институциональные созерцательные депеши Telegram (Хадо / Кэйсан-ти / Хэйдзёсин)
-   с корректной привязкой меток графика pts по временным координатам.
-
+   с привязкой меток графика pts по временным координатам.
 v3.11 (RADAR AI & CHART BROADCASTER):
-1. Авто-детекция волны A-B-C для подтвержденных и локальных сетапов Радара,
-расчет целей Хосоды и фоновый инференс модели «Алиса» по цели N.
-2. Генерация снимка графика в io.BytesIO() через _render_chart_matplotlib.
-3. Отправка в Telegram-канал через /sendPhoto с карточкой и fallback на /sendMessage.
+Авто-детекция волны A-B-C для сетапов Радара, цели Хосоды, фоновый инференс
+«Алисы» по цели N, снимок графика через _render_chart_matplotlib, отправка
+в Telegram-канал через /sendPhoto с fallback на /sendMessage.
 v3.10 (RADAR TELEGRAM BROADCASTER):
-1. Экспорт подтвержденных сигналов из Радара в Telegram-канал по TELEGRAM_CHANNEL_ID.
-2. Статусы 'wait' в канал не публикуются.
-3. Дедупликация в сессии через radar_sent_dispatches.
+Экспорт сигналов в канал по TELEGRAM_CHANNEL_ID, 'wait' не публикуется,
+дедупликация через radar_sent_dispatches.
 v3.04 (LOGOUT FIX / GATE POLISH):
-1. Выход с первого нажатия: флаг auth_logout_pending блокирует автовход,
-пока браузер доедает удаление cookie. Второй шанс — через auth_logout_cleaned.
-2. Галочка «Запомнить меня» только на вкладке Вход. Регистрация запоминает молча.
-3. Диагностика профиля: хозяин не видит её вовсе; клиенту — auth_sub_unknown.
-Сырые коды — только при AUTH_DEBUG=True.
+Выход с первого нажатия (auth_logout_pending / auth_logout_cleaned).
+Галочка «Запомнить меня» только на вкладке Вход. Диагностика профиля скрыта
+от хозяина; клиенту — auth_sub_unknown. Сырые коды — при AUTH_DEBUG=True.
 v3.03 (REMEMBER ME):
 Cookie хранит refresh_token (НЕ пароль), срок 30 дней. Сессия восстанавливается
 через POST /auth/v1/token?grant_type=refresh_token, ключ ротуется. Врата рисуются
@@ -114,6 +117,11 @@ st.session_state.setdefault("auth_logout_pending", False)
 st.session_state.setdefault("auth_logout_cleaned", False)
 st.session_state.setdefault("radar_sent_dispatches", set())
 st.session_state.setdefault("radar_chart_ctx", {})
+# ===== SPEC v3.22: защищённая память разметки и выбора =====
+st.session_state.setdefault("radar_out2", None)
+st.session_state.setdefault("persisted_symbol", "EUR/USD")
+st.session_state.setdefault("persisted_tf", "H1")
+# ===== /SPEC v3.22 =====
 
 REMEMBER_COOKIE = "iwt_rt"
 REMEMBER_DAYS = 30
@@ -2852,7 +2860,7 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     return buf
 
 
-# ===== SPEC v3.21 (HOSODA WAVE CANON & REFINED DISPATCH) =====
+# ===== SPEC v3.22 (HOSODA FRACTAL CANON & REFINED DISPATCH) =====
 def _radar_auto_abc(df_ltf, sig_raw):
     if df_ltf is None or len(df_ltf) < 35:
         return None
@@ -2863,7 +2871,7 @@ def _radar_auto_abc(df_ltf, sig_raw):
     cl = df_ltf["Close"].to_numpy(dtype=float)
     tk = df_ltf["tenkan"].to_numpy(dtype=float)
 
-    # 1. Точка B: импульсный пик в окне 26 баров (исключая последние 3 свечи отката)
+    # 1. Точка B: импульсный экстремум за 26 баров (без хвоста отката в 3 бара)
     b_end = max(1, n - 3)
     b_start = max(1, b_end - 26)
     if b_end - b_start < 2:
@@ -2884,19 +2892,66 @@ def _radar_auto_abc(df_ltf, sig_raw):
     if not turn_ok:
         return None
 
-    # 2. Точка A: старт импульса (окно от 5 до 26 свечей ДО вершины B)
-    a_start = max(0, b_idx - 26)
-    a_end = max(0, b_idx - 5)
-    if a_end - a_start < 2:
+    # 2. Точка A: строго подтвержденный фрактал с истинным пробоем Tenkan-sen
+    a_win_start = max(0, b_idx - 26)
+    a_win_end = max(0, b_idx - 4)
+    if a_win_end - a_win_start < 2:
         return None
+
+    a_idx = None
+    a_y = None
+
     if is_buy:
-        a_idx = int(a_start + int(np.argmin(lo[a_start:a_end])))
+        # Ищем все фракталы Low в окне
+        is_major_l = df_ltf["Major_Low"].to_numpy(dtype=bool)
+        is_minor_l = df_ltf["Minor_Low"].to_numpy(dtype=bool)
+        cand_indices = [
+            i for i in range(a_win_start, a_win_end)
+            if (is_major_l[i] or is_minor_l[i])
+        ]
+        valid_a = []
+        for c_i in cand_indices:
+            # Дно A должно быть ниже B
+            if lo[c_i] >= b_y:
+                continue
+            # От c_i до b_idx не должно быть пробоя ниже уровня Low[c_i]
+            if np.any(lo[c_i + 1:b_idx] < lo[c_i]):
+                continue
+            # Обязательное закрепление за Tenkan: хотя бы одно закрытие выше Tenkan до B
+            if not np.any(cl[c_i + 1:b_idx] > tk[c_i + 1:b_idx]):
+                continue
+            valid_a.append(c_i)
+
+        if not valid_a:
+            return None
+        # Берем самый глубокий подтвержденный фрактал (истинный исток волны)
+        a_idx = min(valid_a, key=lambda idx: lo[idx])
         a_y = float(lo[a_idx])
     else:
-        a_idx = int(a_start + int(np.argmax(hi[a_start:a_end])))
+        # Ищем все фракталы High в окне
+        is_major_h = df_ltf["Major_High"].to_numpy(dtype=bool)
+        is_minor_h = df_ltf["Minor_High"].to_numpy(dtype=bool)
+        cand_indices = [
+            i for i in range(a_win_start, a_win_end)
+            if (is_major_h[i] or is_minor_h[i])
+        ]
+        valid_a = []
+        for c_i in cand_indices:
+            if hi[c_i] <= b_y:
+                continue
+            if np.any(hi[c_i + 1:b_idx] > hi[c_i]):
+                continue
+            # Закрепление ниже Tenkan
+            if not np.any(cl[c_i + 1:b_idx] < tk[c_i + 1:b_idx]):
+                continue
+            valid_a.append(c_i)
+
+        if not valid_a:
+            return None
+        a_idx = max(valid_a, key=lambda idx: hi[idx])
         a_y = float(hi[a_idx])
 
-    # 3. Точка C: строгий экстремум отката ПОСЛЕ вершины B
+    # 3. Точка C: строгий экстремум отката ПОСЛЕ вершины B, подтверждённый отскоком
     if is_buy:
         c_sub = lo[b_idx:]
         c_idx = int(b_idx + int(np.argmin(c_sub)))
@@ -3039,7 +3094,7 @@ def dispatch_radar_signal(item, df_plot=None, pts=None, tg=None):
         return False, safe_err(str(res.get("description", "unknown error")))
     except Exception as e:
         return False, safe_err(e)
-# ===== /SPEC v3.21 =====
+# ===== /SPEC v3.22 =====
 
 
 def send_mt5_order(payload, confirm_label):
@@ -3103,7 +3158,8 @@ def refresh_button(key):
 PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active",
                 "risk_pct", "account_deposit", "entry_mode", "custom_entry",
                 "data_feed_source", "bybit_diag_err", "bybit_active_gw",
-                "radar_sent_dispatches", "radar_chart_ctx",
+                "radar_sent_dispatches", "radar_chart_ctx", "radar_out2",
+                "abc_points", "chart_ver", "ctx", "persisted_symbol", "persisted_tf",
                 "auth_user", "auth_token", "auth_profile", "auth_diag", "auth_restored",
                 "auth_logout_pending", "auth_logout_cleaned"]
 
@@ -3156,8 +3212,10 @@ _teleport = st.session_state.pop("_teleport", None)
 if _teleport:
     if _teleport.get("asset") in ASSET_ROUTER:
         st.session_state["w_symbol"] = _teleport["asset"]
+        st.session_state["persisted_symbol"] = _teleport["asset"]
     if _teleport.get("tf") in TF_MAP:
         st.session_state["w_tf"] = _teleport["tf"]
+        st.session_state["persisted_tf"] = _teleport["tf"]
     st.session_state["w_mode"] = "terminal"
     reset_points()
 
@@ -3454,13 +3512,26 @@ elif app_mode == "terminal":
     with st.sidebar:
         st.markdown("---")
         st.markdown(f"### {t('terminal_settings')}")
-        asset_name = st.selectbox(t("symbol"), list(ASSET_ROUTER.keys()), key="w_symbol", format_func=asset_label)
-        tf_name = st.selectbox(t("timeframe"), list(TF_MAP.keys()), key="w_tf")
+        # ===== SPEC v3.22: восстановление выбора при реконнекте сессии =====
+        _sym_keys = list(ASSET_ROUTER.keys())
+        _tf_keys = list(TF_MAP.keys())
+        _ps = st.session_state.get("persisted_symbol")
+        if st.session_state.get("w_symbol") not in _sym_keys and _ps in _sym_keys:
+            st.session_state["w_symbol"] = _ps
+        _ptf = st.session_state.get("persisted_tf")
+        if st.session_state.get("w_tf") not in _tf_keys and _ptf in _tf_keys:
+            st.session_state["w_tf"] = _ptf
+        asset_name = st.selectbox(t("symbol"), _sym_keys, key="w_symbol", format_func=asset_label)
+        tf_name = st.selectbox(t("timeframe"), _tf_keys, key="w_tf")
+        st.session_state["persisted_symbol"] = asset_name
+        st.session_state["persisted_tf"] = tf_name
+        # ===== /SPEC v3.22 =====
         ctx = (asset_name, tf_name, offset_choice, count_weekend, drop_clearing)
-        if st.session_state.get("ctx") != ctx:
-            if "ctx" in st.session_state:
-                reset_points()
-            st.session_state.ctx = ctx
+        last_ctx = st.session_state.get("ctx")
+        if last_ctx is not None and (last_ctx[0] != asset_name or last_ctx[1] != tf_name):
+            # Реальная смена инструмента или таймфрейма пользователем
+            reset_points()
+        st.session_state.ctx = ctx
         st.markdown("---")
         st.markdown(f"### {t('wave_points')}")
         labels = [t("pt_a"), t("pt_b"), t("pt_c")]
