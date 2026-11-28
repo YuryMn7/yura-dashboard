@@ -1,36 +1,37 @@
 """Quantitative Analysis Terminal — Streamlit, монолитный app.py.
-SPEC v3.35 (HOSODA CANON, ZEN RADAR & MOBILE STATE FREEZE). Стиль: strict institutional minimalist.
+SPEC v3.45 (HOSODA CANON, 24H PERSISTENCE & ZERO-CLUTTER ANALYTICS).
+Стиль: strict institutional minimalist, zero-clutter.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
 
+v3.45 (HOSODA CANON, 24H PERSISTENCE & ZERO-CLUTTER ANALYTICS):
+1. Канонический исток импульса: точка A — самый глубокий Major_Low (BUY) /
+   самый высокий Major_High (SELL) в окне [b_idx-52 : b_idx-4] с размахом
+   >= 1.5 ATR и закреплением закрытия за Tenkan. Нет Major — Minor с размахом
+   >= 2.0 ATR. Паразитное условие микро-откатов УДАЛЕНО: нормальные рыночные
+   импульсы с внутренними откатами больше не бракуются.
+2. Суточный серверный кэш Радара (TTL 86400) на st.cache_resource: результаты
+   сканера переживают разрыв сессии и сворачивание браузера на смартфоне.
+   Точки A-B-C и актив/ТФ живут в st.query_params; фоновые перезагрузки
+   разметку не стирают. reset_points() — только по кнопке или ручной смене.
+3. Честный Радар: снимок графика формируется ВСЕГДА. Есть волна — узлы, цели
+   N/E и вердикт Alice AI. Волна созревает — чистый холст с опорой Кидзюнь,
+   без вымышленных ломаных линий.
+4. Опережающая тень Кидзюнь: пунктирный хвост на 3 бара вперёд (Plotly).
+5. Детектор P/Y-волн: тихая статус-строка под графиком (Режим Недеяния /
+   Мусин). Косые линии на холст не выводятся — zero-clutter.
+6. Нейросеть везде называется строго «Alice AI».
 v3.35 (HOSODA CANON, ZEN RADAR & MOBILE STATE FREEZE):
-1. MOBILE STATE FREEZE: точки A-B-C живут в st.query_params["pts"] (JSON),
-   актив и ТФ — в st.query_params["sym"] / ["tf"]. reset_points() чистит "pts".
-   Результаты Радара дублируются в долгоживущий кэш @st.cache_data(ttl=900)
-   и восстанавливаются автоматически, если сессия разорвалась.
-2. ИЕРАРХИЯ ФРАКТАЛОВ: точка A — приоритет Major_Low/Major_High в окне до 52
-   баров [b_idx-52 : b_idx-4]; при отсутствии Major — Minor с размахом
-   >= 1.5 ATR. Обязательное закрепление закрытия за Tenkan и непрерывность
-   экстремума до B. cycle_order = HTF_CYCLE при (b_idx - a_idx) > 26, иначе KIHON.
-   Ни одного подтверждённого фрактала — волна не строится (None).
-3. Точка C — строгий экстремум отката после B с подтверждением отскока
-   (Close[-1] > Low[C] для BUY, Close[-1] < High[C] для SELL).
-4. Опережающая тень Кидзюнь-сен на 1-3 бара: kijun_future_projection().
-5. Детектор хаоса: P_WAVE (сжатие, Режим Недеяния / Мусин) и Y_WAVE (рупор).
-6. Баг картинок устранён: chart_df_plot / chart_pts / chart_tg передаются
-   прямо внутри объекта сигнала rec, диспетчер берёт график из item.
-7. Депеша Telegram — лаконичный стиль «Теория одного взгляда».
-8. «ИИ Алиса» переименована в международное «Alice AI».
+Иерархия Major → Minor, окно до 52 баров, cycle_order HTF_CYCLE / KIHON,
+контекст графика внутри объекта сигнала, лаконичная депеша одного взгляда.
 v3.22 (HOSODA FRACTAL CANON & MOBILE STATE FREEZE):
-Точка A — подтверждённый фрактал; защита разметки от сброса при реконнекте;
-сброс только при реальной смене инструмента или таймфрейма пользователем.
+Точка A — подтверждённый фрактал; защита разметки от фонового сброса.
 v3.21 (HOSODA WAVE CANON & REFINED DISPATCH):
 B — импульсный экстремум за 26 баров без хвоста отката в 3 бара с уходом
 закрытия за Tenkan; C — строгое дно отката, подтверждённое отскоком.
 Конечный автомат: CONFIRMED по закрытой свече (cl[-2]), иначе CANDIDATE (≈).
 v3.11 (RADAR AI & CHART BROADCASTER):
-Авто-детекция волны A-B-C для сетапов Радара, цели Хосоды, фоновый инференс
-Alice AI по цели N, снимок графика через _render_chart_matplotlib, отправка
-в Telegram-канал через /sendPhoto с fallback на /sendMessage.
+Авто-детекция волны A-B-C, цели Хосоды, фоновый инференс Alice AI по цели N,
+снимок графика через _render_chart_matplotlib, отправка в Telegram-канал.
 v3.10 (RADAR TELEGRAM BROADCASTER):
 Экспорт сигналов в канал по TELEGRAM_CHANNEL_ID, 'wait' не публикуется,
 дедупликация через radar_sent_dispatches.
@@ -40,28 +41,21 @@ v3.04 (LOGOUT FIX / GATE POLISH):
 от хозяина; клиенту — auth_sub_unknown. Сырые коды — при AUTH_DEBUG=True.
 v3.03 (REMEMBER ME):
 Cookie хранит refresh_token (НЕ пароль), срок 30 дней. Сессия восстанавливается
-через POST /auth/v1/token?grant_type=refresh_token, ключ ротуется. Врата рисуются
-в стираемом контейнере. Graceful degradation без extra-streamlit-components.
+через POST /auth/v1/token?grant_type=refresh_token, ключ ротуется.
+Graceful degradation без extra-streamlit-components.
 v3.02 (AUTH HARDENING):
 OWNER_EMAILS — хозяин получает бессрочный PRO независимо от чтения profiles.
-auth_fetch_profile — два способа чтения + диагностика auth_diag. Счётчик дней
-триала округляется вверх (math.ceil).
+auth_fetch_profile — два способа чтения + диагностика auth_diag.
 v3.01 (SUPABASE AUTH & ACCESS GATING):
 Врата доступа: неавторизованный видит только Вход/Регистрация, далее st.stop().
-Supabase GoTrue REST API через нативный requests. Таблица profiles с RLS и
-триггером автопрофиля. HUD в сайдбаре. Пейволл блокирует кнопки MT5 и Bybit.
+Таблица profiles с RLS и триггером автопрофиля. HUD в сайдбаре. Пейволл.
 v2.06 (TIME-TAG LINE GAP):
 Вертикальные линии временных целей рисуются двумя сегментами с разрывом под
-подписью. Подписи: цвет текста = цвет линии, подложка CLR_LABEL_BG, borderpad=1.
+подписью. Подписи: цвет текста = цвет линии, подложка CLR_LABEL_BG.
 v2.04 (DEFINITIVE NATIVE THEME FIX):
 st.plotly_chart(..., theme="streamlit") — нативный движок красит оси и легенду.
-template="plotly_white" удалён. CSS-оверлей осей удалён.
-Сохранены: opacity-lock scatter (selected/unselected = 1.0), динамический шаг
-лота Bybit (BTC 0.001 / ETH 0.01 / SOL 0.1), маршрутизация MT5 / Bybit v5.
-HOTFIX v2.01: MT5 'watch' не блокирует кнопку; динамический шаг лота.
-BYBIT v5 DUAL-ROUTED EXECUTION GATEWAY (v2.00):
-Традиционные активы -> MT5 через Telegram 2FA. Крипто -> Bybit API v5.
-Graceful Dry-Run при отсутствии ключей, блокировке CDN или нулевом балансе.
+Сохранены: opacity-lock scatter, динамический шаг лота Bybit, маршрутизация
+MT5 (Telegram 2FA) / Bybit v5, Graceful Dry-Run.
 CANDLESTICK CONTRAST (v1.97): матовый teal (#26A69A) и coral (#E55353).
 THEME-ADAPTIVE UI (v1.95): терминал НЕ форсирует тёмную тему. Холст прозрачный.
 CRITICAL BUGFIX (v1.85): контракт фидеров — 2-кортеж (DataFrame, err).
@@ -138,7 +132,6 @@ def reset_points():
     st.session_state.abc_points = []
     st.session_state.chart_ver += 1
     st.session_state.pop("custom_entry", None)
-    # v3.35: разметка в адресной строке тоже стирается
     try:
         st.query_params.pop("pts", None)
     except Exception:
@@ -146,7 +139,7 @@ def reset_points():
 
 
 def sync_points_to_url():
-    """v3.35: сериализация точек A-B-C-O в st.query_params['pts']."""
+    """v3.45: сериализация точек A-B-C-O в st.query_params['pts']."""
     try:
         pts = st.session_state.get("abc_points") or []
         if pts:
@@ -160,7 +153,7 @@ def sync_points_to_url():
 
 
 def restore_points_from_url():
-    """v3.35: восстановление разметки после реконнекта / перезагрузки вкладки."""
+    """v3.45: восстановление разметки после реконнекта / перезагрузки вкладки."""
     if st.session_state.get("abc_points"):
         return
     try:
@@ -174,32 +167,34 @@ def restore_points_from_url():
         pass
 
 
-# ===== SPEC v3.35: долгоживущий кэш результатов Радара (TTL 900 c) =====
-_RADAR_MEM = {"payload": None}
+# ===== SPEC v3.45: суточный серверный кэш Радара (TTL 86400) =====
+RADAR_CACHE_TTL = 86400
 
 
-@st.cache_data(ttl=900, show_spinner=False)
-def _radar_cache_snapshot(_k="radar_last"):
-    return _RADAR_MEM.get("payload")
+@st.cache_resource(show_spinner=False)
+def _server_radar_store():
+    return {"data": None, "timestamp": 0.0}
+
+
+_SERVER_RADAR_STORE = _server_radar_store()
 
 
 def radar_cache_write(payload):
-    _RADAR_MEM["payload"] = payload
     try:
-        _radar_cache_snapshot.clear()
+        _SERVER_RADAR_STORE["data"] = payload
+        _SERVER_RADAR_STORE["timestamp"] = time.time()
     except Exception:
         pass
 
 
 def radar_cache_read():
     try:
-        cached = _radar_cache_snapshot()
-        if cached:
-            return cached
+        if _SERVER_RADAR_STORE["data"] and (time.time() - _SERVER_RADAR_STORE["timestamp"] < RADAR_CACHE_TTL):
+            return _SERVER_RADAR_STORE["data"]
     except Exception:
         pass
-    return _RADAR_MEM.get("payload")
-# ===== /SPEC v3.35 =====
+    return None
+# ===== /SPEC v3.45 =====
 
 
 ASSET_ROUTER = {
@@ -319,11 +314,13 @@ MT5_EXEC_MARK = "IG_EXEC"
 TRIG_WATCH_BARS = {"hosoda": 3, "break_b": 17}
 ATR_CHASE_LIMIT = 1.0
 CAND_C_BARS = 3
-# v3.35: иерархия фракталов и фильтр амплитуды
+# ===== SPEC v3.45: канонический отбор истока импульса =====
 A_WINDOW_MAJOR = 52
 A_WINDOW_TAIL = 4
-A_MINOR_AMP_ATR = 1.5
+A_MAJOR_AMP_ATR = 1.5
+A_MINOR_AMP_ATR = 2.0
 KIJUN_FORWARD_BARS = 3
+# ===== /SPEC v3.45 =====
 
 ACCENT_MUTED = "#a88a45"
 MINOR_COLOR = "#95a5a6"
@@ -385,7 +382,7 @@ I18N = {
         "radar_broadcast_err": "Telegram broadcast failed: {detail}",
         "radar_broadcast_already": "All active signals are already published for this candle.",
         "radar_no_channel_secret": "Add TELEGRAM_CHANNEL_ID to app secrets to enable channel broadcast.",
-        "radar_restored": "Scanner results restored from cache (session was interrupted).",
+        "radar_restored": "Scanner results restored from the 24-hour server cache.",
         "no_data": "Market data is currently unavailable.", "reason": "Reason: {detail}",
         "points_outside": "Some A-B-C points are outside the visible 250 candles - press Clear Points or change the timeframe.",
         "chart_price": "Price", "chart_kumo": "Kumo Cloud",
@@ -516,9 +513,8 @@ I18N = {
         "ai_err_nan": "Indicators are not ready at point C (not enough history).",
         "ai_err_samples": "Not enough comparable historical waves ({n} found, at least {min} required).",
         "history_partial": "Part of the history could not be loaded ({detail}); the chart may be shorter than usual.",
-        "kijun_fwd": "Kijun shadow +1…+{n}: {v}",
-        "wave_p": "P-wave (compression). Mode of non-action (Mushin).",
-        "wave_y": "Y-wave (expansion / chaos). Broadening formation.",
+        "wave_p_caption": "☕ Mode of Non-Action (Mushin) · Market in compression (P-wave). Await the exit from balance.",
+        "wave_y_caption": "🌪 Market in expansion (Y-wave) · Broadening range. Discipline over forecast.",
         "cycle_htf": "Senior cycle (HTF)",
         "cycle_kihon": "Base cycle (Kihon)",
         "auth_title": "Ichimoku Wave Terminal — Institutional SaaS",
@@ -578,7 +574,7 @@ I18N = {
         "radar_broadcast_err": "Ошибка публикации в Telegram: {detail}",
         "radar_broadcast_already": "Все активные сигналы уже опубликованы для текущих свечей.",
         "radar_no_channel_secret": "Добавьте TELEGRAM_CHANNEL_ID в секреты приложения для публикации в канал.",
-        "radar_restored": "Результаты сканера восстановлены из кэша (сессия была прервана).",
+        "radar_restored": "Результаты сканера восстановлены из суточного серверного кэша.",
         "no_data": "Рыночные данные сейчас недоступны.", "reason": "Причина: {detail}",
         "points_outside": "Часть точек A-B-C вышла за пределы видимых 250 свечей — нажмите «Сбросить точки» или смените таймфрейм.",
         "chart_price": "Цена", "chart_kumo": "Облако Кумо",
@@ -709,9 +705,8 @@ I18N = {
         "ai_err_nan": "На точке C индикаторы ещё не готовы (мало истории).",
         "ai_err_samples": "Недостаточно похожих исторических волн (найдено {n}, нужно минимум {min}).",
         "history_partial": "Часть истории не загрузилась ({detail}); график может быть короче обычного.",
-        "kijun_fwd": "Тень Кидзюнь +1…+{n}: {v}",
-        "wave_p": "Волна P (сжатие). Режим Недеяния (Мусин).",
-        "wave_y": "Волна Y (расширение / хаос). Рупор.",
+        "wave_p_caption": "☕ Режим Недеяния (Мусин) · Рынок в сжатии (Волна P). Ожидайте выхода из баланса.",
+        "wave_y_caption": "🌪 Рынок в расширении (Волна Y) · Рупор. Дисциплина важнее прогноза.",
         "cycle_htf": "Старший цикл (HTF)",
         "cycle_kihon": "Базовый цикл (Kihon)",
         "auth_title": "Ichimoku Wave Terminal — Institutional SaaS",
@@ -2944,23 +2939,21 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     return buf
 
 
-# ===== SPEC v3.35 (HOSODA CANON, ZEN RADAR & MOBILE STATE FREEZE) =====
-def kijun_future_projection(df, bars_ahead=KIJUN_FORWARD_BARS):
+# ===== SPEC v3.45 (HOSODA CANON, 24H PERSISTENCE & ZERO-CLUTTER) =====
+def get_kijun_future(df, bars_ahead=KIJUN_FORWARD_BARS):
     """Опережающая тень Кидзюнь-сен на 1..bars_ahead баров вперёд."""
     if df is None or len(df) < 2:
         return []
     hi = df["High"].to_numpy(dtype=float)
     lo = df["Low"].to_numpy(dtype=float)
     n = len(df)
-    projections = []
+    fwd = []
     for step in range(1, bars_ahead + 1):
-        start_idx = max(0, n - 26 + step)
-        if start_idx >= n:
-            start_idx = n - 1
-        k_hi = np.max(hi[start_idx:])
-        k_lo = np.min(lo[start_idx:])
-        projections.append((k_hi + k_lo) / 2.0)
-    return projections
+        idx = max(0, n - 26 + step)
+        if idx >= n:
+            idx = n - 1
+        fwd.append((np.max(hi[idx:]) + np.min(lo[idx:])) / 2.0)
+    return fwd
 
 
 def detect_wave_chaos(df):
@@ -3021,7 +3014,9 @@ def _radar_auto_abc(df_ltf, sig_raw):
     if not np.isfinite(atr_ref) or atr_ref <= 0.0:
         return None
 
-    # 2. Точка A: иерархия Major -> Minor, окно до 52 баров, ритмы 26/33/42/52
+    # 2. Точка A: истинный исток импульса — Major с размахом >= 1.5 ATR,
+    #    при отсутствии Major — Minor с размахом >= 2.0 ATR.
+    #    Паразитное условие микро-откатов удалено (v3.45).
     a_win_start = max(0, b_idx - A_WINDOW_MAJOR)
     a_win_end = max(0, b_idx - A_WINDOW_TAIL)
     if a_win_end - a_win_start < 2:
@@ -3033,35 +3028,33 @@ def _radar_auto_abc(df_ltf, sig_raw):
         maj_flags = df_ltf["Major_High"].to_numpy(dtype=bool)
         mnr_flags = df_ltf["Minor_High"].to_numpy(dtype=bool)
 
-    def _collect(flags, need_amp):
+    def _collect(flags, amp_mult):
         found = []
         for c_i in range(a_win_start, a_win_end):
             if not flags[c_i]:
                 continue
             a_px = float(lo[c_i]) if is_buy else float(hi[c_i])
-            if is_buy and a_px >= b_y:
-                continue
-            if (not is_buy) and a_px <= b_y:
-                continue
-            if need_amp and abs(b_y - a_px) < A_MINOR_AMP_ATR * atr_ref:
-                continue
             if is_buy:
-                if np.any(lo[c_i + 1:b_idx] < lo[c_i]):
+                if a_px >= b_y:
+                    continue
+                if (b_y - a_px) < amp_mult * atr_ref:
                     continue
                 if not np.any(cl[c_i + 1:b_idx] > tk[c_i + 1:b_idx]):
                     continue
             else:
-                if np.any(hi[c_i + 1:b_idx] > hi[c_i]):
+                if a_px <= b_y:
+                    continue
+                if (a_px - b_y) < amp_mult * atr_ref:
                     continue
                 if not np.any(cl[c_i + 1:b_idx] < tk[c_i + 1:b_idx]):
                     continue
             found.append(c_i)
         return found
 
-    valid_a = _collect(maj_flags, False)
+    valid_a = _collect(maj_flags, A_MAJOR_AMP_ATR)
     fractal_class = "MAJOR"
     if not valid_a:
-        valid_a = _collect(mnr_flags, True)
+        valid_a = _collect(mnr_flags, A_MINOR_AMP_ATR)
         fractal_class = "MINOR"
     if not valid_a:
         return None
@@ -3126,23 +3119,40 @@ def dispatch_radar_signal(item):
     tf = item["tf"]
     kijun = item["kijun"]
     sig_raw = item["sig"]
-    is_confirmed = item.get("wave_state") == "CONFIRMED"
-    prefix = "" if is_confirmed else "≈ "
-    state_txt = "N-волна (Подтверждена)" if is_confirmed else "Волна V (Опора у Кидзюнь)"
+    has_wave = bool(item.get("has_wave"))
     direction = "▲ ПОКУПКА" if "buy" in sig_raw else "▼ ПРОДАЖА"
     cycle_note = " · Старший цикл" if item.get("cycle_order") == "HTF_CYCLE" else ""
 
-    ai_badge = {
-        "green": "🟢 Высокая вероятность",
-        "yellow": "🟡 Умеренная",
-        "red": "🔴 Низкая",
-    }.get(item.get("ai_verdict"), "⚪ Расчет")
-
     chaos_warn = ""
     if item.get("wave_chaos") == "P_WAVE":
-        chaos_warn = "\n⚠️ <i>Волна P (Сжатие). Режим Недеяния (Мусин).</i>"
+        chaos_warn = "\n☕ <i>Режим Недеяния (Мусин) · Волна P (сжатие).</i>"
     elif item.get("wave_chaos") == "Y_WAVE":
-        chaos_warn = "\n⚠️ <i>Волна Y (Хаос / Расширение).</i>"
+        chaos_warn = "\n🌪 <i>Волна Y (расширение) · Рупор.</i>"
+
+    if has_wave:
+        is_confirmed = item.get("wave_state") == "CONFIRMED"
+        prefix = "" if is_confirmed else "≈ "
+        state_txt = "N-волна (Подтверждена)" if is_confirmed else "Волна V (Опора у Кидзюнь)"
+        ai_badge = {
+            "green": "🟢 Высокая вероятность",
+            "yellow": "🟡 Умеренная",
+            "red": "🔴 Низкая",
+        }.get(item.get("ai_verdict"), "⚪ Расчет")
+        nodes_line = (
+            f"<b>Узлы:</b> A: <code>{item.get('pt_a_px', '—')}</code> | "
+            f"B: <code>{item.get('pt_b_px', '—')}</code> | "
+            f"C: <code>{item.get('pt_c_px', '—')}</code>\n"
+        )
+        targets_line = (
+            f"<b>Цель N:</b> <code>{prefix}{item.get('target_n', '—')}</code>\n"
+            f"<b>Цель E:</b> <code>{prefix}{item.get('target_e', '—')}</code>\n"
+        )
+        ai_line = f"<b>Alice AI:</b> {ai_badge}"
+    else:
+        state_txt = "Волна созревает (опора у Кидзюнь)"
+        nodes_line = "<b>Узлы волны:</b> <i>В стадии созревания</i>\n"
+        targets_line = "<b>Цели N / E:</b> <i>Ожидание опорного узла</i>\n"
+        ai_line = "<b>Alice AI:</b> ⚪ Наблюдение за опорой Кидзюнь"
 
     caption = (
         f"🏛 <b>ICHIMOKU SANJIN RADAR</b>\n"
@@ -3152,19 +3162,18 @@ def dispatch_radar_signal(item):
         f"<b>Состояние:</b> {state_txt}\n"
         f"<b>Старший тренд:</b> {t('trend_' + item['trend'])}\n"
         f"────────────────────────\n"
-        f"<b>Узлы:</b> A: <code>{item.get('pt_a_px', '—')}</code> | B: <code>{item.get('pt_b_px', '—')}</code> | C: <code>{item.get('pt_c_px', '—')}</code>\n"
+        f"{nodes_line}"
         f"<b>Кидзюнь:</b> <code>{kijun}</code>\n"
-        f"<b>Цель N:</b> <code>{prefix}{item.get('target_n', '—')}</code>\n"
-        f"<b>Цель E:</b> <code>{prefix}{item.get('target_e', '—')}</code>\n"
+        f"{targets_line}"
         f"────────────────────────\n"
-        f"<b>Alice AI:</b> {ai_badge}{chaos_warn}"
+        f"{ai_line}{chaos_warn}"
     )
     caption = _tg_caption_clip(caption)
 
-    # v3.35: график берётся напрямую из объекта сигнала — картинки не теряются
+    # v3.45: снимок формируется ВСЕГДА; без волны — чистый холст с опорой Кидзюнь
     df_plot = item.get("chart_df_plot")
-    pts = item.get("chart_pts")
-    tg = item.get("chart_tg")
+    pts = item.get("chart_pts") or []
+    tg = item.get("chart_tg") or {}
     plot_pts = []
     if df_plot is not None and not df_plot.empty and pts:
         for p in pts:
@@ -3178,7 +3187,7 @@ def dispatch_radar_signal(item):
         is_fx = is_fx_asset(route) if route else False
         try:
             png_buf = _render_chart_matplotlib(
-                df_plot, plot_pts, tg or {}, f"{asset} | {tf}", tf, is_fx, mobile=False
+                df_plot, plot_pts, tg, f"{asset} | {tf}", tf, is_fx, mobile=False
             )
         except Exception:
             png_buf = None
@@ -3207,7 +3216,7 @@ def dispatch_radar_signal(item):
         return False, safe_err(str(res.get("description", "unknown error")))
     except Exception as e:
         return False, safe_err(e)
-# ===== /SPEC v3.35 =====
+# ===== /SPEC v3.45 =====
 
 
 def send_mt5_order(payload, confirm_label):
@@ -3321,9 +3330,9 @@ if st.session_state.get("auth_user") is None:
 PAYWALL_LOCKED = subscription_locked()
 # ===== /SPEC v3.04 =====
 
-# ===== SPEC v3.35: восстановление разметки из адресной строки =====
+# ===== SPEC v3.45: разметка возвращается из адресной строки =====
 restore_points_from_url()
-# ===== /SPEC v3.35 =====
+# ===== /SPEC v3.45 =====
 
 _teleport = st.session_state.pop("_teleport", None)
 if _teleport:
@@ -3452,8 +3461,12 @@ if app_mode == "radar":
                 "price": price_str, "kijun": fmt_price(kijun), "diag": diag,
             }
             if sig in ("strong_buy", "strong_sell", "local_buy", "local_sell"):
-                abc_auto = _radar_auto_abc(df_ltf, sig)
+                # v3.45: снимок кладётся в сигнал ВСЕГДА — картинки не теряются
+                df_tail = df_ltf.tail(250).copy()
+                rec["chart_df_plot"] = df_tail
                 rec["wave_chaos"] = detect_wave_chaos(df_ltf)
+                abc_auto = _radar_auto_abc(df_ltf, sig)
+                rec["has_wave"] = bool(abc_auto)
                 if abc_auto:
                     tg = hosoda_targets(abc_auto["a_y"], abc_auto["b_y"], abc_auto["c_y"])
                     rec["target_n"] = fmt_price(tg["N"])
@@ -3469,6 +3482,8 @@ if app_mode == "radar":
                         {"t": abc_auto["b_t"], "y": abc_auto["b_y"]},
                         {"t": abc_auto["c_t"], "y": abc_auto["c_y"]},
                     ]
+                    rec["chart_pts"] = radar_chart_pts
+                    rec["chart_tg"] = tg
                     ai_prob_val = None
                     ai_verdict_val = None
                     try:
@@ -3489,17 +3504,17 @@ if app_mode == "radar":
                         pass
                     rec["ai_prob"] = ai_prob_val if ai_prob_val is not None else "—"
                     rec["ai_verdict"] = ai_verdict_val
-                    df_tail = df_ltf.tail(250).copy()
-                    # v3.35: контекст графика живёт прямо в объекте сигнала
-                    rec["chart_df_plot"] = df_tail
-                    rec["chart_pts"] = radar_chart_pts
-                    rec["chart_tg"] = tg
-                    dispatch_key = f"{asset_name}_{tf}_{price_str}_{sig}"
-                    st.session_state["radar_chart_ctx"][dispatch_key] = {
-                        "df_plot": df_tail,
-                        "pts": radar_chart_pts,
-                        "targets": tg,
-                    }
+                else:
+                    rec["chart_pts"] = []
+                    rec["chart_tg"] = {}
+                    rec["ai_prob"] = "—"
+                    rec["ai_verdict"] = None
+                dispatch_key = f"{asset_name}_{tf}_{price_str}_{sig}"
+                st.session_state["radar_chart_ctx"][dispatch_key] = {
+                    "df_plot": df_tail,
+                    "pts": rec["chart_pts"],
+                    "targets": rec["chart_tg"],
+                }
             return rec, None
         except Exception as e:
             return None, E("exception", detail=safe_err(e))
@@ -3634,7 +3649,7 @@ elif app_mode == "terminal":
     with st.sidebar:
         st.markdown("---")
         st.markdown(f"### {t('terminal_settings')}")
-        # ===== SPEC v3.35: выбор инструмента из адресной строки =====
+        # ===== SPEC v3.45: выбор инструмента из адресной строки =====
         _sym_keys = list(ASSET_ROUTER.keys())
         _tf_keys = list(TF_MAP.keys())
         if st.session_state.get("w_symbol") not in _sym_keys:
@@ -3662,7 +3677,7 @@ elif app_mode == "terminal":
                 st.query_params["tf"] = tf_name
         except Exception:
             pass
-        # ===== /SPEC v3.35 =====
+        # ===== /SPEC v3.45 =====
         ctx = (asset_name, tf_name, offset_choice, count_weekend, drop_clearing)
         last_ctx = st.session_state.get("ctx")
         if last_ctx is not None and (last_ctx[0] != asset_name or last_ctx[1] != tf_name):
@@ -3753,6 +3768,20 @@ elif app_mode == "terminal":
         ))
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["tenkan"], line=dict(color=CLR_TENKAN, width=1.5), name="Tenkan-sen"))
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["kijun"], line=dict(color=CLR_KIJUN, width=2), name="Kijun-sen"))
+        # ===== SPEC v3.45: опережающая тень Кидзюнь (+3 бара, пунктир) =====
+        kj_fwd = get_kijun_future(df_plot, KIJUN_FORWARD_BARS)
+        if kj_fwd:
+            _last_x = int(df_plot["x_idx"].iloc[-1])
+            _last_kj = float(df_plot["kijun"].iloc[-1])
+            if np.isfinite(_last_kj):
+                fig.add_trace(go.Scatter(
+                    x=[_last_x + i for i in range(len(kj_fwd) + 1)],
+                    y=[_last_kj] + kj_fwd,
+                    mode="lines",
+                    line=dict(color=CLR_KIJUN, width=1.5, dash="dot"),
+                    name="Kijun Future (+3)", hoverinfo="skip", showlegend=False,
+                ))
+        # ===== /SPEC v3.45 =====
         fig.add_trace(go.Scatter(x=df_plot["x_idx"], y=df_plot["chikou"], line=dict(color=CLR_CHIKOU, width=1.2), name="Chikou Span"))
         x_cloud = np.arange(len(df_plot)) + 26
         sa, sb = df_plot["raw_senkou_a"].to_numpy(dtype=float), df_plot["raw_senkou_b"].to_numpy(dtype=float)
@@ -3786,7 +3815,7 @@ elif app_mode == "terminal":
         armed = trigger_plan(df, abc[:3], mode_now, tf_name, is_fx, last_close) if len(abc) >= 3 else None
         cand = candidate_c_extreme(df_plot)
         tt_x, tt_text = [], []
-        x_view_right = float(len(df_plot) - 1)
+        x_view_right = float(len(df_plot) - 1 + KIJUN_FORWARD_BARS)
         if len(pts) >= 3:
             A, B, C = pts[:3]
             tg = hosoda_targets(A["y"], B["y"], C["y"])
@@ -3798,7 +3827,8 @@ elif app_mode == "terminal":
                               annotation_font_size=UIP["ann_font"], annotation_font_color=colors[name])
             time_ab, time_ac = abs(B["x"] - A["x"]), abs(C["x"] - A["x"])
             clock = _forecast_clock(df_plot, tf_name, is_fx)
-            x_view_right = float(max(len(df_plot) - 1, C["x"] + TIME_AXIS_FORWARD_BARS))
+            x_view_right = float(max(len(df_plot) - 1 + KIJUN_FORWARD_BARS,
+                                     C["x"] + TIME_AXIS_FORWARD_BARS))
 
             def vlabel(x, text, color, y):
                 fig.add_annotation(
@@ -3933,17 +3963,13 @@ elif app_mode == "terminal":
         if len(abc) >= 3 and len(pts) < 3:
             st.caption(t("points_outside"))
 
-        # ===== SPEC v3.35: опережающая тень Кидзюнь и фильтр хаоса =====
-        _kj_fwd = kijun_future_projection(df, KIJUN_FORWARD_BARS)
-        if _kj_fwd:
-            st.caption(t("kijun_fwd", n=len(_kj_fwd),
-                         v=" · ".join(fmt_price(v_) for v_ in _kj_fwd)))
+        # ===== SPEC v3.45: тихий индикатор Режима Недеяния (без линий) =====
         _chaos = detect_wave_chaos(df)
         if _chaos == "P_WAVE":
-            st.info(t("wave_p"))
+            st.caption(t("wave_p_caption"))
         elif _chaos == "Y_WAVE":
-            st.warning(t("wave_y"))
-        # ===== /SPEC v3.35 =====
+            st.caption(t("wave_y_caption"))
+        # ===== /SPEC v3.45 =====
 
         _htf_memo = {}
 
