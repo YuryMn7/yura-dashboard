@@ -1,7 +1,7 @@
-"""Quantitative Analysis Terminal — Streamlit, монолитный app.py.SPEC v3.45 (HOSODA CANON, 24H PERSISTENCE & ZERO-CLUTTER ANALYTICS).
+"""Quantitative Analysis Terminal — Streamlit, монолитный app.py.
+SPEC v3.45 (HOSODA CANON, 24H PERSISTENCE & ZERO-CLUTTER ANALYTICS).
 Стиль: strict institutional minimalist, zero-clutter.
 Режим экрана — по User-Agent; язык первой загрузки — по Accept-Language.
-
 
 v3.45 (HOSODA CANON, 24H PERSISTENCE & ZERO-CLUTTER ANALYTICS):
 1. Канонический исток импульса: точка A — самый глубокий Major_Low (BUY) /
@@ -78,14 +78,12 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 
-
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import requests
 import streamlit as st
 import yfinance as yf
-
 
 try:
     from sklearn.ensemble import RandomForestClassifier
@@ -94,7 +92,6 @@ try:
 except ImportError:
     SKLEARN_OK = False
 
-
 try:
     import extra_streamlit_components as stx
     COOKIES_OK = True
@@ -102,12 +99,10 @@ except ImportError:
     stx = None
     COOKIES_OK = False
 
-
 st.set_page_config(page_title="Quantitative Analysis Terminal", layout="wide")
 API_KEY = st.secrets["TWELVEDATA_KEY"]
 _ST_VER = tuple(int(x) for x in re.findall(r"\d+", st.__version__)[:2])
 WIDE = {"width": "stretch"} if _ST_VER >= (1, 50) else {"use_container_width": True}
-
 
 st.session_state.setdefault("abc_points", [])
 st.session_state.setdefault("chart_ver", 0)
@@ -127,14 +122,10 @@ st.session_state.setdefault("radar_out2", None)
 st.session_state.setdefault("persisted_symbol", "EUR/USD")
 st.session_state.setdefault("persisted_tf", "H1")
 
-
 REMEMBER_COOKIE = "iwt_rt"
 REMEMBER_DAYS = 30
 
-
 _CM = stx.CookieManager(key="iwt_cm") if COOKIES_OK else None
-
-
 
 
 def reset_points():
@@ -145,8 +136,6 @@ def reset_points():
         st.query_params.pop("pts", None)
     except Exception:
         pass
-
-
 
 
 def sync_points_to_url():
@@ -161,8 +150,6 @@ def sync_points_to_url():
             st.query_params.pop("pts", None)
     except Exception:
         pass
-
-
 
 
 def restore_points_from_url():
@@ -180,12 +167,8 @@ def restore_points_from_url():
         pass
 
 
-
-
 # ===== SPEC v3.45: суточный серверный кэш Радара (TTL 86400) =====
 RADAR_CACHE_TTL = 86400
-
-
 
 
 @st.cache_resource(show_spinner=False)
@@ -193,11 +176,7 @@ def _server_radar_store():
     return {"data": None, "timestamp": 0.0}
 
 
-
-
 _SERVER_RADAR_STORE = _server_radar_store()
-
-
 
 
 def radar_cache_write(payload):
@@ -208,8 +187,6 @@ def radar_cache_write(payload):
         pass
 
 
-
-
 def radar_cache_read():
     try:
         if _SERVER_RADAR_STORE["data"] and (time.time() - _SERVER_RADAR_STORE["timestamp"] < RADAR_CACHE_TTL):
@@ -218,8 +195,6 @@ def radar_cache_read():
         pass
     return None
 # ===== /SPEC v3.45 =====
-
-
 
 
 ASSET_ROUTER = {
@@ -244,7 +219,6 @@ ASSET_ROUTER = {
 }
 ASSET_LABELS_EN = {"Индекс Доллара (DXY)": "US Dollar Index (DXY)"}
 
-
 TF_MAP = {
     "M1": "1min", "M5": "5min", "M15": "15min", "M30": "30min",
     "H1": "1h", "H2": "2h", "H4": "4h", "H8": "8h",
@@ -259,7 +233,6 @@ YF_MAP = {
 }
 BASE_TF = {"H2": "H1", "H4": "H1", "H8": "H1", "D1": "H1", "MN3": "MN1", "MN6": "MN1", "MN24": "MN1"}
 RESAMPLE_RULE = {"H2": "2h", "H4": "4h", "H8": "8h", "D1": "1D", "MN3": "3MS", "MN6": "6MS", "MN24": "24MS"}
-
 
 BYBIT_DIRECT_ENDPOINTS = [
     "https://api.bybit.com",
@@ -292,7 +265,6 @@ FEED_YAHOO_FB = "Yahoo Finance (Fallback)"
 FEED_TD = "TwelveData"
 FEED_NONE = "—"
 
-
 CLR_GRID = "rgba(128, 128, 128, 0.15)"
 CLR_TEXT_NEUTRAL = "rgba(128, 128, 128, 0.85)"
 CLR_TEXT_STRONG = "rgba(100, 100, 100, 1.0)"
@@ -312,7 +284,6 @@ CLR_ORIGIN = "rgba(127, 140, 141, 0.95)"
 CLR_CAND_C = "#a88a45"
 CLR_MINOR = "rgba(149, 165, 166, 0.9)"
 CLR_MAJOR = "rgba(44, 62, 80, 0.95)"
-
 
 TD_PAGE_SIZE = 5000
 TD_PAGES = {"D1": 3}
@@ -351,7 +322,6 @@ A_MINOR_AMP_ATR = 2.0
 KIJUN_FORWARD_BARS = 3
 # ===== /SPEC v3.45 =====
 
-
 ACCENT_MUTED = "#a88a45"
 MINOR_COLOR = "#95a5a6"
 MAJOR_COLOR = "#2c3e50"
@@ -366,15 +336,12 @@ SURFACE_ACTIVE = "#e3e9ee"
 TELEMETRY_LIVE_SECONDS = 60
 TELEMETRY_DAILY_CAP = 3.0
 
-
 OWNER_EMAILS = {"yurymn@gmail.com"}
 AUTH_DEBUG = False
-
 
 LANGS = {"English": "en", "Русский": "ru"}
 DEFAULT_LANG = "Русский"
 LANG = LANGS[DEFAULT_LANG]
-
 
 I18N = {
     "en": {
@@ -764,12 +731,8 @@ I18N = {
 }
 
 
-
-
 def asset_label(name):
     return ASSET_LABELS_EN.get(name, name) if LANG == "en" else name
-
-
 
 
 def t(key, **kw):
@@ -777,18 +740,12 @@ def t(key, **kw):
     return text.format(**kw) if kw else text
 
 
-
-
 def cand_trace_name():
     return t("chart_cand_c")
 
 
-
-
 def feed_source():
     return st.session_state.get("data_feed_source", FEED_NONE)
-
-
 
 
 def feed_badge_html():
@@ -796,8 +753,6 @@ def feed_badge_html():
     src_color = "#a88a45" if "Fallback" in src else "rgba(100,100,100,1.0)"
     return (f"<div class='feed-badge'>{t('feed_label')} "
             f"<b style='color:{src_color};'>{src}</b></div>")
-
-
 
 
 def polar_anchor(df_plot, px, py):
@@ -808,20 +763,14 @@ def polar_anchor(df_plot, px, py):
     return lo, -14, "top", -12, "top"
 
 
-
-
 def E(code, **kw):
     return (code, kw)
-
-
 
 
 def fmt_err(err):
     if isinstance(err, tuple):
         return t("err_" + err[0], **err[1])
     return str(err)
-
-
 
 
 def _secret_values():
@@ -837,15 +786,11 @@ def _secret_values():
     return [v for v in vals if v and len(v) >= 6]
 
 
-
-
 def safe_err(e):
     txt = e if isinstance(e, str) else f"{type(e).__name__}: {e}"
     for s in _secret_values():
         txt = txt.replace(s, "***")
     return txt
-
-
 
 
 def mt5_symbol(asset_key):
@@ -858,8 +803,6 @@ def mt5_symbol(asset_key):
     return base
 
 
-
-
 def price_digits(price):
     if price >= 1000:
         return 2
@@ -868,16 +811,12 @@ def price_digits(price):
     return 5
 
 
-
-
 def fmt_dist(v):
     if v >= 100:
         return f"{v:.1f}"
     if v >= 1:
         return f"{v:.2f}"
     return f"{v:.5f}"
-
-
 
 
 def fmt_diag(d):
@@ -891,15 +830,11 @@ def fmt_diag(d):
     return t("diag_" + kind)
 
 
-
-
 def point_size(route):
     sym = route["sym"]
     if "/" in sym and "BTC" not in sym and "XAU" not in sym:
         return (0.01, "pt_pip") if sym.endswith("JPY") else (0.0001, "pt_pip")
     return (1.0, "pt_point")
-
-
 
 
 def _fx_last(sym_yf):
@@ -911,8 +846,6 @@ def _fx_last(sym_yf):
         return v if v > 0.0 else None
     except Exception:
         return None
-
-
 
 
 def pip_value_usd(asset_key, current_price, psize):
@@ -941,13 +874,9 @@ def pip_value_usd(asset_key, current_price, psize):
     return amount * rate if rate else amount
 
 
-
-
 def fmt_money(v, ccy):
     s = f"{v:,.2f}".replace(",", " ")
     return f"{s} {ccy}" if ccy else s
-
-
 
 
 def fmt_points(v, size):
@@ -956,14 +885,10 @@ def fmt_points(v, size):
     return s.replace(",", " ")
 
 
-
-
 def risk_card_html(head, rows, accent):
     body = "".join(f"<tr><td class='rl'>{k}</td><td class='rv'>{v}</td></tr>" for k, v in rows)
     return (f"<div class='risk-card' style='border-left-color:{accent}'>"
             f"<div class='risk-hd'>{head}</div><table class='risk-tb'>{body}</table></div>")
-
-
 
 
 def points_bar_text(n):
@@ -977,16 +902,12 @@ def points_bar_text(n):
     return f"{status}  ·  {t('pts_hint')}"
 
 
-
-
 def detect_default_lang():
     try:
         al = st.context.headers.get("Accept-Language", "").lower()
         return "Русский" if "ru" in al else "English"
     except Exception:
         return DEFAULT_LANG
-
-
 
 
 def detect_mobile_ua():
@@ -997,8 +918,6 @@ def detect_mobile_ua():
     if re.search(r"iPad|Tablet|PlayBook|Silk|Kindle", ua, re.I):
         return False
     return bool(re.search(r"Android|iPhone|iPod|Windows Phone|IEMobile|Mobile Safari", ua, re.I))
-
-
 
 
 def chart_ui(mobile):
@@ -1013,8 +932,6 @@ def chart_ui(mobile):
                 legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5,
                             font=dict(size=9), groupclick="togglegroup"),
                 ann_font=10, vlabel_font=9, mark_minor=5, mark_major=10, wave_mark=8)
-
-
 
 
 def candidate_c_extreme(df_plot, bars=CAND_C_BARS):
@@ -1051,8 +968,6 @@ def candidate_c_extreme(df_plot, bars=CAND_C_BARS):
             "t": df_plot.index[x], "bars": lb}
 
 
-
-
 def enforce_visible_extremes(df_plot):
     mh = df_plot["Major_High"].to_numpy(dtype=bool).copy()
     ml = df_plot["Major_Low"].to_numpy(dtype=bool).copy()
@@ -1069,8 +984,6 @@ def enforce_visible_extremes(df_plot):
     return mh, ml
 
 
-
-
 # ===== SPEC v3.04 (SUPABASE AUTH + PERSISTENT SESSION) =====
 def cookie_get(name):
     if _CM is None:
@@ -1080,8 +993,6 @@ def cookie_get(name):
         return v or None
     except Exception:
         return None
-
-
 
 
 def cookie_set(name, value, days=REMEMBER_DAYS, op="ck_set"):
@@ -1098,8 +1009,6 @@ def cookie_set(name, value, days=REMEMBER_DAYS, op="ck_set"):
         pass
 
 
-
-
 def cookie_delete(name, op="ck_del"):
     if _CM is None:
         return
@@ -1107,8 +1016,6 @@ def cookie_delete(name, op="ck_del"):
         _CM.delete(name, key=op)
     except Exception:
         pass
-
-
 
 
 def supabase_auth_config():
@@ -1120,12 +1027,8 @@ def supabase_auth_config():
     return url, key
 
 
-
-
 def _is_owner(email):
     return str(email or "").strip().lower() in OWNER_EMAILS
-
-
 
 
 def auth_sign_in(email, password):
@@ -1156,8 +1059,6 @@ def auth_sign_in(email, password):
         return False, safe_err(e)
 
 
-
-
 def auth_sign_up(email, password):
     url, key = supabase_auth_config()
     if not url or not key:
@@ -1184,8 +1085,6 @@ def auth_sign_up(email, password):
         return False, safe_err(e)
 
 
-
-
 def auth_refresh(refresh_token):
     url, key = supabase_auth_config()
     if not url or not key or not refresh_token:
@@ -1206,8 +1105,6 @@ def auth_refresh(refresh_token):
         return True, res
     except Exception:
         return False, None
-
-
 
 
 def auth_fetch_profile(user_id, token):
@@ -1238,15 +1135,11 @@ def auth_fetch_profile(user_id, token):
     return None
 
 
-
-
 def auth_extract_user(data):
     user = data.get("user") or {}
     uid = user.get("id") or data.get("id")
     email = user.get("email") or data.get("email")
     return uid, email
-
-
 
 
 def auth_apply_session(data, fallback_email="", remember=False, op="ck_set"):
@@ -1264,8 +1157,6 @@ def auth_apply_session(data, fallback_email="", remember=False, op="ck_set"):
     elif not remember:
         cookie_delete(REMEMBER_COOKIE, op="ck_del_login")
     return True
-
-
 
 
 def auth_try_restore():
@@ -1288,16 +1179,12 @@ def auth_try_restore():
     return True
 
 
-
-
 def _parse_valid_until(v):
     try:
         ts = pd.to_datetime(v, utc=True, errors="coerce")
         return ts if pd.notna(ts) else None
     except Exception:
         return None
-
-
 
 
 def subscription_state(profile, email=None):
@@ -1316,14 +1203,10 @@ def subscription_state(profile, email=None):
     return "trial", days
 
 
-
-
 def subscription_locked():
     user = st.session_state.get("auth_user") or {}
     state, _d = subscription_state(st.session_state.get("auth_profile"), user.get("email"))
     return state == "expired"
-
-
 
 
 def render_auth_gate():
@@ -1374,8 +1257,6 @@ def render_auth_gate():
                         st.error(str(data))
 
 
-
-
 def render_user_hud():
     user = st.session_state.get("auth_user") or {}
     email = str(user.get("email") or "—")
@@ -1416,8 +1297,6 @@ def render_user_hud():
         time.sleep(0.6)
         st.rerun()
 # ===== /SPEC v3.04 =====
-
-
 
 
 def inject_css(mobile):
@@ -1704,8 +1583,6 @@ pointer-events: auto !important;
     st.markdown(css, unsafe_allow_html=True)
 
 
-
-
 def align_start(df, rule):
     if df.empty:
         return df
@@ -1721,8 +1598,6 @@ def align_start(df, rule):
     return df.iloc[pos[0]:] if len(pos) else df.iloc[0:0]
 
 
-
-
 def resample_ohlc(df, rule):
     if df.empty:
         return df
@@ -1736,8 +1611,6 @@ def resample_ohlc(df, rule):
     return out.loc[(out["High"] >= out["Low"]) & (out["Close"] > 0)]
 
 
-
-
 def drop_weekend_ny(df_utc):
     if df_utc.empty:
         return df_utc
@@ -1746,8 +1619,6 @@ def drop_weekend_ny(df_utc):
     hour = np.asarray(ny.hour)
     closed = (dow == 5) | ((dow == 4) & (hour >= 17)) | ((dow == 6) & (hour < 17))
     return df_utc.iloc[np.flatnonzero(~closed)]
-
-
 
 
 def glue_sunday(df):
@@ -1760,11 +1631,7 @@ def glue_sunday(df):
     return out.groupby(level=0).agg({"Open": "first", "High": "max", "Low": "min", "Close": "last"})
 
 
-
-
 SERVER_CHOICES = ["Auto (EET)", "NY close (UTC+2/+3)", "UTC+2", "UTC+3", "UTC"]
-
-
 
 
 def to_server_time(df_utc, choice):
@@ -1782,14 +1649,10 @@ def to_server_time(df_utc, choice):
     return out
 
 
-
-
 def drop_clearing_hour(df_srv, choice):
     if df_srv.empty or choice == "UTC":
         return df_srv
     return df_srv[np.asarray(df_srv.index.hour) != 23]
-
-
 
 
 def is_fx_asset(route):
@@ -1797,12 +1660,8 @@ def is_fx_asset(route):
     return ("/" in sym) and ("BTC" not in sym)
 
 
-
-
 def is_bybit_asset(route):
     return bool(route) and route.get("prov") == "bybit"
-
-
 
 
 def is_crypto_asset(route):
@@ -1810,15 +1669,11 @@ def is_crypto_asset(route):
     return any(sym.startswith(p) for p in CRYPTO_PREFIXES)
 
 
-
-
 def htf_for(asset_key, tf):
     base = TERMINAL_HTF_MAP.get(tf, tf)
     if is_crypto_asset(ASSET_ROUTER[asset_key]):
         return CRYPTO_HTF_OVERRIDE.get(tf, base)
     return base
-
-
 
 
 def prepare_ohlc(df_utc, tf, is_fx, raw, drop_clearing, server_choice):
@@ -1846,8 +1701,6 @@ def prepare_ohlc(df_utc, tf, is_fx, raw, drop_clearing, server_choice):
     return df
 
 
-
-
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_yahoo(sym, interval):
     yf_int, per = YF_MAP[interval]
@@ -1867,16 +1720,12 @@ def fetch_yahoo(sym, interval):
         return pd.DataFrame(), E("exception", detail=safe_err(e))
 
 
-
-
 def bybit_proxy_url():
     try:
         proxy = str(st.secrets.get("BYBIT_PROXY_URL", "")).strip().rstrip("/")
     except Exception:
         return ""
     return proxy if proxy.startswith("https://") else ""
-
-
 
 
 def get_bybit_endpoints():
@@ -1888,8 +1737,6 @@ def get_bybit_endpoints():
     return endpoints
 
 
-
-
 def bybit_host_label(base_url):
     try:
         proxy = bybit_proxy_url()
@@ -1899,8 +1746,6 @@ def bybit_host_label(base_url):
         return url.replace("https://", "").replace("http://", "")
     except Exception:
         return "gateway"
-
-
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -1992,8 +1837,6 @@ def _bybit_kline_probe(sym, interval, category="linear"):
     return pd.DataFrame(), final_err, ""
 
 
-
-
 def fetch_bybit_kline(sym, interval, category="linear"):
     df, err, gw = _bybit_kline_probe(sym, interval, category)
     try:
@@ -2007,16 +1850,12 @@ def fetch_bybit_kline(sym, interval, category="linear"):
     return df, err
 
 
-
-
 def _bybit_credentials():
     try:
         return (str(st.secrets.get("BYBIT_API_KEY", "")),
                 str(st.secrets.get("BYBIT_API_SECRET", "")))
     except Exception:
         return "", ""
-
-
 
 
 @st.cache_data(ttl=5, show_spinner=False)
@@ -2090,13 +1929,11 @@ def _bybit_wallet_probe():
                 continue
             acc = lst[0] or {}
 
-
             def _f(v):
                 try:
                     return float(v) if v not in (None, "") else 0.0
                 except (TypeError, ValueError):
                     return 0.0
-
 
             gateway = BYBIT_PROXY_GATEWAY if label == BYBIT_PROXY_LABEL else label
             return {
@@ -2117,14 +1954,10 @@ def _bybit_wallet_probe():
     return None, (proxy_err or direct_err or BYBIT_DIAG_NONE)
 
 
-
-
 def fetch_bybit_wallet():
     w, diag = _bybit_wallet_probe()
     st.session_state["bybit_diag_err"] = diag
     return w
-
-
 
 
 def bybit_qty_step(sym):
@@ -2133,8 +1966,6 @@ def bybit_qty_step(sym):
     if sym == "ETHUSDT": return 0.01
     if sym == "SOLUSDT": return 0.1
     return 0.01
-
-
 
 
 def send_bybit_order(sym, side, order_type, qty, price, sl, tp, order_id):
@@ -2194,8 +2025,6 @@ class TDError(Exception):
     pass
 
 
-
-
 def _td_request(sym, base_int, end_date=None):
     params = {"symbol": sym, "interval": base_int, "apikey": API_KEY, "outputsize": TD_PAGE_SIZE, "timezone": "UTC"}
     if end_date:
@@ -2219,8 +2048,6 @@ def _td_request(sym, base_int, end_date=None):
         return pd.DataFrame(), E("exception", detail=safe_err(e))
 
 
-
-
 @st.cache_data(ttl=6 * 3600, show_spinner=False)
 def _td_old_page(sym, base_int, end_date):
     df, err = _td_request(sym, base_int, end_date)
@@ -2229,13 +2056,9 @@ def _td_old_page(sym, base_int, end_date):
     return df
 
 
-
-
 def _next_monday(ts):
     d = ts.normalize()
     return d + pd.Timedelta(days=(7 - d.dayofweek) % 7 or 7)
-
-
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -2282,8 +2105,6 @@ def _resolve_feed(asset_key, interval):
     return out, partial_err, (FEED_TD if not out.empty else FEED_NONE)
 
 
-
-
 def fetch_smart_data(asset_key, interval, track=True):
     df, err, source = _resolve_feed(asset_key, interval)
     if track:
@@ -2293,8 +2114,6 @@ def fetch_smart_data(asset_key, interval, track=True):
         elif source == FEED_BYBIT:
             st.session_state["bybit_active_gw"] = BYBIT_GW_DIRECT
     return df, err
-
-
 
 
 @st.cache_data(ttl=4, show_spinner=False)
@@ -2321,8 +2140,6 @@ def fetch_account_telemetry():
         return rows[0]
     except Exception:
         return None
-
-
 
 
 def render_telemetry_hud():
@@ -2380,8 +2197,6 @@ def render_telemetry_hud():
     return is_live, equity if is_live else None
 
 
-
-
 def render_bybit_hud():
     w = fetch_bybit_wallet()
     key, secret = _bybit_credentials()
@@ -2432,8 +2247,6 @@ def render_bybit_hud():
     return True, eq
 
 
-
-
 def deposit_widget():
     if bybit_mode:
         if wallet_live_flag and wallet_equity is not None and wallet_equity > 0.0:
@@ -2454,8 +2267,6 @@ def deposit_widget():
         return
     st.number_input(t("deposit_label"), min_value=0.0, max_value=1e9, step=1000.0,
                     format="%.0f", key="account_deposit", help=t("deposit_help"))
-
-
 
 
 def add_indicators(df):
@@ -2487,16 +2298,12 @@ def add_indicators(df):
     return out
 
 
-
-
 def fmt_price(price):
     if price >= 1000:
         return f"{price:.2f}"
     if price >= 10:
         return f"{price:.3f}"
     return f"{price:.5f}"
-
-
 
 
 def tick_fmt(price):
@@ -2507,16 +2314,12 @@ def tick_fmt(price):
     return ".5f"
 
 
-
-
 def axis_time_fmt(tf):
     if tf in MN_MONTHS:
         return "%m.%Y"
     if tf in ("D1", "W1"):
         return "%d.%m.%y"
     return "%d.%m %H:%M"
-
-
 
 
 def _forecast_clock(df_plot, tf, is_fx):
@@ -2537,8 +2340,6 @@ def _forecast_clock(df_plot, tf, is_fx):
             anchor = (cand.dayofweek, cand.hour, cand.minute)
             jump = gap - step
     return step, anchor, jump
-
-
 
 
 def bar_time_at(df_plot, x, tf, is_fx, clock=None):
@@ -2566,8 +2367,6 @@ def bar_time_at(df_plot, x, tf, is_fx, clock=None):
     return ts, True
 
 
-
-
 def fmt_bar_time(ts, tf, compact):
     if tf in MN_MONTHS:
         return ts.strftime("%m.%Y" if compact else "%Y-%m")
@@ -2576,22 +2375,16 @@ def fmt_bar_time(ts, tf, compact):
     return ts.strftime("%d.%m %H:%M" if compact else "%Y-%m-%d %H:%M")
 
 
-
-
 def time_target_label(base, ts, forecast, tf, mobile):
     mark = "≈" if forecast else ""
     d = fmt_bar_time(ts, tf, mobile)
     return f"{mark}{base} ({d})"
 
 
-
-
 def hosoda_targets(a, b, c):
     if b > a:
         return {"V": b + (b - c), "N": c + (b - a), "E": b + (b - a), "NT": c + (c - a)}
     return {"V": b - (c - b), "N": c - (a - b), "E": b - (a - b), "NT": c - (a - c)}
-
-
 
 
 def trigger_plan(df, abc, mode, tf, is_fx, last_close):
@@ -2658,8 +2451,6 @@ def trigger_plan(df, abc, mode, tf, is_fx, last_close):
             "target": float(hosoda_targets(rA["y"], rB["y"], rC["y"])["N"])}
 
 
-
-
 ALICE_TARGETS = ("N",)
 ALICE_HORIZON = 50
 ALICE_HORIZON_MAX = 300
@@ -2683,8 +2474,6 @@ ALICE_GEOM_FEATURES = ["retr", "risk_z", "reward_z"]
 ALICE_CLASSES = [("minor", "minor"), ("major", "major"), ("major", "minor"), ("minor", "major")]
 
 
-
-
 def htf_trend_series(df_htf, ltf_index):
     h = add_indicators(df_htf)
     cl = h["Close"].to_numpy(dtype=float)
@@ -2696,16 +2485,12 @@ def htf_trend_series(df_htf, ltf_index):
     return tr.reindex(ltf_index, method="ffill").fillna(0.0).to_numpy(dtype=float)
 
 
-
-
 def _alice_arrays(df, htf):
     cols = {"hi": "High", "lo": "Low", "op": "Open", "cl": "Close", "atr": "ATR",
             "tk": "tenkan", "kj": "kijun", "sa": "senkou_a", "sb": "senkou_b"}
     ar = {k: df[c].to_numpy(dtype=float) for k, c in cols.items()}
     ar["htf"] = np.asarray(htf, dtype=float)
     return ar
-
-
 
 
 def _alice_base(ar, e, d):
@@ -2720,8 +2505,6 @@ def _alice_base(ar, e, d):
         ar["htf"][e] * d,
     ]
     return v if np.all(np.isfinite(v)) else None
-
-
 
 
 def _alice_wave(ar, a, b, c, Ap, Bp, atr):
@@ -2739,19 +2522,13 @@ def _alice_wave(ar, a, b, c, Ap, Bp, atr):
     return [float(slope), float(min(max(wick, 0.0), 1.0))]
 
 
-
-
 def _alice_horizon(c, a):
     return int(min(ALICE_HORIZON_MAX, max(ALICE_HORIZON, c - a)))
-
-
 
 
 def _alice_geom(entry, atr, horizon, Ap, Bp, Cp, T):
     scale = atr * np.sqrt(horizon)
     return [(Bp - Cp) / (Bp - Ap), (entry - Cp) / scale, (T - entry) / scale]
-
-
 
 
 def _alice_label(hi_m, lo_m, e, target, stop, horizon):
@@ -2764,8 +2541,6 @@ def _alice_label(hi_m, lo_m, e, target, stop, horizon):
     return -1 if si <= horizon else 0
 
 
-
-
 def _alice_pivots(df, d, cls, strict=False):
     pref = "Major" if cls == "major" else "Minor"
     low_col, high_col = (pref + "_Low", pref + "_High") if d > 0 else (pref + "_High", pref + "_Low")
@@ -2774,8 +2549,6 @@ def _alice_pivots(df, d, cls, strict=False):
         lows = lows & ~df["Major_Low" if d > 0 else "Major_High"].to_numpy(dtype=bool)
         highs = highs & ~df["Major_High" if d > 0 else "Major_Low"].to_numpy(dtype=bool)
     return np.flatnonzero(lows), np.flatnonzero(highs)
-
-
 
 
 def alice_build_samples(df, htf, targets, ab_cls, c_cls, strict=True, strict_ab=None):
@@ -2834,14 +2607,10 @@ def alice_build_samples(df, htf, targets, ab_cls, c_cls, strict=True, strict_ab=
     return pd.DataFrame(rows)
 
 
-
-
 def _alice_fit(X, y):
     return RandomForestClassifier(
         n_estimators=100, max_depth=5, min_samples_leaf=8, random_state=42, n_jobs=1
     ).fit(X, y)
-
-
 
 
 def alice_reliability(n, auc, uplift):
@@ -2856,15 +2625,11 @@ def alice_reliability(n, auc, uplift):
     return "low"
 
 
-
-
 def _alice_train_rows(samples, name, e):
     if not len(samples) or ("y_" + name) not in samples:
         return samples.iloc[0:0] if len(samples) else samples
     tr = samples[(samples["e"] + samples["h"] <= e) & samples["y_" + name].notna()]
     return tr.sort_values("e").tail(ALICE_MAX_SAMPLES)
-
-
 
 
 def _alice_matrix(tr, name):
@@ -2873,8 +2638,6 @@ def _alice_matrix(tr, name):
     if ALICE_USE_GEOMETRY:
         X = np.column_stack([X, tr[["retr", "risk_z", "reward_z_" + name]].to_numpy(dtype=float)])
     return np.column_stack([X, tr[["ab_major", "c_major"]].to_numpy(dtype=float)])
-
-
 
 
 def alice_point_class(df, i, high_side, price):
@@ -2894,8 +2657,6 @@ def alice_point_class(df, i, high_side, price):
     return "major" if gap <= ALICE_MAJOR_TOL_ATR * atr else "minor"
 
 
-
-
 def _alice_proba3(model, X):
     P = np.zeros((len(X), 3))
     raw = model.predict_proba(X)
@@ -2904,25 +2665,17 @@ def _alice_proba3(model, X):
     return P
 
 
-
-
 def _alice_fair(P):
     res = P[:, 0] + P[:, 2]
     return np.where(res > 1e-9, P[:, 2] / np.maximum(res, 1e-9), 0.5)
-
-
 
 
 def _alice_counts(y):
     return {1: int((y == 1).sum()), -1: int((y == -1).sum()), 0: int((y == 0).sum())}
 
 
-
-
 def _alice_neff(tr):
     return max(1, int(tr[["d", "b"]].drop_duplicates().shape[0]))
-
-
 
 
 def _alice_edge(p_fair, entry, Cp, T, n_eff, res_share):
@@ -2932,8 +2685,6 @@ def _alice_edge(p_fair, entry, Cp, T, n_eff, res_share):
     p = min(max(p_fair, 0.01), 0.99)
     return {"be": be, "edge": p_fair - be, "rr": (reward / risk) if risk > 0 else None,
             "se": float(np.sqrt(p * (1 - p) / n_res)), "n_eff": int(n_eff), "res_share": float(res_share)}
-
-
 
 
 def _alice_result(meta, P, m, counts, auc, uplift, pooled, freq_only, n_eff, entry, Cp, T):
@@ -2946,15 +2697,11 @@ def _alice_result(meta, P, m, counts, auc, uplift, pooled, freq_only, n_eff, ent
             "pooled": pooled, "freq_only": freq_only, **_alice_edge(p_fair, entry, Cp, T, n_eff, res_share)}
 
 
-
-
 def _alice_det_result(kind, meta, entry, Cp, T):
     pt, ps = (1.0, 0.0) if kind == "target" else (0.0, 1.0)
     return {**meta, "status": "ok", "det": kind, "p_target": pt, "p_stop": ps, "p_timeout": 0.0, "p_fair": pt, "n": 0,
             "freq": None, "auc": None, "uplift": None, "reliability": "low", "pooled": False, "freq_only": False,
             **_alice_edge(pt, entry, Cp, T, 1, 1.0), "se": 0.0}
-
-
 
 
 def alice_verdict(r):
@@ -2971,8 +2718,6 @@ def alice_verdict(r):
     if edge <= -ALICE_RED_EDGE and z <= -ALICE_RED_Z:
         return "red"
     return "yellow"
-
-
 
 
 def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
@@ -3069,13 +2814,9 @@ def alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets=ALICE_TARGETS):
     return {"status": "ok", "targets": out}
 
 
-
-
 @st.cache_data(ttl=600, show_spinner=False)
 def alice_run(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets):
     return alice_predict(df, htf, a_t, a_y, b_t, b_y, c_t, c_y, targets)
-
-
 
 
 def _tg_credentials():
@@ -3085,15 +2826,11 @@ def _tg_credentials():
         return None, None
 
 
-
-
 def _mt5_secret():
     try:
         return str(st.secrets.get("MT5_SECRET_TOKEN", MT5_DEFAULT_TOKEN))
     except Exception:
         return MT5_DEFAULT_TOKEN
-
-
 
 
 def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
@@ -3160,12 +2897,10 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
         time_ab, time_ac = abs(B_["x"] - A_["x"]), abs(C_["x"] - A_["x"])
         clock = _forecast_clock(df_plot, tf, is_fx)
 
-
         def vlabel(x_pos, text_, color, y_frac, size=7):
             ax.text(x_pos, y_frac, text_, transform=ax.get_xaxis_transform(), rotation=90,
                     ha="center", va="center", fontsize=size, color=color, zorder=7, clip_on=True,
                     bbox=dict(boxstyle="round,pad=0.12", facecolor="white", edgecolor="none", alpha=0.75))
-
 
         for x_pos, base, col, y_frac in ((cx + time_ab, f"AB {int(time_ab)}", "blue", 0.30),
                                          (cx + time_ac, f"AC {int(time_ac)}", "teal", 0.30)):
@@ -3204,8 +2939,6 @@ def _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile):
     return buf
 
 
-
-
 # ===== SPEC v3.45 (HOSODA CANON, 24H PERSISTENCE & ZERO-CLUTTER) =====
 def get_kijun_future(df, bars_ahead=KIJUN_FORWARD_BARS):
     """Опережающая тень Кидзюнь-сен на 1..bars_ahead баров вперёд."""
@@ -3221,8 +2954,6 @@ def get_kijun_future(df, bars_ahead=KIJUN_FORWARD_BARS):
             idx = n - 1
         fwd.append((np.max(hi[idx:]) + np.min(lo[idx:])) / 2.0)
     return fwd
-
-
 
 
 def detect_wave_chaos(df):
@@ -3247,8 +2978,6 @@ def detect_wave_chaos(df):
     return None
 
 
-
-
 def _radar_auto_abc(df_ltf, sig_raw):
     if df_ltf is None or len(df_ltf) < 35:
         return None
@@ -3259,7 +2988,6 @@ def _radar_auto_abc(df_ltf, sig_raw):
     cl = df_ltf["Close"].to_numpy(dtype=float)
     tk = df_ltf["tenkan"].to_numpy(dtype=float)
     atr_arr = df_ltf["ATR"].to_numpy(dtype=float)
-
 
     # 1. Точка B: импульсный экстремум за 26 баров без хвоста отката в 3 бара
     b_end = max(1, n - 3)
@@ -3280,13 +3008,11 @@ def _radar_auto_abc(df_ltf, sig_raw):
     if not turn_ok:
         return None
 
-
     atr_ref = float(atr_arr[b_idx])
     if not np.isfinite(atr_ref) or atr_ref <= 0.0:
         atr_ref = float(np.nanmean(hi - lo))
     if not np.isfinite(atr_ref) or atr_ref <= 0.0:
         return None
-
 
     # 2. Точка A: истинный исток импульса — Major с размахом >= 1.5 ATR,
     #    при отсутствии Major — Minor с размахом >= 2.0 ATR.
@@ -3301,7 +3027,6 @@ def _radar_auto_abc(df_ltf, sig_raw):
     else:
         maj_flags = df_ltf["Major_High"].to_numpy(dtype=bool)
         mnr_flags = df_ltf["Minor_High"].to_numpy(dtype=bool)
-
 
     def _collect(flags, amp_mult):
         found = []
@@ -3326,7 +3051,6 @@ def _radar_auto_abc(df_ltf, sig_raw):
             found.append(c_i)
         return found
 
-
     valid_a = _collect(maj_flags, A_MAJOR_AMP_ATR)
     fractal_class = "MAJOR"
     if not valid_a:
@@ -3342,7 +3066,6 @@ def _radar_auto_abc(df_ltf, sig_raw):
         a_y = float(hi[a_idx])
     cycle_order = "HTF_CYCLE" if (b_idx - a_idx) > 26 else "KIHON"
 
-
     # 3. Точка C: строгий экстремум отката после B + подтверждение отскока
     if is_buy:
         c_idx = int(b_idx + int(np.argmin(lo[b_idx:])))
@@ -3357,14 +3080,12 @@ def _radar_auto_abc(df_ltf, sig_raw):
     if not (a_idx < b_idx < c_idx):
         return None
 
-
     # 4. Конечный автомат: статус строго по ЗАКРЫТОЙ свече (cl[-2])
     last_closed_bar = float(cl[-2]) if n >= 2 else float(cl[-1])
     if is_buy:
         wave_state = "CONFIRMED" if last_closed_bar > b_y else "CANDIDATE"
     else:
         wave_state = "CONFIRMED" if last_closed_bar < b_y else "CANDIDATE"
-
 
     return {
         "a_idx": a_idx, "a_t": df_ltf.index[a_idx], "a_y": a_y,
@@ -3373,8 +3094,6 @@ def _radar_auto_abc(df_ltf, sig_raw):
         "wave_state": wave_state, "cycle_order": cycle_order,
         "fractal_class": fractal_class,
     }
-
-
 
 
 def _tg_caption_clip(caption, limit=1024):
@@ -3390,14 +3109,11 @@ def _tg_caption_clip(caption, limit=1024):
     return "\n".join(out)
 
 
-
-
 def dispatch_radar_signal(item):
     token = str(st.secrets.get("TELEGRAM_TOKEN", ""))
     channel = str(st.secrets.get("TELEGRAM_CHANNEL_ID", ""))
     if not token or not channel:
         return False, "no_channel_secret"
-
 
     asset = asset_label(item["asset"])
     tf = item["tf"]
@@ -3407,13 +3123,11 @@ def dispatch_radar_signal(item):
     direction = "▲ ПОКУПКА" if "buy" in sig_raw else "▼ ПРОДАЖА"
     cycle_note = " · Старший цикл" if item.get("cycle_order") == "HTF_CYCLE" else ""
 
-
     chaos_warn = ""
     if item.get("wave_chaos") == "P_WAVE":
         chaos_warn = "\n☕ <i>Режим Недеяния (Мусин) · Волна P (сжатие).</i>"
     elif item.get("wave_chaos") == "Y_WAVE":
         chaos_warn = "\n🌪 <i>Волна Y (расширение) · Рупор.</i>"
-
 
     if has_wave:
         is_confirmed = item.get("wave_state") == "CONFIRMED"
@@ -3440,7 +3154,6 @@ def dispatch_radar_signal(item):
         targets_line = "<b>Цели N / E:</b> <i>Ожидание опорного узла</i>\n"
         ai_line = "<b>Alice AI:</b> ⚪ Наблюдение за опорой Кидзюнь"
 
-
     caption = (
         f"🏛 <b>ICHIMOKU SANJIN RADAR</b>\n"
         f"<b>{asset} · {tf}</b>{cycle_note}\n"
@@ -3457,7 +3170,6 @@ def dispatch_radar_signal(item):
     )
     caption = _tg_caption_clip(caption)
 
-
     # v3.45: снимок формируется ВСЕГДА; без волны — чистый холст с опорой Кидзюнь
     df_plot = item.get("chart_df_plot")
     pts = item.get("chart_pts") or []
@@ -3469,7 +3181,6 @@ def dispatch_radar_signal(item):
             if t_stamp in df_plot.index:
                 plot_pts.append({"x": int(df_plot.index.get_loc(t_stamp)), "y": p["y"]})
 
-
     png_buf = None
     if df_plot is not None and not df_plot.empty:
         route = ASSET_ROUTER.get(item["asset"], {})
@@ -3480,7 +3191,6 @@ def dispatch_radar_signal(item):
             )
         except Exception:
             png_buf = None
-
 
     base_url = f"https://api.telegram.org/bot{token}"
     try:
@@ -3509,8 +3219,6 @@ def dispatch_radar_signal(item):
 # ===== /SPEC v3.45 =====
 
 
-
-
 def send_mt5_order(payload, confirm_label):
     token, chat_id = _tg_credentials()
     if not token or not chat_id:
@@ -3531,8 +3239,6 @@ def send_mt5_order(payload, confirm_label):
         return False, safe_err(e)
 
 
-
-
 def render_chart_png(fig, df_plot, pts, targets, title, tf, is_fx, mobile):
     try:
         return io.BytesIO(fig.to_image(format="png", width=1400, height=800, scale=2)), "plotly"
@@ -3542,8 +3248,6 @@ def render_chart_png(fig, df_plot, pts, targets, title, tf, is_fx, mobile):
         return _render_chart_matplotlib(df_plot, pts, targets, title, tf, is_fx, mobile), "matplotlib"
     except Exception:
         return None, None
-
-
 
 
 def send_telegram(token, chat_id, text, png):
@@ -3563,8 +3267,6 @@ def send_telegram(token, chat_id, text, png):
         return False, safe_err(e)
 
 
-
-
 def refresh_button(key):
     if st.button(t("refresh"), key=key, help=t("refresh_help")):
         _resolve_feed.clear()
@@ -3573,8 +3275,6 @@ def refresh_button(key):
         _bybit_wallet_probe.clear()
         fetch_account_telemetry.clear()
         st.rerun()
-
-
 
 
 PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w_radar_tf", "w_radar_active",
@@ -3586,19 +3286,14 @@ PERSIST_KEYS = ["w_mode", "w_server", "w_raw", "w_clear", "w_symbol", "w_tf", "w
                 "auth_logout_pending", "auth_logout_cleaned"]
 
 
-
-
 def _on_lang_change():
     st.session_state["_keep"] = {k: st.session_state[k] for k in PERSIST_KEYS if k in st.session_state}
-
-
 
 
 _keep = st.session_state.pop("_keep", None)
 if _keep:
     for _k, _v in _keep.items():
         st.session_state[_k] = _v
-
 
 if "lang" not in st.session_state:
     st.session_state["lang"] = detect_default_lang()
@@ -3612,22 +3307,18 @@ st.session_state.setdefault("data_feed_source", FEED_NONE)
 st.session_state.setdefault("bybit_diag_err", BYBIT_DIAG_NONE)
 st.session_state.setdefault("bybit_active_gw", BYBIT_DIAG_NONE)
 
-
 telemetry_live_flag = False
 telemetry_live_equity = None
 bybit_mode = False
 wallet_live_flag = False
 wallet_equity = None
 
-
 MOBILE = detect_mobile_ua()
 inject_css(MOBILE)
 LANG = LANGS[st.session_state.get("lang", DEFAULT_LANG)]
 
-
 # ===== SPEC v3.04: ВОССТАНОВЛЕНИЕ СЕССИИ + ВРАТА ДОСТУПА =====
 auth_try_restore()
-
 
 _gate_slot = st.container()
 if st.session_state.get("auth_user") is None:
@@ -3639,11 +3330,9 @@ if st.session_state.get("auth_user") is None:
 PAYWALL_LOCKED = subscription_locked()
 # ===== /SPEC v3.04 =====
 
-
 # ===== SPEC v3.45: разметка возвращается из адресной строки =====
 restore_points_from_url()
 # ===== /SPEC v3.45 =====
-
 
 _teleport = st.session_state.pop("_teleport", None)
 if _teleport:
@@ -3655,7 +3344,6 @@ if _teleport:
         st.session_state["persisted_tf"] = _teleport["tf"]
     st.session_state["w_mode"] = "terminal"
     reset_points()
-
 
 with st.sidebar:
     render_user_hud()
@@ -3680,13 +3368,11 @@ with st.sidebar:
         else:
             telemetry_live_flag, telemetry_live_equity = render_telemetry_hud()
 
-
 if app_mode == "radar":
     st.markdown(f"<h2 class='app-title'>{t('scanner_title')}</h2>", unsafe_allow_html=True)
     if st.session_state.get("w_radar_tf") not in radar_tfs:
         st.session_state["w_radar_tf"] = "D1"
     radar_tf = st.selectbox(t("select_tf"), radar_tfs, key="w_radar_tf")
-
 
     def fetch_radar(route, tf):
         if is_bybit_asset(route):
@@ -3702,7 +3388,6 @@ if app_mode == "radar":
         if df.empty:
             return df, E("no_processed")
         return df, None
-
 
     def scan_one(asset_name, route, tf):
         try:
@@ -3757,7 +3442,7 @@ if app_mode == "radar":
             diag = None
             if sig == "wait":
                 dist = abs(pr_live - kijun)
-                if abs(float(l_v["tenkan"]) - float(kijun)) < 1e-9 * max(1.0, abs(float(kijun))):
+                if l_v["tenkan"] == kijun:
                     diag = ("flat", {})
                 else:
                     buy_side = l_v["tenkan"] > kijun
@@ -3834,7 +3519,6 @@ if app_mode == "radar":
         except Exception as e:
             return None, E("exception", detail=safe_err(e))
 
-
     def run_scan(tf_list):
         total = len(ASSET_ROUTER) * len(tf_list)
         my_bar = st.progress(0, text=t("scanning"))
@@ -3853,7 +3537,6 @@ if app_mode == "radar":
         my_bar.empty()
         return results, skipped
 
-
     if st.button(t("run_scan"), **WIDE):
         st.session_state["radar_chart_ctx"] = {}
         res, sk = run_scan([radar_tf])
@@ -3870,7 +3553,6 @@ if app_mode == "radar":
             "all": True, "results": res, "skipped": sk,
         }
         radar_cache_write(st.session_state["radar_out2"])
-
 
     only_active = st.checkbox(t("filter_active"), key="w_radar_active")
     out = st.session_state.get("radar_out2")
@@ -3963,7 +3645,6 @@ if app_mode == "radar":
                                          columns=[t("col_asset"), t("col_reason")])
                 st.dataframe(sk_df, hide_index=True, **WIDE)
 
-
 elif app_mode == "terminal":
     with st.sidebar:
         st.markdown("---")
@@ -4021,7 +3702,6 @@ elif app_mode == "terminal":
             reset_points()
             st.rerun()
 
-
     is_fx = is_fx_asset(ASSET_ROUTER[asset_name])
     df_raw, fetch_err = fetch_smart_data(asset_name, tf_name)
     df_raw = prepare_ohlc(df_raw, tf_name, is_fx, count_weekend, drop_clearing, offset_choice)
@@ -4058,7 +3738,6 @@ elif app_mode == "terminal":
         pfmt = tick_fmt(last_close)
         time_txt = df_plot.index.strftime("%Y-%m-%d %H:%M").to_numpy()
 
-
         def marker_trace(mask, kind, price_col, offset_mult, size, color, name, group):
             m = np.asarray(mask, dtype=bool)
             sub = df_plot.loc[m]
@@ -4070,7 +3749,6 @@ elif app_mode == "terminal":
                 customdata=sub[price_col].to_numpy(dtype=float), text=time_txt[np.flatnonzero(m)],
                 hovertemplate=f"{name}<br>{t('hover_' + kind.lower())}: %{{customdata:{pfmt}}}<br>%{{text}}<extra></extra>",
             )
-
 
         minor_high = df_plot["Minor_High"].to_numpy(dtype=bool) & ~major_high_mask
         minor_low = df_plot["Minor_Low"].to_numpy(dtype=bool) & ~major_low_mask
@@ -4128,7 +3806,6 @@ elif app_mode == "terminal":
                                          line=dict(width=0), showlegend=False, legendgroup="cloud", hoverinfo="skip"))
             i = j
 
-
         pts = []
         for p in st.session_state.abc_points:
             if p["t"] in df_plot.index:
@@ -4153,14 +3830,12 @@ elif app_mode == "terminal":
             x_view_right = float(max(len(df_plot) - 1 + KIJUN_FORWARD_BARS,
                                      C["x"] + TIME_AXIS_FORWARD_BARS))
 
-
             def vlabel(x, text, color, y):
                 fig.add_annotation(
                     x=x, y=y, xref="x", yref="paper", text=text, textangle=-90, showarrow=False,
                     xanchor="center", yanchor="middle", font=dict(size=UIP["vlabel_font"], color=color),
                     bgcolor=CLR_LABEL_BG, borderpad=1,
                 )
-
 
             def time_line(x_pos, base, color, dash, y_zone, hover_head, opacity=1.0):
                 ts_, fc_ = bar_time_at(df_plot, x_pos, tf_name, is_fx, clock)
@@ -4180,7 +3855,6 @@ elif app_mode == "terminal":
                 tt_x.append(x_pos)
                 tt_text.append(hover_head + f"<br>{ts_:%Y-%m-%d %H:%M}" + (f" ({t('hover_forecast')})" if fc_ else ""))
 
-
             for x_pos, nm, n_bars, col in ((C["x"] + time_ab, "AB", time_ab, "#3f7d5c"),
                                            (C["x"] + time_ac, "AC", time_ac, "#2980b9")):
                 time_line(x_pos, f"{nm} {int(n_bars)}", col, "dot", 0.30,
@@ -4191,7 +3865,6 @@ elif app_mode == "terminal":
                 if xk > x_view_right:
                     continue
                 time_line(xk, str(k), "#7f8c8d", "dash", 0.78, t("hover_kihon", k=k), opacity=0.35)
-
 
             fig.add_trace(go.Scatter(x=[A["x"], B["x"], C["x"]], y=[A["y"], B["y"], C["y"]],
                                      mode="lines+markers", line=dict(color=CLR_WAVE, width=2),
@@ -4290,7 +3963,6 @@ elif app_mode == "terminal":
         if len(abc) >= 3 and len(pts) < 3:
             st.caption(t("points_outside"))
 
-
         # ===== SPEC v3.45: тихий индикатор Режима Недеяния (без линий) =====
         _chaos = detect_wave_chaos(df)
         if _chaos == "P_WAVE":
@@ -4299,9 +3971,7 @@ elif app_mode == "terminal":
             st.caption(t("wave_y_caption"))
         # ===== /SPEC v3.45 =====
 
-
         _htf_memo = {}
-
 
         def htf_info():
             if "v" not in _htf_memo:
@@ -4318,7 +3988,6 @@ elif app_mode == "terminal":
                 except Exception:
                     _htf_memo["v"] = (np.zeros(len(df)), htf_tf, True)
             return _htf_memo["v"]
-
 
         st.markdown(f"#### {t('ai_title')}")
         ai_light = None
@@ -4383,7 +4052,6 @@ elif app_mode == "terminal":
                             st.caption(t("ai_rel_" + r["reliability"]))
                         st.caption(t("ai_disclaimer"))
 
-
         if len(abc) >= 3:
             rA, rB, rC = abc[:3]
             side_buy = rB["y"] > rA["y"]
@@ -4401,7 +4069,6 @@ elif app_mode == "terminal":
                     atr_c = float(cb["ATR"])
             stop_buf = STOP_BUFFER_ATR * atr_c
             stop_c = float(rC["y"]) - stop_buf if side_buy else float(rC["y"]) + stop_buf
-
 
             entry_mode = st.selectbox(t("entry_mode"), ["hosoda", "break_b", "market", "custom"],
                                       format_func=lambda k: t("entry_" + k), key="entry_mode")
@@ -4435,11 +4102,9 @@ elif app_mode == "terminal":
                     entry_px = None
                 st.caption(t("entry_custom_hint"))
 
-
             risk_dist = abs(entry_px - stop_px) if (entry_px is not None and stop_px is not None) else None
             reward_dist = abs(target_px - entry_px) if entry_px is not None else None
             rr = (reward_dist / risk_dist) if (risk_dist is not None and risk_dist > 0) else None
-
 
             risk_rows = []
             if level_px is not None:
@@ -4469,14 +4134,12 @@ elif app_mode == "terminal":
                 risk_rows.append((t("risk_reward"), f"{fmt_points(reward_dist, psize)} {unit}"))
                 risk_rows.append((t("risk_rr"), f"1 : {rr:.2f}" if rr is not None else t("ai_na")))
 
-
             accent = ALICE_LIGHT_COLORS["green" if side_buy else "red"]
             head = t("risk_title") + " · " + t("risk_buy" if side_buy else "risk_sell")
             st.markdown(risk_card_html(head, risk_rows, accent), unsafe_allow_html=True)
             if dec == "watch" and level_px is not None:
                 st.info(t("risk_wait", dir=t("risk_wait_above" if side_buy else "risk_wait_below"),
                           level=fmt_price(level_px)))
-
 
             if MOBILE:
                 st.number_input(t("risk_pct_label"), min_value=0.1, max_value=100.0,
@@ -4491,7 +4154,6 @@ elif app_mode == "terminal":
                                     help=t("risk_pct_help"))
                 with rc2:
                     deposit_widget()
-
 
             risk_pct = float(st.session_state.get("risk_pct", RISK_PCT_DEFAULT))
             lot_ready = (entry_px is not None and rr is not None and pval > 0.0)
@@ -4517,17 +4179,14 @@ elif app_mode == "terminal":
             elif entry_px is not None:
                 st.caption(t("risk_zero") if rr is None else t("lot_no_value"))
 
-
             send_clicked = False
             bybit_arm = False
             sym_clean_btn = mt5_symbol(asset_name)
             active_step_btn = bybit_qty_step(sym_clean_btn) if bybit_mode else LOT_STEP
 
-
             # ===== SPEC v3.04: ПЕЙВОЛЛ =====
             if PAYWALL_LOCKED:
                 st.warning(t("auth_paywall"))
-
 
             if bybit_mode:
                 bybit_arm = st.checkbox(t("bybit_confirm_trade"), key="bybit_confirm_arm")
@@ -4537,15 +4196,12 @@ elif app_mode == "terminal":
                 btn_label = t("mt5_exec_btn")
                 btn_disabled = PAYWALL_LOCKED or (not lot_ready) or (lots < active_step_btn) or (dec in ("expired", "invalid"))
 
-
             send_clicked = st.button(btn_label, key="exec_order_btn", disabled=btn_disabled, **WIDE)
-
 
             if not lot_ready and dec not in ("expired", "invalid"):
                 st.caption(t("mt5_need_entry"))
             if bybit_mode and lot_ready and not bybit_arm:
                 st.caption(t("bybit_arm_required"))
-
 
             if send_clicked:
                 sym_clean = mt5_symbol(asset_name)
@@ -4632,7 +4288,6 @@ elif app_mode == "terminal":
                     else:
                         st.error(t("mt5_err", detail=err))
 
-
         if st.button(t("tg_button"), key="tg_send", **WIDE):
             token, chat_id = _tg_credentials()
             if not token or not chat_id:
@@ -4659,7 +4314,6 @@ elif app_mode == "terminal":
                     st.warning(t("tg_sent_text"))
                 else:
                     st.success(t("tg_sent"))
-
 
     if (event and event.selection and event.selection.get("points")
             and len(event.selection["points"]) == 1 and len(st.session_state.abc_points) < 4):
@@ -4690,6 +4344,5 @@ elif app_mode == "terminal":
                     st.session_state.abc_points.append({"t": row.name, "y": price})
                     sync_points_to_url()
                     st.rerun()
-
 
 gc.collect()
